@@ -3,19 +3,15 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { constructionSteps, type ConstructionStep } from '@/data/construction-steps';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import {
-    Building2,
     CheckCircle2,
-    Circle,
     Clock,
-    Filter,
     ChevronDown,
     ChevronUp,
-    ImageIcon
+    TrendingUp
 } from 'lucide-react';
 
 export default function ConstructionDashboard() {
@@ -23,13 +19,7 @@ export default function ConstructionDashboard() {
     const [activeStepId, setActiveStepId] = useState<string>('1');
     const [hoveredDetailIndex, setHoveredDetailIndex] = useState<number | null>(null);
 
-    // Find the active step object
     const activeStep = steps.find(s => s.id === activeStepId) || steps[0];
-
-    // Determine which image to show: Hovered detail image > Main step image > Fallback
-    const currentDisplayImage = hoveredDetailIndex !== null && activeStep.details[hoveredDetailIndex]?.image
-        ? activeStep.details[hoveredDetailIndex].image
-        : activeStep.image;
 
     const toggleStepCompletion = (id: string) => {
         setSteps(steps.map(step =>
@@ -50,11 +40,11 @@ export default function ConstructionDashboard() {
     };
 
     return (
-        <div className="min-h-screen bg-white flex flex-col">
-            {/* Top Navigation Bar - The "Steppes" on full top */}
-            <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200">
-                <div className="max-w-7xl mx-auto">
-                    <div className="flex items-center gap-2 px-4 py-4 overflow-x-auto no-scrollbar scroll-smooth">
+        <div className="min-h-screen bg-slate-50 flex flex-col font-jakarta pb-20 md:pb-0">
+            {/* Top Navigation Bar - Compact Labels */}
+            <div className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200">
+                <div className="max-w-[1600px] mx-auto overflow-x-auto no-scrollbar scroll-smooth p-2 md:p-3">
+                    <div className="flex items-center gap-1.5 md:gap-2 min-w-max">
                         {steps.map((step) => (
                             <button
                                 key={step.id}
@@ -64,114 +54,101 @@ export default function ConstructionDashboard() {
                                     window.scrollTo({ top: 0, behavior: 'smooth' });
                                 }}
                                 className={`
-                                    flex flex-col items-start justify-center min-w-[140px] max-w-[140px] gap-2 p-3 rounded-xl transition-all duration-300 border text-left
+                                    flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all border text-left
                                     ${activeStepId === step.id
-                                        ? 'bg-slate-900 border-slate-900 text-white shadow-lg scale-100 z-10'
-                                        : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+                                        ? 'bg-slate-900 border-slate-900 text-white shadow-md'
+                                        : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-100'
                                     }
-                                    ${step.completed ? 'ring-2 ring-green-500 ring-offset-2 border-green-500' : ''}
                                 `}
                             >
-                                <div className="flex items-center justify-between w-full">
-                                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${activeStepId === step.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                                        Step {step.order}
-                                    </span>
-                                    {step.completed && <CheckCircle2 className="w-4 h-4 text-green-500" />}
-                                </div>
-                                <span className={`text-sm font-semibold leading-tight line-clamp-2 w-full ${activeStepId === step.id ? 'text-white' : 'text-slate-900'}`}>
-                                    {step.title}
+                                <span className={`text-[10px] md:text-[11px] font-black px-1.5 py-0.5 rounded-md ${activeStepId === step.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                    {step.order}
                                 </span>
-                                <div className={`h-1 w-full rounded-full mt-1 ${step.completed ? 'bg-green-500' : activeStepId === step.id ? 'bg-white/30' : 'bg-slate-100'}`} />
+                                <span className="text-[11px] md:text-xs font-black uppercase tracking-tighter whitespace-nowrap">
+                                    {step.title.split(' ')[0]}
+                                </span>
+                                {step.completed && <CheckCircle2 className="w-3 h-3 text-green-500" />}
                             </button>
                         ))}
                     </div>
                 </div>
             </div>
 
-            <main className="flex-1 max-w-[1600px] mx-auto w-full p-4 lg:p-8">
-                <div className="grid lg:grid-cols-12 gap-6 lg:gap-12 items-start">
+            <main className="flex-1 max-w-[1600px] mx-auto w-full p-3 md:p-6 lg:p-8">
+                <div className="grid lg:grid-cols-12 gap-4 lg:gap-8 items-start">
 
                     {/* Left Column: Text Content */}
-                    <div className="space-y-8 lg:col-span-5 lg:sticky lg:top-[180px] lg:py-4 lg:h-[calc(100vh-180px)] lg:overflow-y-auto no-scrollbar">
-                        {/* Header Info */}
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-3">
-                                <Badge className={`px-3 py-1 text-sm font-medium rounded-full ${getCategoryColor(activeStep.category)}`}>
-                                    Step {activeStep.order}
+                    <div className="space-y-4 md:space-y-6 lg:col-span-5 lg:sticky lg:top-[120px]">
+                        {/* Header Info - Tighter */}
+                        <div className="space-y-2 md:space-y-3">
+                            <div className="flex items-center gap-2">
+                                <Badge className={`px-2 py-0.5 text-[10px] font-black rounded uppercase ${getCategoryColor(activeStep.category)}`}>
+                                    Phase {activeStep.category}
                                 </Badge>
-                                <span className="text-slate-400 text-sm font-medium uppercase tracking-wider">
-                                    {activeStep.category} Phase
-                                </span>
-                                <Badge variant="outline" className="ml-auto flex items-center gap-1.5 px-3 py-1 bg-white border-slate-200 text-slate-600">
-                                    <Clock className="w-3.5 h-3.5" />
+                                <Badge variant="outline" className="flex items-center gap-1 px-2 py-0.5 text-[10px] bg-white border-slate-200 text-slate-600 font-bold">
+                                    <Clock className="w-3 h-3" />
                                     {activeStep.duration}
                                 </Badge>
                             </div>
 
-                            <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                            <h1 className="text-xl md:text-3xl font-black text-slate-900 tracking-tight leading-tight uppercase">
                                 {activeStep.title}
                             </h1>
 
-                            <p className="text-lg text-slate-600 leading-relaxed">
+                            <p className="text-xs md:text-sm text-slate-600 leading-relaxed font-medium">
                                 {activeStep.description}
                             </p>
                         </div>
 
-                        {/* Progress Control */}
-                        <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                        {/* Progress Control - More Compact */}
+                        <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 shadow-sm">
                             <Checkbox
                                 id="step-complete"
                                 checked={activeStep.completed}
                                 onCheckedChange={() => toggleStepCompletion(activeStep.id)}
-                                className="w-6 h-6 border-2 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                                className="w-5 h-5 rounded-md border-2 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
                             />
                             <div className="flex flex-col">
-                                <label
-                                    htmlFor="step-complete"
-                                    className="font-semibold text-slate-900 cursor-pointer select-none"
-                                >
-                                    Mark as Complete
+                                <label htmlFor="step-complete" className="text-[11px] font-black text-slate-900 cursor-pointer uppercase tracking-tight">
+                                    Marquer comme Terminé
                                 </label>
-                                <span className="text-sm text-slate-500">
-                                    {activeStep.completed
-                                        ? `Completed on ${new Date(activeStep.timestamp || Date.now()).toLocaleDateString()}`
-                                        : 'Click when finished'
-                                    }
-                                </span>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase italic">
+                                    {activeStep.completed ? 'Validé sur chantier' : 'Action requise'}
+                                </p>
                             </div>
                         </div>
 
-                        {/* Interactive Details List */}
-                        <div className="space-y-4 pb-20">
-                            <h3 className="font-bold text-xl text-slate-900">Process Details</h3>
-                            <div className="space-y-3">
+                        {/* Interactive Details List - Denser */}
+                        <div className="space-y-3">
+                            <h3 className="font-black text-xs text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                <TrendingUp className="h-3 w-3" /> Étapes de déploiement
+                            </h3>
+                            <div className="grid grid-cols-1 gap-2">
                                 {activeStep.details.map((detail, idx) => (
                                     <div
                                         key={idx}
                                         onMouseEnter={() => setHoveredDetailIndex(idx)}
                                         onClick={() => setHoveredDetailIndex(idx)}
                                         className={`
-                                            group p-4 rounded-xl transition-all duration-300 cursor-pointer border-l-4
+                                            group p-3 rounded-xl transition-all duration-200 cursor-pointer border
                                             ${hoveredDetailIndex === idx
-                                                ? 'bg-slate-900 border-l-blue-500 shadow-md transform translate-x-1'
-                                                : 'bg-white border-l-slate-200 hover:border-l-slate-400 hover:bg-slate-50'
+                                                ? 'bg-slate-900 border-slate-900 shadow-lg scale-[1.02]'
+                                                : 'bg-white border-slate-200 hover:bg-slate-50'
                                             }
                                         `}
                                     >
-                                        <div className="flex items-start gap-4">
+                                        <div className="flex items-start gap-3">
                                             <div className={`
-                                                w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-bold text-sm transition-colors
-                                                ${hoveredDetailIndex === idx ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}
+                                                w-6 h-6 rounded-full flex items-center justify-center shrink-0 font-black text-[10px] transition-colors
+                                                ${hoveredDetailIndex === idx ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'}
                                             `}>
                                                 {idx + 1}
                                             </div>
                                             <div className="flex-1">
-                                                <h4 className={`text-base font-bold leading-tight mb-1 transition-colors ${hoveredDetailIndex === idx ? 'text-white' : 'text-slate-900 group-hover:text-blue-700'
-                                                    }`}>
+                                                <h4 className={`text-xs font-black leading-tight mb-0.5 transition-colors uppercase tracking-tight ${hoveredDetailIndex === idx ? 'text-white' : 'text-slate-900'}`}>
                                                     {detail.title}
                                                 </h4>
-                                                <p className={`text-sm leading-relaxed transition-colors ${hoveredDetailIndex === idx ? 'text-blue-100' : 'text-slate-600'
-                                                    }`}>
+                                                <p className={`text-[10px] leading-relaxed transition-colors font-medium ${hoveredDetailIndex === idx ? 'text-slate-400' : 'text-slate-500'}`}>
                                                     {detail.description}
                                                 </p>
                                             </div>
@@ -181,10 +158,11 @@ export default function ConstructionDashboard() {
                             </div>
                         </div>
 
-                        {/* Navigation Buttons */}
-                        <div className="flex items-center justify-between pt-8 pb-20 border-t border-slate-100">
+                        {/* Navigation Buttons - Tighter */}
+                        <div className="flex items-center gap-2 pt-4">
                             <Button
                                 variant="outline"
+                                size="sm"
                                 onClick={() => {
                                     const prevId = String(Number(activeStepId) - 1);
                                     if (steps.find(s => s.id === prevId)) {
@@ -194,12 +172,13 @@ export default function ConstructionDashboard() {
                                     }
                                 }}
                                 disabled={activeStep.order === 1}
-                                className="gap-2"
+                                className="flex-1 bg-white hover:bg-slate-50 text-[10px] font-black uppercase h-9"
                             >
-                                <ChevronUp className="w-4 h-4" /> Previous Step
+                                <ChevronUp className="w-3 h-3 mr-1" /> Précédent
                             </Button>
 
                             <Button
+                                size="sm"
                                 onClick={() => {
                                     const nextId = String(Number(activeStepId) + 1);
                                     if (steps.find(s => s.id === nextId)) {
@@ -209,71 +188,48 @@ export default function ConstructionDashboard() {
                                     }
                                 }}
                                 disabled={activeStep.order === steps.length}
-                                className="bg-slate-900 hover:bg-slate-800 gap-2"
+                                className="flex-1 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black uppercase h-9"
                             >
-                                Next Step <ChevronDown className="w-4 h-4" />
+                                Suivant <ChevronDown className="w-3 h-3 ml-1" />
                             </Button>
                         </div>
                     </div>
 
-                    {/* Right Column: Sticky Image Display */}
-                    <div className="hidden lg:block lg:col-span-7 lg:sticky lg:top-[180px] h-[calc(100vh-180px)] rounded-3xl overflow-hidden shadow-2xl bg-black border-4 border-slate-900/5 order-first lg:order-last">
-                        <div className="relative w-full h-full flex items-center justify-center group/image">
-                            {activeStep.details.map((detail, idx) => (
-                                <div
-                                    key={idx}
-                                    className={`absolute inset-0 transition-opacity duration-500 ease-in-out ${(hoveredDetailIndex === idx) || (hoveredDetailIndex === null && idx === 0)
-                                        ? 'opacity-100 z-10'
-                                        : activeStep.image && hoveredDetailIndex === null && idx === -1
-                                            ? 'opacity-100'
-                                            : 'opacity-0 z-0'
-                                        }`}
-                                >
-                                    {detail.image ? (
-                                        <Image
-                                            src={detail.image}
-                                            alt={detail.title}
-                                            fill
-                                            className="object-contain p-2"
-                                            priority={idx === 0}
-                                        />
-                                    ) : activeStep.image && (
-                                        <Image
-                                            src={activeStep.image}
-                                            alt={activeStep.title}
-                                            fill
-                                            className="object-contain p-2"
-                                        />
-                                    )}
-
-                                    {/* Image Overlay Label */}
-                                    <div className="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-black/90 to-transparent opacity-0 group-hover/image:opacity-100 transition-opacity duration-300">
-                                        <p className="text-white text-xl font-medium drop-shadow-md text-center">
-                                            {detail.title}
-                                        </p>
+                    {/* Right Column: Dynamic Image Context */}
+                    <div className="lg:col-span-7 bg-white rounded-2xl md:rounded-3xl p-2 md:p-4 border border-slate-200 shadow-sm min-h-[400px] md:h-[calc(100vh-160px)] sticky top-[120px] flex flex-col">
+                        <div className="relative flex-1 bg-slate-100 rounded-xl md:rounded-2xl overflow-hidden group">
+                            {/* Current Detail/Main Image */}
+                            <div className="absolute inset-0 transition-opacity duration-300">
+                                {hoveredDetailIndex !== null && activeStep.details[hoveredDetailIndex]?.image ? (
+                                    <Image
+                                        src={activeStep.details[hoveredDetailIndex].image}
+                                        alt={activeStep.details[hoveredDetailIndex].title}
+                                        fill
+                                        className="object-contain p-4 md:p-8"
+                                        priority
+                                    />
+                                ) : activeStep.image ? (
+                                    <Image
+                                        src={activeStep.image}
+                                        alt={activeStep.title}
+                                        fill
+                                        className="object-contain p-4 md:p-8"
+                                        priority
+                                    />
+                                ) : (
+                                    <div className="absolute inset-0 flex items-center justify-center text-slate-300">
+                                        <CheckCircle2 className="h-20 w-20 opacity-10" />
                                     </div>
-                                </div>
-                            ))}
+                                )}
+                            </div>
 
-                            {(!activeStep.details[0]?.image && activeStep.image) && (
-                                <Image
-                                    src={activeStep.image}
-                                    alt="Step Overview"
-                                    fill
-                                    className="object-contain p-2 -z-10"
-                                />
-                            )}
+                            {/* Label Overlay */}
+                            <div className="absolute bottom-4 left-4 right-4 p-4 bg-slate-900/90 backdrop-blur-sm rounded-xl text-center transform translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
+                                <p className="text-white text-[10px] font-black uppercase tracking-widest">
+                                    {(hoveredDetailIndex !== null && activeStep.details[hoveredDetailIndex]?.title) || activeStep.title}
+                                </p>
+                            </div>
                         </div>
-                    </div>
-
-                    {/* Mobile Image (Visible only on small screens) */}
-                    <div className="lg:hidden w-full aspect-square relative rounded-2xl overflow-hidden shadow-lg mb-8 bg-black">
-                        <Image
-                            src={currentDisplayImage || '/placeholder.png'}
-                            alt="Current Step"
-                            fill
-                            className="object-contain"
-                        />
                     </div>
 
                 </div>

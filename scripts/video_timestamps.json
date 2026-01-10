@@ -1,0 +1,404 @@
+[
+    {
+        "time": "00:00:38",
+        "name": "step_01_survey_1.jpg",
+        "source": "video1",
+        "description": "Geometer contouring terrain"
+    },
+    {
+        "time": "00:00:48",
+        "name": "step_01_survey_2.jpg",
+        "source": "video1",
+        "description": "Geometer defining limits"
+    },
+    {
+        "time": "00:00:55",
+        "name": "step_01_survey_3.jpg",
+        "source": "video1",
+        "description": "Axes determination"
+    },
+    {
+        "time": "00:01:25",
+        "name": "step_02_earth_1.jpg",
+        "source": "video1",
+        "description": "Excavator digging mass"
+    },
+    {
+        "time": "00:01:35",
+        "name": "step_02_earth_2.jpg",
+        "source": "video1",
+        "description": "Removing topsoil"
+    },
+    {
+        "time": "00:02:05",
+        "name": "step_02_earth_3.jpg",
+        "source": "video1",
+        "description": "Geotech report check"
+    },
+    {
+        "time": "00:01:50",
+        "name": "step_03_exc_1.jpg",
+        "source": "video1",
+        "description": "Manual excavation for footings"
+    },
+    {
+        "time": "00:03:00",
+        "name": "step_03_exc_2.jpg",
+        "source": "video1",
+        "description": "Checking depth"
+    },
+    {
+        "time": "00:03:40",
+        "name": "step_03_exc_3.jpg",
+        "source": "video1",
+        "description": "1.2m depth validation"
+    },
+    {
+        "time": "00:04:05",
+        "name": "step_04_found_1.jpg",
+        "source": "video1",
+        "description": "Cleanliness concrete layer"
+    },
+    {
+        "time": "00:04:25",
+        "name": "step_04_found_2.jpg",
+        "source": "video1",
+        "description": "Reinforcement placement"
+    },
+    {
+        "time": "00:04:35",
+        "name": "step_04_found_3.jpg",
+        "source": "video1",
+        "description": "Column starter bars"
+    },
+    {
+        "time": "00:04:55",
+        "name": "step_04_found_4.jpg",
+        "source": "video1",
+        "description": "Backfilling preparation"
+    },
+    {
+        "time": "00:05:40",
+        "name": "step_05_beams_1.jpg",
+        "source": "video1",
+        "description": "Longrines connecting footings"
+    },
+    {
+        "time": "00:05:50",
+        "name": "step_05_beams_2.jpg",
+        "source": "video1",
+        "description": "Seismic linking"
+    },
+    {
+        "time": "00:06:05",
+        "name": "step_05_beams_3.jpg",
+        "source": "video1",
+        "description": "Formwork plans check"
+    },
+    {
+        "time": "00:06:20",
+        "name": "step_05_beams_4.jpg",
+        "source": "video1",
+        "description": "Lateral formwork"
+    },
+    {
+        "time": "00:01:03",
+        "name": "step_06_sewage_1.jpg",
+        "source": "video2",
+        "description": "Small manhole creation"
+    },
+    {
+        "time": "00:01:15",
+        "name": "step_06_sewage_2.jpg",
+        "source": "video2",
+        "description": "Pipe connection slope"
+    },
+    {
+        "time": "00:01:25",
+        "name": "step_06_sewage_3.jpg",
+        "source": "video2",
+        "description": "Concrete cover plate"
+    },
+    {
+        "time": "00:01:35",
+        "name": "step_06_sewage_4.jpg",
+        "source": "video2",
+        "description": "External manhole view"
+    },
+    {
+        "time": "00:06:40",
+        "name": "step_07_slab_1.jpg",
+        "source": "video1",
+        "description": "Polyane film / Stone layer"
+    },
+    {
+        "time": "00:06:55",
+        "name": "step_07_slab_2.jpg",
+        "source": "video1",
+        "description": "Pouring slab concrete"
+    },
+    {
+        "time": "00:07:05",
+        "name": "step_07_slab_3.jpg",
+        "source": "video1",
+        "description": "B25 concrete mix"
+    },
+    {
+        "time": "00:07:45",
+        "name": "step_07_slab_4.jpg",
+        "source": "video1",
+        "description": "Finished slab"
+    },
+    {
+        "time": "00:08:00",
+        "name": "step_08_col_1.jpg",
+        "source": "video1",
+        "description": "Column reinforcement overlap"
+    },
+    {
+        "time": "00:08:05",
+        "name": "step_08_col_2.jpg",
+        "source": "video1",
+        "description": "Column formwork"
+    },
+    {
+        "time": "00:08:15",
+        "name": "step_08_col_3.jpg",
+        "source": "video1",
+        "description": "Pouring column"
+    },
+    {
+        "time": "00:08:20",
+        "name": "step_08_col_4.jpg",
+        "source": "video1",
+        "description": "Stiffeners (Raidisseurs)"
+    },
+    {
+        "time": "00:08:45",
+        "name": "step_09_wall_1.jpg",
+        "source": "video1",
+        "description": "Masonry contour walls"
+    },
+    {
+        "time": "00:08:50",
+        "name": "step_09_wall_2.jpg",
+        "source": "video1",
+        "description": "Internal partition walls"
+    },
+    {
+        "time": "00:08:55",
+        "name": "step_09_wall_3.jpg",
+        "source": "video1",
+        "description": "Lintel and door opening"
+    },
+    {
+        "time": "00:09:05",
+        "name": "step_09_wall_4.jpg",
+        "source": "video1",
+        "description": "Longrine connection ref"
+    },
+    {
+        "time": "00:02:20",
+        "name": "step_10_form_1.jpg",
+        "source": "video2",
+        "description": "Slab formwork setup"
+    },
+    {
+        "time": "00:02:35",
+        "name": "step_10_form_2.jpg",
+        "source": "video2",
+        "description": "Wooden formwork details"
+    },
+    {
+        "time": "00:03:20",
+        "name": "step_10_form_3.jpg",
+        "source": "video2",
+        "description": "Cantilever formwork"
+    },
+    {
+        "time": "00:03:45",
+        "name": "step_10_form_4.jpg",
+        "source": "video2",
+        "description": "Stairwell opening (Tremie)"
+    },
+    {
+        "time": "00:04:10",
+        "name": "step_11_rein_1.jpg",
+        "source": "video2",
+        "description": "Beam reinforcement"
+    },
+    {
+        "time": "00:04:35",
+        "name": "step_11_rein_2.jpg",
+        "source": "video2",
+        "description": "Hourdis placement"
+    },
+    {
+        "time": "00:04:50",
+        "name": "step_11_rein_3.jpg",
+        "source": "video2",
+        "description": "Cutting hourdis"
+    },
+    {
+        "time": "00:05:45",
+        "name": "step_11_rein_4.jpg",
+        "source": "video2",
+        "description": "Welded mesh (Treillis soudé)"
+    },
+    {
+        "time": "00:05:25",
+        "name": "step_12_pour_1.jpg",
+        "source": "video2",
+        "description": "Concrete pump truck"
+    },
+    {
+        "time": "00:05:30",
+        "name": "step_12_pour_2.jpg",
+        "source": "video2",
+        "description": "Injection pipe"
+    },
+    {
+        "time": "00:05:55",
+        "name": "step_12_pour_3.jpg",
+        "source": "video2",
+        "description": "Pouring compression slab"
+    },
+    {
+        "time": "00:06:00",
+        "name": "step_12_pour_4.jpg",
+        "source": "video2",
+        "description": "Smoothing concrete"
+    },
+    {
+        "time": "00:06:20",
+        "name": "step_13_cure_1.jpg",
+        "source": "video2",
+        "description": "Watering/Curing 24h later"
+    },
+    {
+        "time": "00:06:45",
+        "name": "step_13_cure_2.jpg",
+        "source": "video2",
+        "description": "Formwork removal 48h+"
+    },
+    {
+        "time": "00:07:10",
+        "name": "step_13_cure_3.jpg",
+        "source": "video2",
+        "description": "70% strength wait"
+    },
+    {
+        "time": "00:07:35",
+        "name": "step_13_cure_4.jpg",
+        "source": "video2",
+        "description": "28 days full strength"
+    },
+    {
+        "time": "00:08:10",
+        "name": "step_14_stair_1.jpg",
+        "source": "video2",
+        "description": "Stairwell view"
+    },
+    {
+        "time": "00:08:25",
+        "name": "step_14_stair_2.jpg",
+        "source": "video2",
+        "description": "Stair reinforcement"
+    },
+    {
+        "time": "00:09:15",
+        "name": "step_14_stair_3.jpg",
+        "source": "video2",
+        "description": "Stair formwork"
+    },
+    {
+        "time": "00:09:25",
+        "name": "step_14_stair_4.jpg",
+        "source": "video2",
+        "description": "Stair concrete finish"
+    },
+    {
+        "time": "00:09:50",
+        "name": "step_15_col1_1.jpg",
+        "source": "video2",
+        "description": "First floor columns start"
+    },
+    {
+        "time": "00:09:55",
+        "name": "step_15_col1_2.jpg",
+        "source": "video2",
+        "description": "Column formwork 1st floor"
+    },
+    {
+        "time": "00:09:50",
+        "name": "step_15_col1_3.jpg",
+        "source": "video2",
+        "description": "Pouring 1st floor columns"
+    },
+    {
+        "time": "00:09:55",
+        "name": "step_15_col1_4.jpg",
+        "source": "video2",
+        "description": "Decoffrage 1st floor"
+    },
+    {
+        "time": "00:10:00",
+        "name": "step_16_wall1_1.jpg",
+        "source": "video2",
+        "description": "1st Floor contour walls"
+    },
+    {
+        "time": "00:10:05",
+        "name": "step_16_wall1_2.jpg",
+        "source": "video2",
+        "description": "Partition walls 1st floor"
+    },
+    {
+        "time": "00:10:10",
+        "name": "step_16_wall1_3.jpg",
+        "source": "video2",
+        "description": "Prep for next slab"
+    },
+    {
+        "time": "00:10:15",
+        "name": "step_17_roof_1.jpg",
+        "source": "video2",
+        "description": "Cantilever discussion"
+    },
+    {
+        "time": "00:10:20",
+        "name": "step_17_roof_2.jpg",
+        "source": "video2",
+        "description": "Terrace slab intro"
+    },
+    {
+        "time": "00:10:15",
+        "name": "step_17_roof_3.jpg",
+        "source": "video2",
+        "description": "Future steps preview"
+    },
+    {
+        "time": "00:10:20",
+        "name": "step_17_roof_4.jpg",
+        "source": "video2",
+        "description": "End of video 2"
+    },
+    {
+        "time": "00:02:50",
+        "name": "step_18_balc_1.jpg",
+        "source": "video2",
+        "description": "Cantilever Counterweight details"
+    },
+    {
+        "time": "00:03:10",
+        "name": "step_18_balc_2.jpg",
+        "source": "video2",
+        "description": "Solid Slab for Cantilever"
+    },
+    {
+        "time": "00:04:15",
+        "name": "step_18_balc_3.jpg",
+        "source": "video2",
+        "description": "Cantilever Reinforcement"
+    }
+]

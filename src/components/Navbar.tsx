@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { LayoutGrid, Package, LogOut, ReceiptText, HardHat, ShoppingCart } from 'lucide-react';
+import { LayoutGrid, Package, LogOut, ReceiptText, HardHat, ShoppingCart, User } from 'lucide-react';
 import GlobalSearch from './GlobalSearch';
 
 export default function Navbar() {
@@ -14,10 +14,11 @@ export default function Navbar() {
     if (pathname === '/login') return null;
 
     const navItems = [
-        { name: 'CHANTIER', path: '/', icon: LayoutGrid },
-        { name: 'COMMANDES', path: '/orders', icon: ShoppingCart },
         { name: 'DÉPENSES', path: '/expenses', icon: ReceiptText },
+        { name: 'FOURNISSEURS', path: '/suppliers', icon: User },
         { name: 'ARTICLES', path: '/articles', icon: Package },
+        { name: 'COMMANDES', path: '/orders', icon: ShoppingCart },
+        { name: 'CHANTIER', path: '/', icon: LayoutGrid },
     ];
 
     return (

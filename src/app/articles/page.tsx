@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
-import { Search, Loader2, Package, Calendar, FileText, Plus, X, Pencil, Trash2, Save } from 'lucide-react';
+import { Search, Loader2, Package, Calendar, FileText, Plus, X, Pencil, Trash2, Save, ChevronDown, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 interface ArticleRow {
@@ -41,6 +41,11 @@ export default function ArticlesPage() {
         unitPrice: 0,
         totalPrice: 0
     });
+    const [expandedSuppliers, setExpandedSuppliers] = useState<Record<string, boolean>>({});
+
+    const toggleSupplier = (name: string) => {
+        setExpandedSuppliers(prev => ({ ...prev, [name]: !prev[name] }));
+    };
 
     const supabase = createClient();
 
@@ -212,12 +217,18 @@ export default function ArticlesPage() {
         a.reference.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    // Group by Supplier for display
     const grouped = filteredArticles.reduce((acc, row) => {
         if (!acc[row.supplierName]) acc[row.supplierName] = [];
         acc[row.supplierName].push(row);
         return acc;
     }, {} as Record<string, ArticleRow[]>);
+
+    const supplierGroups = Object.entries(grouped).map(([name, rows]) => ({
+        name,
+        rows,
+        total: rows.reduce((sum, r) => sum + r.totalPrice, 0),
+        color: rows[0].supplierColor
+    })).sort((a, b) => b.total - a.total); // Sort by total value by default
 
     if (loading) {
         return (
@@ -340,69 +351,95 @@ export default function ArticlesPage() {
                 </div>
             )}
 
-            <div className="space-y-8">
-                {Object.entries(grouped).map(([supplier, rows]) => (
-                    <div key={supplier} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div className="bg-slate-50 p-4 border-b border-slate-100 flex items-center gap-3">
-                            <div className={`w-3 h-3 rounded-full ${rows[0].supplierColor}`} />
-                            <h2 className="text-lg font-black text-slate-900 uppercase">{supplier}</h2>
-                            <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded-md text-[10px] font-black uppercase">{rows.length} articles</span>
+            <div className="space-y-4">
+                {supplierGroups.map((group) => {
+                    const isExpanded = expandedSuppliers[group.name];
+                    return (
+                        <div key={group.name} className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300">
+                            <div
+                                onClick={() => toggleSupplier(group.name)}
+                                className={`
+                                    p-5 flex items-center justify-between cursor-pointer transition-colors
+                                    ${isExpanded ? 'bg-slate-50 border-b border-slate-100' : 'hover:bg-slate-50/50'}
+                                `}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`w-10 h-10 rounded-2xl ${group.color} flex items-center justify-center text-white shadow-lg`}>
+                                        {group.name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">{group.name}</h2>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{group.rows.length} ARTICLES ACHETÉS</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-6">
+                                    <div className="hidden sm:flex flex-col items-end">
+                                        <span className="text-[9px] font-black text-slate-400 uppercase">Valeur Inventaire</span>
+                                        <span className="text-sm font-black text-slate-900 tabular-nums">
+                                            {group.total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-400 ml-0.5">DT</span>
+                                        </span>
+                                    </div>
+                                    <div className={`p-2 rounded-xl transition-all duration-300 ${isExpanded ? 'bg-blue-600 text-white rotate-180' : 'bg-slate-100 text-slate-400'}`}>
+                                        <ChevronDown className="h-5 w-5" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {isExpanded && (
+                                <div className="overflow-x-auto animate-in slide-in-from-top-2 duration-300">
+                                    <table className="w-full text-left border-collapse min-w-[600px]">
+                                        <thead className="bg-slate-100/50 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                            <tr>
+                                                <th className="px-6 py-4 w-24">Date</th>
+                                                <th className="px-6 py-4 w-32">Référence</th>
+                                                <th className="px-6 py-4">Désignation</th>
+                                                <th className="px-6 py-4 w-24 text-center">Qté</th>
+                                                <th className="px-6 py-4 w-32 text-right">Unit. (DT)</th>
+                                                <th className="px-6 py-4 w-32 text-right">Total TTC</th>
+                                                {isAdmin && <th className="px-6 py-4 w-20 text-center">Actions</th>}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="text-sm divide-y divide-slate-50">
+                                            {group.rows.map(row => (
+                                                <tr key={row.id} className="hover:bg-blue-50/20 transition-colors">
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500 font-mono">
+                                                            {row.date}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-tighter">{row.reference}</span>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className="font-black text-slate-900 uppercase text-[11px] leading-tight block">{row.designation}</span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-black text-slate-700">{row.quantity}</span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <span className="text-xs font-bold text-slate-400 tabular-nums">{row.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <span className="text-sm font-black text-slate-900 tabular-nums tracking-tight">{row.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                                                    </td>
+                                                    {isAdmin && (
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex justify-center gap-1 opacity-20 group-hover:opacity-100 transition-all">
+                                                                <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="p-1.5 hover:bg-blue-50 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                                                                <button onClick={(e) => { e.stopPropagation(); handleDelete(row); }} className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                                                            </div>
+                                                        </td>
+                                                    )}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
                         </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse min-w-[600px]">
-                                <thead className="bg-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                    <tr>
-                                        <th className="p-4 w-24">Date</th>
-                                        <th className="p-4 w-32">Référence</th>
-                                        <th className="p-4">Désignation</th>
-                                        <th className="p-4 w-24 text-center">Quantité</th>
-                                        <th className="p-4 w-32 text-right">Prix Unitaire</th>
-                                        <th className="p-4 w-32 text-right">Total TTC</th>
-                                        {isAdmin && <th className="p-4 w-20 text-center">Actions</th>}
-                                    </tr>
-                                </thead>
-                                <tbody className="text-sm">
-                                    {rows.map(row => (
-                                        <tr key={row.id} className="border-b border-slate-50 hover:bg-yellow-50 transition-colors">
-                                            <td className="p-4">
-                                                <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                                                    <Calendar className="h-3 w-3" />
-                                                    {row.date}
-                                                </div>
-                                            </td>
-                                            <td className="p-4">
-                                                <div className="flex items-center gap-2">
-                                                    <FileText className="h-3 w-3 text-slate-300" />
-                                                    <span className="text-xs font-bold text-slate-700 uppercase">{row.reference}</span>
-                                                </div>
-                                            </td>
-                                            <td className="p-4">
-                                                <span className="font-black text-slate-900 uppercase block max-w-md truncate">{row.designation}</span>
-                                            </td>
-                                            <td className="p-4 text-center">
-                                                <span className="bg-slate-100 px-2 py-1 rounded text-xs font-bold">{row.quantity}</span>
-                                            </td>
-                                            <td className="p-4 text-right">
-                                                <span className="text-xs font-medium text-slate-500">{row.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
-                                            </td>
-                                            <td className="p-4 text-right">
-                                                <span className="font-black text-slate-900">{row.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
-                                            </td>
-                                            {isAdmin && (
-                                                <td className="p-4">
-                                                    <div className="flex justify-center gap-2">
-                                                        <button onClick={() => openEdit(row)} className="p-1 hover:bg-blue-50 rounded text-blue-600"><Pencil className="h-3 w-3" /></button>
-                                                        <button onClick={() => handleDelete(row)} className="p-1 hover:bg-red-50 rounded text-red-600"><Trash2 className="h-3 w-3" /></button>
-                                                    </div>
-                                                </td>
-                                            )}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                ))}
+                    );
+                })}
 
                 {articles.length === 0 && (
                     <div className="text-center py-20 text-slate-400">

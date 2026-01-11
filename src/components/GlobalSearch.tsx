@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, X, Loader2, Receipt, ShoppingCart, User, ArrowRight, Wallet } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 
 type SearchResult = {
@@ -21,6 +22,7 @@ export default function GlobalSearch() {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<SearchResult[]>([]);
     const [loading, setLoading] = useState(false);
+    const [mounted, setMounted] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const supabase = createClient();
 
@@ -37,6 +39,7 @@ export default function GlobalSearch() {
             if (e.key === 'Escape') setIsOpen(false);
         };
         window.addEventListener('keydown', handleKeyDown);
+        setMounted(true);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
@@ -150,7 +153,7 @@ export default function GlobalSearch() {
     }, [query, supabase]);
 
 
-    if (!isOpen) {
+    if (!isOpen || !mounted) {
         return (
             <button
                 onClick={toggleSearch}
@@ -162,10 +165,10 @@ export default function GlobalSearch() {
         );
     }
 
-    return (
-        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] px-4">
+    return createPortal(
+        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] px-4 font-jakarta">
             {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={toggleSearch} />
+            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xl animate-in fade-in duration-300" onClick={toggleSearch} />
 
             {/* Modal */}
             <div className="relative bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -249,6 +252,7 @@ export default function GlobalSearch() {
                     <span>ESC pour fermer</span>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

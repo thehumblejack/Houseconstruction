@@ -1,10 +1,14 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo, Suspense } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { createClient } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
 import {
     Plus, Receipt, FileText, Trash2, TrendingUp, DollarSign,
     Upload, X, CheckCircle2, Clock, Eye, AlertCircle, Download, FileDown, ChevronDown,
-    ArrowUpDown, ArrowUp, ArrowDown
+    ArrowUpDown, ArrowUp, ArrowDown, ArrowRight, Search, Pencil
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -80,26 +84,12 @@ interface SupplierData {
     address?: string;
     clientName?: string;
     deposits?: Deposit[];
+    notes?: string;
 }
 
 // --- Components ---
 
-// Status Badge Component
-const StatusBadge = ({ status, onClick }: { status: PaymentStatus, onClick: () => void }) => {
-    return (
-        <button
-            onClick={onClick}
-            type="button"
-            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all border ${status === 'paid'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-                }`}
-        >
-            {status === 'paid' ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
-            {status === 'paid' ? 'PAYÉ' : 'ATTENTE'}
-        </button>
-    );
-};
+
 
 // Invoice Modal Component
 const ImageViewer = ({ src, onClose }: { src: string, onClose: () => void }) => (
@@ -121,12 +111,6 @@ const ImageViewer = ({ src, onClose }: { src: string, onClose: () => void }) => 
     </div>
 );
 
-import { useAuth } from '@/context/AuthContext';
-
-import { createClient } from '@/lib/supabase';
-import { useCallback, useEffect, useMemo, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
-
 function ExpensesContent() {
     const { isAdmin } = useAuth();
     const [activeTab, setActiveTab] = useState<SupplierType>('beton');
@@ -147,8 +131,21 @@ function ExpensesContent() {
     });
     const [editingDepositId, setEditingDepositId] = useState<string | null>(null);
     const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'price', direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+    const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
 
-    const [suppliers, setSuppliers] = useState<Record<string, SupplierData>>({}); // Change type to string to allow dynamic keys
+    const toggleRow = (id: string) => {
+        setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+    };
+
+    const [suppliers, setSuppliers] = useState<Record<string, SupplierData>>({});
+    const [showGlobalAddModal, setShowGlobalAddModal] = useState(false);
+    const [globalSearchTerm, setGlobalSearchTerm] = useState('');
+
+    // Notes State
+    const [showNoteModal, setShowNoteModal] = useState(false);
+    const [noteEditorType, setNoteEditorType] = useState<'supplier' | 'general'>('supplier');
+    const [tempNoteValue, setTempNoteValue] = useState('');
+    const [generalNote, setGeneralNote] = useState('');
 
     const searchParams = useSearchParams();
 
@@ -186,6 +183,12 @@ function ExpensesContent() {
             const { data: suppliersData } = await supabase.from('suppliers').select('*');
             const { data: expensesData } = await supabase.from('expenses').select('*, items:invoice_items(*)');
             const { data: depositsData } = await supabase.from('deposits').select('*');
+            const { data: settingsData } = await supabase.from('project_settings').select('*');
+
+            if (settingsData) {
+                const note = settingsData.find(s => s.key === 'general_note')?.value || '';
+                setGeneralNote(note);
+            }
 
             if (suppliersData && expensesData) {
                 const newSuppliers: Record<string, SupplierData> = {};
@@ -201,7 +204,8 @@ function ExpensesContent() {
                         clientName: s.client_name || '',
                         color: s.color || 'bg-slate-500',
                         expenses: [],
-                        deposits: []
+                        deposits: [],
+                        notes: s.notes || ''
                     };
                 });
 
@@ -501,6 +505,22 @@ function ExpensesContent() {
         }
     };
 
+    const handleSaveNote = async () => {
+        try {
+            if (noteEditorType === 'supplier') {
+                const { error } = await supabase.from('suppliers').update({ notes: tempNoteValue }).eq('id', activeTab);
+                if (error) throw error;
+            } else {
+                const { error } = await supabase.from('project_settings').update({ value: tempNoteValue }).eq('key', 'general_note');
+                if (error) throw error;
+            }
+            fetchData();
+            setShowNoteModal(false);
+        } catch (error) {
+            console.error('Error saving note:', error);
+            alert('Erreur lors de l\'enregistrement de la note');
+        }
+    };
 
 
     const handleAddSupplier = async () => {
@@ -728,6 +748,8 @@ function ExpensesContent() {
             {/* Image Modal */}
             {viewingImage && <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} />}
 
+
+
             {/* Global Stats - Compact */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
                 <div className="bg-slate-900 text-white p-3 md:p-5 rounded-xl shadow-lg border border-slate-800">
@@ -760,21 +782,89 @@ function ExpensesContent() {
                 </button>
             </div>
 
-            {/* Add Supplier Modal */}
+            {/* Add Supplier Modal - Searchable Picker */}
             {showAddSupplierModal && (
                 <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                    <div className="bg-white p-6 rounded-2xl w-full max-w-sm">
-                        <h3 className="text-lg font-black mb-4">Nouveau Fournisseur</h3>
-                        <input
-                            className="w-full border p-2 rounded mb-4 text-sm font-bold"
-                            placeholder="Nom (ex: Quincaillerie X)"
-                            value={newSupplierName}
-                            onChange={(e) => setNewSupplierName(e.target.value)}
-                        />
-                        <div className="flex justify-end gap-2">
-                            <button onClick={() => setShowAddSupplierModal(false)} className="text-xs font-bold px-4 py-2 text-slate-500">Annuler</button>
-                            <button onClick={handleAddSupplier} className="text-xs font-bold px-4 py-2 bg-slate-900 text-white rounded-lg">Ajouter</button>
+                    <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <h3 className="text-xl font-black uppercase tracking-tighter text-slate-900">Fournisseur</h3>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sélectionner ou Créer</p>
+                            </div>
+                            <button onClick={() => setShowAddSupplierModal(false)} className="p-3 hover:bg-slate-50 rounded-2xl transition-colors">
+                                <X className="h-6 w-6 text-slate-300" />
+                            </button>
                         </div>
+
+                        <div className="relative mb-6">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
+                            <input
+                                className="w-full bg-slate-50 border-2 border-transparent focus:border-slate-900 p-4 pl-12 rounded-2xl text-sm font-black text-slate-900 placeholder:text-slate-300 outline-none transition-all uppercase"
+                                placeholder="CHERCHER OU CRÉER..."
+                                value={newSupplierName}
+                                onChange={(e) => setNewSupplierName(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+
+                        <div className="max-h-64 overflow-y-auto mb-6 space-y-2 pr-1 custom-scrollbar">
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-2 mb-2">Fournisseurs Existants</p>
+                            {Object.values(suppliers)
+                                .filter(s => s.name.toLowerCase().includes(newSupplierName.toLowerCase()))
+                                .map(s => (
+                                    <button
+                                        key={s.id}
+                                        onClick={() => {
+                                            setActiveTab(s.id);
+                                            setShowAddSupplierModal(false);
+                                            setNewSupplierName('');
+                                        }}
+                                        className="w-full text-left p-4 rounded-2xl hover:bg-slate-50 border border-transparent hover:border-slate-100 flex items-center justify-between group transition-all"
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <div className={`w-10 h-10 rounded-xl ${s.color} flex items-center justify-center text-white text-xs font-black shadow-lg shadow-slate-200`}>
+                                                {s.name.charAt(0).toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-black text-slate-800 uppercase leading-none">{s.name}</p>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Ouvrir Situation</p>
+                                            </div>
+                                        </div>
+                                        <div className="bg-white p-2 rounded-lg shadow-sm border border-slate-100 opacity-0 group-hover:opacity-100 transition-all">
+                                            <ArrowRight className="h-4 w-4 text-slate-900" />
+                                        </div>
+                                    </button>
+                                ))
+                            }
+
+                            {newSupplierName && !Object.values(suppliers).some(s => s.name.toLowerCase() === newSupplierName.toLowerCase()) && (
+                                <button
+                                    onClick={handleAddSupplier}
+                                    className="w-full text-left p-5 rounded-3xl bg-slate-900 text-white flex items-center gap-5 hover:bg-slate-800 shadow-xl shadow-slate-200 transition-all"
+                                >
+                                    <div className="bg-white/20 p-3 rounded-xl">
+                                        <Plus className="h-5 w-5" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Créer Nouveau Fournisseur</p>
+                                        <p className="text-sm font-black uppercase mt-0.5">{newSupplierName}</p>
+                                    </div>
+                                </button>
+                            )}
+
+                            {Object.values(suppliers).filter(s => s.name.toLowerCase().includes(newSupplierName.toLowerCase())).length === 0 && !newSupplierName && (
+                                <div className="p-8 text-center text-slate-300">
+                                    <p className="text-xs font-bold uppercase tracking-widest">Aucun résultat</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <button
+                            onClick={() => setShowAddSupplierModal(false)}
+                            className="w-full py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors bg-slate-50/50 rounded-2xl"
+                        >
+                            Annuler
+                        </button>
                     </div>
                 </div>
             )}
@@ -937,6 +1027,33 @@ function ExpensesContent() {
                             </div>
                         ))}
                     </div>
+
+                    {/* General Note Sidebar Section */}
+                    {isAdmin && (
+                        <div className="mt-4 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden group">
+                            <div className="bg-slate-50 px-4 py-2 border-b border-slate-100 flex justify-between items-center">
+                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
+                                    <FileText className="h-3 w-3" />
+                                    NOTE GÉNÉRALE
+                                </span>
+                                <button
+                                    onClick={() => {
+                                        setNoteEditorType('general');
+                                        setTempNoteValue(generalNote);
+                                        setShowNoteModal(true);
+                                    }}
+                                    className="p-1 hover:bg-slate-200 rounded transition-colors opacity-0 group-hover:opacity-100"
+                                >
+                                    <Pencil className="h-2.5 w-2.5 text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="p-4">
+                                <p className="text-[11px] font-medium text-slate-500 italic leading-relaxed whitespace-pre-wrap">
+                                    {generalNote || "Aucune note générale pour le moment..."}
+                                </p>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex-1 space-y-4">
@@ -953,127 +1070,49 @@ function ExpensesContent() {
                         </div>
                         <div className="flex gap-2">
 
-                            <div className="bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg text-right">
+                            <div className="bg-slate-100 border border-slate-200 px-4 py-2 rounded-xl text-right">
                                 <p className="text-[8px] font-black text-slate-500 uppercase">Total Montant</p>
                                 <p className="text-sm font-black text-slate-900">{activeStat.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
                             </div>
-                            <div className="bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg text-right">
+                            <div className="bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-xl text-right">
                                 <p className="text-[8px] font-black text-emerald-600 uppercase">Payé</p>
                                 <p className="text-sm font-black text-emerald-800">{activeStat.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
                             </div>
-                            <div className={`${activeStat.remaining < 0 ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'} border px-3 py-1.5 rounded-lg text-right`}>
+                            <div className={`${activeStat.remaining < 0 ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'} border px-4 py-2 rounded-xl text-right`}>
                                 <p className={`text-[8px] font-black ${activeStat.remaining < 0 ? 'text-red-500' : 'text-blue-500'} uppercase`}>Solde</p>
                                 <p className={`text-sm font-black ${activeStat.remaining < 0 ? 'text-red-800' : 'text-blue-800'}`}>{activeStat.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
                             </div>
                         </div>
                     </div>
 
-                    {/* Fiche de Dépôts if applicable */}
-                    {currentSupplier.deposits && (
-                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-6">
-                            <div className="px-6 py-4 bg-emerald-50/50 border-b border-emerald-100 flex items-center justify-between">
-                                <h3 className="text-xs font-black uppercase tracking-widest text-emerald-900 flex items-center gap-2">
-                                    <TrendingUp className="h-4 w-4 text-emerald-500" /> Historique Acomptes
-                                </h3>
-                                {isAdmin && (
+                    {/* Supplier Notes Display */}
+                    {isAdmin && (
+                        <div className="bg-amber-50/50 border border-amber-100 p-4 rounded-xl flex items-start gap-4">
+                            <div className="bg-amber-100 p-2 rounded-lg">
+                                <FileText className="h-4 w-4 text-amber-600" />
+                            </div>
+                            <div className="flex-1">
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Notes du Chantier</span>
                                     <button
                                         onClick={() => {
-                                            setEditingDepositId(null);
-                                            setNewDepositData({
-                                                amount: '',
-                                                date: new Date().toISOString().split('T')[0],
-                                                payer: '',
-                                                commercial: '',
-                                                ref: ''
-                                            });
-                                            setShowAddDepositModal(true);
+                                            setNoteEditorType('supplier');
+                                            setTempNoteValue(currentSupplier.notes || '');
+                                            setShowNoteModal(true);
                                         }}
-                                        className="bg-emerald-600 px-3 py-1.5 rounded-lg text-white text-[10px] font-bold uppercase hover:bg-emerald-500 transition-all flex items-center gap-1 shadow-lg shadow-emerald-500/20"
+                                        className="text-[9px] font-black text-amber-600 hover:underline uppercase"
                                     >
-                                        <Plus className="h-3 w-3" /> Nouveau
+                                        Éditer
                                     </button>
-                                )}
-                            </div>
-
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse min-w-[500px]">
-                                    <thead className="bg-white/50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                                        <tr>
-                                            <th className="px-6 py-3 w-32">Date</th>
-                                            <th className="px-6 py-3">Référence / Payeur</th>
-                                            <th className="px-6 py-3 text-right">Montant</th>
-                                            <th className="px-6 py-3 text-right w-32">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {currentSupplier.deposits.length === 0 ? (
-                                            <tr>
-                                                <td colSpan={4} className="px-6 py-8 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
-                                                    Aucun acompte enregistré
-                                                </td>
-                                            </tr>
-                                        ) : (
-                                            currentSupplier.deposits.map(d => (
-                                                <tr key={d.id} className="hover:bg-slate-50/50 transition-colors group">
-                                                    <td className="px-6 py-4 text-xs font-bold text-slate-400 font-mono">
-                                                        {d.date}
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex flex-col">
-                                                            {d.ref ? (
-                                                                <span className="text-xs font-bold text-slate-700">{d.ref}</span>
-                                                            ) : <span className="text-xs font-bold text-slate-300 italic">Sans réf.</span>}
-                                                            {(d.payer || d.commercial) && (
-                                                                <span className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
-                                                                    {d.payer} {d.commercial && `• ${d.commercial}`}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right">
-                                                        <span className="text-sm font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-                                                            {d.amount.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right">
-                                                        <div className="flex items-center justify-end gap-1 opacity-40 group-hover:opacity-100 transition-all">
-                                                            {(d.receiptImage || d.id === 'd_cap_1') && (
-                                                                <button
-                                                                    onClick={() => setViewingImage(d.receiptImage || 'https://via.placeholder.com/800x1000?text=Recu+476+3900DT')}
-                                                                    className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors"
-                                                                    title="Voir reçu"
-                                                                >
-                                                                    <Eye className="h-3.5 w-3.5" />
-                                                                </button>
-                                                            )}
-                                                            {isAdmin && (
-                                                                <>
-                                                                    <button
-                                                                        onClick={() => handleEditDeposit(d)}
-                                                                        className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"
-                                                                        title="Modifier"
-                                                                    >
-                                                                        <FileText className="h-3.5 w-3.5" />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => handleDeleteDeposit(d.id)}
-                                                                        className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
-                                                                        title="Supprimer"
-                                                                    >
-                                                                        <Trash2 className="h-3.5 w-3.5" />
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))
-                                        )}
-                                    </tbody>
-                                </table>
+                                </div>
+                                <p className="text-xs font-medium text-slate-600 leading-relaxed italic">
+                                    {currentSupplier.notes || "Aucune consigne particulière pour ce fournisseur."}
+                                </p>
                             </div>
                         </div>
                     )}
+
+
 
                     {/* AI Scanner Zone */}
                     {isAdmin && (
@@ -1125,179 +1164,353 @@ function ExpensesContent() {
                         </div>
                     )}
 
-                    {/* Table Responsive */}
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
-                        <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-700">Historique des Pièces</h4>
-                            <span className="text-[8px] font-black bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full uppercase">{currentSupplier.expenses.length} docs</span>
+                    {/* --- SECTION: FACTURES / BONS --- */}
+                    <div className="space-y-4 mb-12">
+                        <div className="flex items-center gap-3 px-1">
+                            <div className="w-1.5 h-6 bg-blue-500 rounded-full"></div>
+                            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Factures & Bons</h2>
+                            <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{currentSupplier.expenses.length} documents</span>
                         </div>
 
-                        <div className="overflow-x-auto overflow-y-hidden">
-                            <table className="w-full text-left border-collapse min-w-[500px]">
-                                <thead className="bg-slate-50/80 backdrop-blur-sm sticky top-0 z-10 border-b border-slate-100 text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left w-24">État</th>
-                                        <th
-                                            className="px-4 py-3 text-left w-32 cursor-pointer hover:bg-slate-100/50 transition-colors select-none group"
-                                            onClick={() => handleSort('date')}
-                                        >
-                                            <div className="flex items-center gap-1">
-                                                Date
-                                                {sortConfig?.key === 'date' ? (
-                                                    sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-500" /> : <ArrowDown className="w-3 h-3 text-blue-500" />
-                                                ) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-50" />}
-                                            </div>
-                                        </th>
-                                        <th className="px-4 py-3 text-left">Référence</th>
-                                        <th
-                                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100/50 transition-colors select-none group"
-                                            onClick={() => handleSort('price')}
-                                        >
-                                            <div className="flex items-center justify-end gap-1">
-                                                Montant
-                                                {sortConfig?.key === 'price' ? (
-                                                    sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-500" /> : <ArrowDown className="w-3 h-3 text-blue-500" />
-                                                ) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-50" />}
-                                            </div>
-                                        </th>
-                                        <th className="px-4 py-3 text-right w-32">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {sortedExpenses.map(e => (
-                                        <React.Fragment key={e.id}>
-                                            <tr id={e.id} className="group border-b border-slate-50 hover:bg-slate-50/50 transition-all duration-200">
-                                                <td className="px-4 py-3">
-                                                    <div className="relative w-fit">
-                                                        <select
-                                                            value={e.status}
-                                                            onChange={(ev) => updateStatus(e.id, ev.target.value as PaymentStatus)}
-                                                            className={`
-                                                                appearance-none cursor-pointer
-                                                                pl-3 pr-8 py-1 rounded-full text-[9px] font-bold border transition-all shadow-sm
-                                                                focus:outline-none focus:ring-2 focus:ring-offset-1
-                                                                ${e.status === 'paid'
-                                                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-100 focus:ring-emerald-200'
-                                                                    : 'bg-amber-50 text-amber-600 border-amber-100 focus:ring-amber-200'}
-                                                            `}
-                                                        >
-                                                            <option value="paid">PAYÉ</option>
-                                                            <option value="pending">ATTENTE</option>
-                                                        </select>
-                                                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                                                            <div className={`border-l h-3 mx-1 ${e.status === 'paid' ? 'border-emerald-200' : 'border-amber-200'}`}></div>
-                                                        </div>
-                                                        <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none ${e.status === 'paid' ? 'text-emerald-500' : 'text-amber-500'}`} />
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-3 text-[11px] font-bold text-slate-400 font-mono tracking-tight">{e.date}</td>
-                                                <td className="px-4 py-3">
-                                                    <span className="text-xs font-bold text-slate-700 uppercase group-hover:text-blue-600 transition-colors cursor-default">
-                                                        {e.item}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3 text-right text-sm font-black text-slate-900 tabular-nums tracking-tight">
-                                                    {e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-400 font-bold ml-0.5">DT</span>
-                                                </td>
-                                                <td className="px-4 py-3 text-right">
-                                                    <div className="flex items-center justify-end gap-1 opacity-40 group-hover:opacity-100 transition-all duration-300">
-                                                        {e.invoiceImage && (
-                                                            <button onClick={() => setViewingImage(e.invoiceImage!)} className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors">
-                                                                <Eye className="h-3.5 w-3.5" />
-                                                            </button>
-                                                        )}
-                                                        {isAdmin && (
-                                                            <button onClick={() => handleDelete(e.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
-                                                                <Trash2 className="h-3.5 w-3.5" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                            {/* Détails Table */}
-                                            {e.items && (
-                                                <tr>
-                                                    <td colSpan={5} className="p-2 bg-slate-50/50">
-                                                        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-inner">
-                                                            {/* Detailed Metadata Row (Provider Specific) */}
-                                                            {(e.toupie || e.client || e.lieuLivraison) && (
-                                                                <div className="p-3 bg-slate-50 border-b border-slate-100 flex flex-wrap gap-4 md:gap-8">
-                                                                    {e.client && (
-                                                                        <div className="space-y-0.5">
-                                                                            <p className="text-[7px] font-black text-slate-400 uppercase">Client / Chantier</p>
-                                                                            <p className="text-[10px] font-black text-slate-900 uppercase">{e.client} {e.codeClient && `(${e.codeClient})`}</p>
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div className="overflow-x-auto overflow-y-hidden">
+                                <table className="w-full text-left border-collapse min-w-[500px]">
+                                    <thead className="bg-slate-50/80 backdrop-blur-sm sticky top-0 z-10 border-b border-slate-100 text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left w-10"></th>
+                                            <th className="px-4 py-3 text-left w-24">État</th>
+                                            <th
+                                                className="px-4 py-3 text-left cursor-pointer hover:bg-slate-100/50 transition-colors select-none group"
+                                                onClick={() => handleSort('date')}
+                                            >
+                                                <div className="flex items-center gap-1 group-hover:text-blue-600 transition-colors">
+                                                    Date / Désignation
+                                                    {sortConfig?.key === 'date' ? (
+                                                        sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-500" /> : <ArrowDown className="w-3 h-3 text-blue-500" />
+                                                    ) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100" />}
+                                                </div>
+                                            </th>
+                                            <th
+                                                className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100/50 transition-colors select-none group"
+                                                onClick={() => handleSort('price')}
+                                            >
+                                                <div className="flex items-center justify-end gap-1 group-hover:text-blue-600 transition-colors">
+                                                    Montant
+                                                    {sortConfig?.key === 'price' ? (
+                                                        sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-500" /> : <ArrowDown className="w-3 h-3 text-blue-500" />
+                                                    ) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100" />}
+                                                </div>
+                                            </th>
+                                            <th className="px-4 py-3 text-right w-32">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {sortedExpenses.map(e => {
+                                            const isExpanded = expandedRows[e.id];
+                                            return (
+                                                <React.Fragment key={e.id}>
+                                                    <tr
+                                                        id={e.id}
+                                                        className={`
+                                                        group transition-all duration-200 cursor-pointer
+                                                        ${isExpanded ? 'bg-blue-50/40' : 'hover:bg-slate-50/50'}
+                                                    `}
+                                                        onClick={() => toggleRow(e.id)}
+                                                    >
+                                                        <td className="px-4 py-4 text-center">
+                                                            <ChevronDown className={`h-4 w-4 text-slate-300 transition-transform duration-300 ${isExpanded ? 'rotate-180 text-blue-500' : ''}`} />
+                                                        </td>
+                                                        <td className="px-4 py-4" onClick={(ev) => ev.stopPropagation()}>
+                                                            <div className="relative w-fit">
+                                                                <select
+                                                                    value={e.status}
+                                                                    onChange={(ev) => updateStatus(e.id, ev.target.value as PaymentStatus)}
+                                                                    className={`
+                                                                    appearance-none cursor-pointer
+                                                                    pl-3 pr-8 py-1 rounded-full text-[9px] font-bold border transition-all shadow-sm
+                                                                    focus:outline-none focus:ring-2 focus:ring-offset-1
+                                                                    ${e.status === 'paid'
+                                                                            ? 'bg-emerald-50 text-emerald-600 border-emerald-100 focus:ring-emerald-200'
+                                                                            : 'bg-amber-50 text-amber-600 border-amber-100 focus:ring-amber-200'}
+                                                                `}
+                                                                >
+                                                                    <option value="paid">PAYÉ</option>
+                                                                    <option value="pending">ATTENTE</option>
+                                                                </select>
+                                                                <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none ${e.status === 'paid' ? 'text-emerald-500' : 'text-amber-500'}`} />
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-4">
+                                                            <div className="flex flex-col">
+                                                                <span className="text-[11px] font-bold text-slate-400 font-mono tracking-tight">{e.date}</span>
+                                                                <span className={`text-xs font-black uppercase transition-colors ${isExpanded ? 'text-blue-600' : 'text-slate-800'}`}>
+                                                                    {e.item}
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-4 text-right">
+                                                            <div className="flex flex-col items-end">
+                                                                <span className="text-sm font-black text-slate-900 tabular-nums tracking-tight">
+                                                                    {e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-400 font-bold ml-0.5">DT</span>
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-4 text-right">
+                                                            <div className="flex items-center justify-end gap-1 opacity-40 group-hover:opacity-100 transition-all duration-300" onClick={(ev) => ev.stopPropagation()}>
+                                                                {e.invoiceImage && (
+                                                                    <button onClick={() => setViewingImage(e.invoiceImage!)} className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors">
+                                                                        <Eye className="h-3.5 w-3.5" />
+                                                                    </button>
+                                                                )}
+                                                                {isAdmin && (
+                                                                    <button onClick={() => handleDelete(e.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
+                                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+
+                                                    {/* Détails Accordion */}
+                                                    {isExpanded && (
+                                                        <tr>
+                                                            <td colSpan={5} className="px-4 pb-6 pt-0 bg-blue-50/40">
+                                                                <div className="bg-white border-2 border-blue-100 rounded-2xl overflow-hidden shadow-sm animate-in slide-in-from-top-2 duration-300">
+                                                                    {/* Shared Metadata Header */}
+                                                                    {(e.client || e.lieuLivraison || e.toupie || e.chaufeur || e.pompe || e.heure) && (
+                                                                        <div className="p-4 bg-slate-50 border-b border-slate-100 grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                                                            {e.client && (
+                                                                                <div className="space-y-0.5">
+                                                                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Chantier / Client</p>
+                                                                                    <p className="text-[11px] font-black text-slate-900 uppercase">{e.client} {e.codeClient && `(${e.codeClient})`}</p>
+                                                                                </div>
+                                                                            )}
+                                                                            {e.lieuLivraison && (
+                                                                                <div className="space-y-0.5">
+                                                                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Lieu Livraison</p>
+                                                                                    <p className="text-[11px] font-black text-slate-900 uppercase">{e.lieuLivraison}</p>
+                                                                                </div>
+                                                                            )}
+                                                                            {e.toupie && (
+                                                                                <div className="space-y-0.5">
+                                                                                    <p className="text-[8px] font-black text-blue-400 uppercase tracking-tighter">Toupie / Camion</p>
+                                                                                    <p className="text-[11px] font-black text-blue-900 uppercase">{e.toupie} {e.chaufeur && `(${e.chaufeur})`}</p>
+                                                                                </div>
+                                                                            )}
+                                                                            {(e.pompe || e.pompiste) && (
+                                                                                <div className="space-y-0.5">
+                                                                                    <p className="text-[8px] font-black text-emerald-400 uppercase tracking-tighter">Pompe / Pompiste</p>
+                                                                                    <p className="text-[11px] font-black text-emerald-900">{e.pompe || '-'} / {e.pompiste || '-'}</p>
+                                                                                </div>
+                                                                            )}
+                                                                            {(e.heure || e.adjuvant) && (
+                                                                                <div className="space-y-0.5">
+                                                                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Heure / Adjuvant</p>
+                                                                                    <p className="text-[11px] font-black text-slate-600 font-mono">{e.heure || '-'} | {e.adjuvant || '-'}</p>
+                                                                                </div>
+                                                                            )}
                                                                         </div>
                                                                     )}
-                                                                    {e.lieuLivraison && (
-                                                                        <div className="space-y-0.5">
-                                                                            <p className="text-[7px] font-black text-slate-400 uppercase">Destination</p>
-                                                                            <p className="text-[10px] font-black text-slate-900 uppercase">{e.lieuLivraison}</p>
-                                                                        </div>
-                                                                    )}
-                                                                    {e.toupie && (
-                                                                        <div className="space-y-0.5">
-                                                                            <p className="text-[7px] font-black text-blue-400 uppercase">Toupie / Camion</p>
-                                                                            <p className="text-[10px] font-black text-blue-900 uppercase">{e.toupie}</p>
-                                                                        </div>
-                                                                    )}
-                                                                    {e.chaufeur && (
-                                                                        <div className="space-y-0.5">
-                                                                            <p className="text-[7px] font-black text-slate-400 uppercase">Chauffeur</p>
-                                                                            <p className="text-[10px] font-black text-slate-900 uppercase">{e.chaufeur}</p>
-                                                                        </div>
-                                                                    )}
-                                                                    {e.pompe && (
-                                                                        <div className="space-y-0.5">
-                                                                            <p className="text-[7px] font-black text-emerald-400 uppercase">Pompe / Pompiste</p>
-                                                                            <p className="text-[10px] font-black text-emerald-900 uppercase">{e.pompe} / {e.pompiste}</p>
-                                                                        </div>
-                                                                    )}
-                                                                    {e.heure && (
-                                                                        <div className="space-y-0.5">
-                                                                            <p className="text-[7px] font-black text-slate-400 uppercase">Heure / Adjuvant</p>
-                                                                            <p className="text-[10px] font-black text-slate-600 uppercase font-mono">{e.heure} | {e.adjuvant}</p>
+
+                                                                    {/* Line Items Table */}
+                                                                    {e.items && e.items.length > 0 && (
+                                                                        <div className="overflow-x-auto">
+                                                                            <table className="w-full text-left border-collapse">
+                                                                                <thead className="bg-slate-50 border-b border-slate-100 text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                                                                                    <tr>
+                                                                                        <th className="px-4 py-2">Désignation</th>
+                                                                                        <th className="px-4 py-2 text-center">Qté</th>
+                                                                                        <th className="px-4 py-2 text-right">Prix Unité</th>
+                                                                                        {e.items?.some(i => i.remise) && <th className="px-4 py-2 text-center text-red-400">Remise</th>}
+                                                                                        <th className="px-4 py-2 text-right">Total TTC</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody className="divide-y divide-slate-50">
+                                                                                    {e.items?.map((item, idx) => (
+                                                                                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                                                                            <td className="px-4 py-2 font-bold text-slate-700 text-[10px]">{item.designation}</td>
+                                                                                            <td className="px-4 py-2 text-center font-black text-slate-900 text-[10px]">{item.quantity}</td>
+                                                                                            <td className="px-4 py-2 text-right text-slate-500 font-mono text-[10px]">{(item.unitPriceHT || item.unitPrice).toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                                                                                            {e.items?.some(i => i.remise) && (
+                                                                                                <td className="px-4 py-2 text-center text-red-500 font-black text-[10px]">
+                                                                                                    {item.remise ? `${item.remise}%` : '-'}
+                                                                                                </td>
+                                                                                            )}
+                                                                                            <td className="px-4 py-2 text-right font-black text-blue-900 text-[10px]">{item.totalTTC.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                                                                                        </tr>
+                                                                                    ))}
+                                                                                </tbody>
+                                                                            </table>
                                                                         </div>
                                                                     )}
                                                                 </div>
-                                                            )}
-                                                            <div className="overflow-x-auto">
-                                                                <table className="w-full text-[9px] min-w-[600px]">
-                                                                    <thead className="bg-slate-100 text-[7px] font-black text-slate-400 uppercase tracking-tighter">
-                                                                        <tr>
-                                                                            <th className="p-2 text-left">Désignation</th>
-                                                                            <th className="p-2 text-center">CRT</th>
-                                                                            <th className="p-2 text-center">Qté</th>
-                                                                            <th className="p-2 text-right">Prix HT</th>
-                                                                            <th className="p-2 text-center">Rem</th>
-                                                                            <th className="p-2 text-right">Total TTC</th>
-                                                                        </tr>
-                                                                    </thead>
-                                                                    <tbody className="divide-y divide-slate-50">
-                                                                        {e.items.map((item, idx) => (
-                                                                            <tr key={idx}>
-                                                                                <td className="p-2 font-bold text-slate-700">{item.designation}</td>
-                                                                                <td className="p-2 text-center text-slate-400 font-mono italic">{item.crt || '-'}</td>
-                                                                                <td className="p-2 text-center font-black text-slate-900">{item.quantity}</td>
-                                                                                <td className="p-2 text-right text-indigo-500 font-bold">{(item.unitPriceHT || item.unitPrice).toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                                                                                <td className="p-2 text-center text-red-500 font-black">{item.remise ? `${item.remise}%` : ''}</td>
-                                                                                <td className="p-2 text-right font-black text-slate-900">{item.totalTTC.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                                                                            </tr>
-                                                                        ))}
-                                                                    </tbody>
-                                                                </table>
-                                                            </div>
-                                                        </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Fiche de Dépôts / Acomptes */}
+                    {currentSupplier.deposits && (
+                        <div className="space-y-4 mb-20">
+                            <div className="flex items-center gap-3 px-1">
+                                <div className="w-1.5 h-6 bg-emerald-500 rounded-full"></div>
+                                <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Historique Acomptes</h2>
+                                <span className="text-[10px] font-bold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-100">{currentSupplier.deposits.length} paiements</span>
+                            </div>
+
+                            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div className="p-4 bg-emerald-50/20 border-b border-emerald-100/50 flex items-center justify-between">
+                                    <span className="text-[10px] font-black text-emerald-600 uppercase tracking-wider">Paiements Validés</span>
+                                    {isAdmin && (
+                                        <button
+                                            onClick={() => {
+                                                setEditingDepositId(null);
+                                                setNewDepositData({
+                                                    amount: '',
+                                                    date: new Date().toISOString().split('T')[0],
+                                                    payer: '',
+                                                    commercial: '',
+                                                    ref: ''
+                                                });
+                                                setShowAddDepositModal(true);
+                                            }}
+                                            className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase hover:bg-emerald-500 transition-all flex items-center gap-1 shadow-lg shadow-emerald-500/10"
+                                        >
+                                            <Plus className="h-3 w-3" /> Nouveau
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse min-w-[500px]">
+                                        <thead className="bg-slate-50/50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                            <tr>
+                                                <th className="px-6 py-4 w-32">Date</th>
+                                                <th className="px-6 py-4">Référence / Payeur</th>
+                                                <th className="px-6 py-4 text-right">Montant</th>
+                                                <th className="px-6 py-4 text-right w-32">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-50">
+                                            {currentSupplier.deposits.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={4} className="px-6 py-12 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
+                                                        Aucun acompte enregistré
                                                     </td>
                                                 </tr>
+                                            ) : (
+                                                currentSupplier.deposits.map(d => (
+                                                    <tr key={d.id} className="hover:bg-slate-50/50 transition-colors group">
+                                                        <td className="px-6 py-4 text-xs font-bold text-slate-400 font-mono">
+                                                            {d.date}
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex flex-col">
+                                                                {d.ref ? (
+                                                                    <span className="text-xs font-bold text-slate-700">{d.ref}</span>
+                                                                ) : <span className="text-xs font-bold text-slate-300 italic">Sans réf.</span>}
+                                                                {(d.payer || d.commercial) && (
+                                                                    <span className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
+                                                                        {d.payer} {d.commercial && `• ${d.commercial}`}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right">
+                                                            <span className="text-sm font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
+                                                                {d.amount.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px]">DT</span>
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right">
+                                                            <div className="flex items-center justify-end gap-1 opacity-20 group-hover:opacity-100 transition-all">
+                                                                {(d.receiptImage || d.id === 'd_cap_1') && (
+                                                                    <button
+                                                                        onClick={() => setViewingImage(d.receiptImage || 'https://via.placeholder.com/800x1000?text=Recu+476+3900DT')}
+                                                                        className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors"
+                                                                        title="Voir reçu"
+                                                                    >
+                                                                        <Eye className="h-4 w-4" />
+                                                                    </button>
+                                                                )}
+                                                                {isAdmin && (
+                                                                    <>
+                                                                        <button
+                                                                            onClick={() => handleEditDeposit(d)}
+                                                                            className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"
+                                                                            title="Modifier"
+                                                                        >
+                                                                            <FileText className="h-4 w-4" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleDeleteDeposit(d.id)}
+                                                                            className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+                                                                            title="Supprimer"
+                                                                        >
+                                                                            <Trash2 className="h-4 w-4" />
+                                                                        </button>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))
                                             )}
-                                        </React.Fragment>
-                                    ))}
-                                </tbody>
-                            </table>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+            {/* Note Editor Modal */}
+            {showNoteModal && (
+                <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+                    <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <h3 className="text-xl font-black uppercase tracking-tighter text-slate-900">
+                                    {noteEditorType === 'supplier' ? `Notes: ${currentSupplier.name}` : 'Note Générale du Projet'}
+                                </h3>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Observations et consignes</p>
+                            </div>
+                            <button onClick={() => setShowNoteModal(false)} className="p-3 hover:bg-slate-50 rounded-2xl transition-colors">
+                                <X className="h-6 w-6 text-slate-300" />
+                            </button>
+                        </div>
+
+                        <textarea
+                            className="w-full h-64 bg-slate-50 border-2 border-slate-100 focus:border-slate-900 p-6 rounded-3xl text-sm font-medium text-slate-700 outline-none transition-all resize-none"
+                            placeholder="Saisissez vos notes ici..."
+                            value={tempNoteValue}
+                            onChange={(e) => setTempNoteValue(e.target.value)}
+                            autoFocus
+                        />
+
+                        <div className="mt-8 flex gap-3">
+                            <button
+                                onClick={() => setShowNoteModal(false)}
+                                className="flex-1 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors bg-slate-50 rounded-2xl"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                onClick={handleSaveNote}
+                                className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-slate-200 transition-all flex items-center justify-center gap-2"
+                            >
+                                <CheckCircle2 className="h-4 w-4" />
+                                Enregistrer
+                            </button>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }

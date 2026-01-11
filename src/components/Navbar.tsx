@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { LayoutGrid, Package, LogOut, ReceiptText, HardHat, ShoppingCart } from 'lucide-react';
+import GlobalSearch from './GlobalSearch';
 
 export default function Navbar() {
     const pathname = usePathname();
@@ -59,6 +60,10 @@ export default function Navbar() {
                                 </Link>
                             );
                         })}
+                    </div>
+
+                    <div className="ml-2">
+                        <GlobalSearch />
                     </div>
 
                     {/* Actions */}

@@ -123,7 +123,8 @@ const ImageViewer = ({ src, onClose }: { src: string, onClose: () => void }) => 
 import { useAuth } from '@/context/AuthContext';
 
 import { createClient } from '@/lib/supabase';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 export default function ExpensesPage() {
     const { isAdmin } = useAuth();
@@ -146,6 +147,35 @@ export default function ExpensesPage() {
     const [editingDepositId, setEditingDepositId] = useState<string | null>(null);
 
     const [suppliers, setSuppliers] = useState<Record<string, SupplierData>>({}); // Change type to string to allow dynamic keys
+
+    const searchParams = useSearchParams();
+
+    // Sync URL params to State
+    useEffect(() => {
+        if (!loading && Object.keys(suppliers).length > 0) {
+            const tabParam = searchParams.get('tab');
+            if (tabParam && suppliers[tabParam] && activeTab !== tabParam) {
+                setActiveTab(tabParam as SupplierType);
+            }
+
+            const highlightId = searchParams.get('highlight');
+            if (highlightId) {
+                // Wait for tab switch and render
+                setTimeout(() => {
+                    const el = document.getElementById(highlightId);
+                    if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        // Add highlight effect
+                        el.style.backgroundColor = '#fef3c7'; // amber-100
+                        el.style.transition = 'background-color 1s';
+                        setTimeout(() => {
+                            el.style.backgroundColor = '';
+                        }, 3000);
+                    }
+                }, 500);
+            }
+        }
+    }, [searchParams, loading, suppliers]);
 
     const supabase = createClient();
 
@@ -1055,7 +1085,7 @@ export default function ExpensesPage() {
                                 <tbody>
                                     {currentSupplier.expenses.map(e => (
                                         <React.Fragment key={e.id}>
-                                            <tr className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                                            <tr id={e.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
                                                 <td className="p-3 text-[10px] font-bold text-slate-400">{e.date}</td>
                                                 <td className="p-3 text-xs font-black text-slate-900 uppercase">{e.item}</td>
                                                 <td className="p-3 text-right text-sm font-black text-slate-900">{e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>

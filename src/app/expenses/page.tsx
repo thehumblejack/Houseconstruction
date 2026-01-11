@@ -3,7 +3,7 @@
 import React, { useState, useRef } from 'react';
 import {
     Plus, Receipt, FileText, Trash2, TrendingUp, DollarSign,
-    Upload, X, CheckCircle2, Clock, Eye, AlertCircle, Download, FileDown
+    Upload, X, CheckCircle2, Clock, Eye, AlertCircle, Download, FileDown, ChevronDown
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -1120,13 +1120,26 @@ function ExpensesContent() {
                                         <React.Fragment key={e.id}>
                                             <tr id={e.id} className="group border-b border-slate-50 hover:bg-slate-50/50 transition-all duration-200">
                                                 <td className="px-4 py-3">
-                                                    <div className={`
-                                                        inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold transition-all border
-                                                        ${e.status === 'paid'
-                                                            ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                                                            : 'bg-amber-50 text-amber-600 border-amber-100'}
-                                                    `}>
-                                                        {e.status === 'paid' ? 'PAYÉ' : 'ATTENTE'}
+                                                    <div className="relative w-fit">
+                                                        <select
+                                                            value={e.status}
+                                                            onChange={(ev) => updateStatus(e.id, ev.target.value as PaymentStatus)}
+                                                            className={`
+                                                                appearance-none cursor-pointer
+                                                                pl-3 pr-8 py-1 rounded-full text-[9px] font-bold border transition-all shadow-sm
+                                                                focus:outline-none focus:ring-2 focus:ring-offset-1
+                                                                ${e.status === 'paid'
+                                                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-100 focus:ring-emerald-200'
+                                                                    : 'bg-amber-50 text-amber-600 border-amber-100 focus:ring-amber-200'}
+                                                            `}
+                                                        >
+                                                            <option value="paid">PAYÉ</option>
+                                                            <option value="pending">ATTENTE</option>
+                                                        </select>
+                                                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                                                            <div className={`border-l h-3 mx-1 ${e.status === 'paid' ? 'border-emerald-200' : 'border-amber-200'}`}></div>
+                                                        </div>
+                                                        <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none ${e.status === 'paid' ? 'text-emerald-500' : 'text-amber-500'}`} />
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-3 text-[11px] font-bold text-slate-400 font-mono tracking-tight">{e.date}</td>
@@ -1140,23 +1153,6 @@ function ExpensesContent() {
                                                 </td>
                                                 <td className="px-4 py-3 text-right">
                                                     <div className="flex items-center justify-end gap-1 opacity-40 group-hover:opacity-100 transition-all duration-300">
-                                                        <select
-                                                            value={e.status}
-                                                            onChange={(ev) => {
-                                                                const newStatus = ev.target.value as PaymentStatus;
-                                                                updateStatus(e.id, newStatus);
-                                                            }}
-                                                            className="w-4 h-4 opacity-0 absolute"
-                                                        />
-                                                        {/* Custom Action Buttons for minimal look */}
-                                                        <button
-                                                            onClick={() => updateStatus(e.id, e.status === 'paid' ? 'pending' : 'paid')}
-                                                            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-                                                            title="Changer statut"
-                                                        >
-                                                            {e.status === 'paid' ? <X className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                                                        </button>
-
                                                         {e.invoiceImage && (
                                                             <button onClick={() => setViewingImage(e.invoiceImage!)} className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors">
                                                                 <Eye className="h-3.5 w-3.5" />

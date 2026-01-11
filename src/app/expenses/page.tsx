@@ -3,7 +3,8 @@
 import React, { useState, useRef } from 'react';
 import {
     Plus, Receipt, FileText, Trash2, TrendingUp, DollarSign,
-    Upload, X, CheckCircle2, Clock, Eye, AlertCircle, Download, FileDown, ChevronDown
+    Upload, X, CheckCircle2, Clock, Eye, AlertCircle, Download, FileDown, ChevronDown,
+    ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -145,6 +146,7 @@ function ExpensesContent() {
         ref: ''
     });
     const [editingDepositId, setEditingDepositId] = useState<string | null>(null);
+    const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'price', direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
 
     const [suppliers, setSuppliers] = useState<Record<string, SupplierData>>({}); // Change type to string to allow dynamic keys
 
@@ -387,6 +389,32 @@ function ExpensesContent() {
     const totalRemainingGlobal = supplierStats.reduce((sum, s) => sum + (s.remaining < 0 ? s.remaining : 0), 0);
 
     const currentSupplier = suppliers[activeTab];
+
+    const handleSort = (key: 'date' | 'price') => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'desc' ? 'asc' : 'desc'
+        }));
+    };
+
+    const sortedExpenses = useMemo(() => {
+        if (!currentSupplier || !currentSupplier.expenses) return [];
+        let sorted = [...currentSupplier.expenses];
+
+        sorted.sort((a, b) => {
+            if (sortConfig.key === 'date') {
+                const [d1, m1, y1] = a.date.split('/').map(Number);
+                const [d2, m2, y2] = b.date.split('/').map(Number);
+                const t1 = new Date(y1, m1 - 1, d1).getTime();
+                const t2 = new Date(y2, m2 - 1, d2).getTime();
+                return sortConfig.direction === 'asc' ? t1 - t2 : t2 - t1;
+            } else {
+                return sortConfig.direction === 'asc' ? a.price - b.price : b.price - a.price;
+            }
+        });
+        return sorted;
+    }, [currentSupplier, sortConfig]);
+
     const activeStat = supplierStats.find(s => s.id === activeTab)!;
     // We no longer need manual currentSolde calculation, we use activeStat
 
@@ -1109,14 +1137,34 @@ function ExpensesContent() {
                                 <thead className="bg-slate-50/80 backdrop-blur-sm sticky top-0 z-10 border-b border-slate-100 text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center">
                                     <tr>
                                         <th className="px-4 py-3 text-left w-24">État</th>
-                                        <th className="px-4 py-3 text-left w-32">Date</th>
+                                        <th
+                                            className="px-4 py-3 text-left w-32 cursor-pointer hover:bg-slate-100/50 transition-colors select-none group"
+                                            onClick={() => handleSort('date')}
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                Date
+                                                {sortConfig?.key === 'date' ? (
+                                                    sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-500" /> : <ArrowDown className="w-3 h-3 text-blue-500" />
+                                                ) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-50" />}
+                                            </div>
+                                        </th>
                                         <th className="px-4 py-3 text-left">Référence</th>
-                                        <th className="px-4 py-3 text-right">Montant</th>
+                                        <th
+                                            className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100/50 transition-colors select-none group"
+                                            onClick={() => handleSort('price')}
+                                        >
+                                            <div className="flex items-center justify-end gap-1">
+                                                Montant
+                                                {sortConfig?.key === 'price' ? (
+                                                    sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-500" /> : <ArrowDown className="w-3 h-3 text-blue-500" />
+                                                ) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-50" />}
+                                            </div>
+                                        </th>
                                         <th className="px-4 py-3 text-right w-32">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {currentSupplier.expenses.map(e => (
+                                    {sortedExpenses.map(e => (
                                         <React.Fragment key={e.id}>
                                             <tr id={e.id} className="group border-b border-slate-50 hover:bg-slate-50/50 transition-all duration-200">
                                                 <td className="px-4 py-3">

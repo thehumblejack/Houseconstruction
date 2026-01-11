@@ -59,14 +59,14 @@ export default function LoginPage() {
             <div className="bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl">
                 <div className="text-center mb-8">
                     <h1 className="text-3xl font-black text-slate-900 mb-2">
-                        {mode === 'signin' && 'Welcome Back'}
-                        {mode === 'signup' && 'Create Account'}
-                        {mode === 'forgot' && 'Reset Password'}
+                        {mode === 'signin' && 'Bon retour'}
+                        {mode === 'signup' && 'Créer un compte'}
+                        {mode === 'forgot' && 'Réinitialiser le mot de passe'}
                     </h1>
                     <p className="text-slate-500 text-sm font-medium">
-                        {mode === 'signin' && 'Enter your credentials to access the dashboard'}
-                        {mode === 'signup' && 'Sign up to start tracking expenses'}
-                        {mode === 'forgot' && 'Enter your email to receive reset instructions'}
+                        {mode === 'signin' && 'Entrez vos identifiants pour accéder au tableau de bord'}
+                        {mode === 'signup' && 'Inscrivez-vous pour commencer le suivi des dépenses'}
+                        {mode === 'forgot' && 'Entrez votre email pour recevoir les instructions'}
                     </p>
                 </div>
 
@@ -86,20 +86,20 @@ export default function LoginPage() {
 
                 <form onSubmit={handleAuth} className="space-y-4">
                     <div>
-                        <label className="block text-xs font-black text-slate-900 uppercase tracking-wider mb-2">Email Address</label>
+                        <label className="block text-xs font-black text-slate-900 uppercase tracking-wider mb-2">Adresse Email</label>
                         <input
                             type="email"
                             required
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all placeholder:text-slate-400"
-                            placeholder="name@example.com"
+                            placeholder="nom@exemple.com"
                         />
                     </div>
 
                     {mode !== 'forgot' && (
                         <div>
-                            <label className="block text-xs font-black text-slate-900 uppercase tracking-wider mb-2">Password</label>
+                            <label className="block text-xs font-black text-slate-900 uppercase tracking-wider mb-2">Mot de passe</label>
                             <div className="relative">
                                 <input
                                     type={showPassword ? 'text' : 'password'}
@@ -128,9 +128,9 @@ export default function LoginPage() {
                         {loading && <Loader2 className="h-5 w-5 animate-spin text-slate-400" />}
                         {!loading && (
                             <>
-                                {mode === 'signin' && 'Sign In'}
-                                {mode === 'signup' && 'Sign Up'}
-                                {mode === 'forgot' && 'Send Reset Link'}
+                                {mode === 'signin' && 'Se connecter'}
+                                {mode === 'signup' && 'S\'inscrire'}
+                                {mode === 'forgot' && 'Envoyer le lien'}
                             </>
                         )}
                     </button>
@@ -139,12 +139,12 @@ export default function LoginPage() {
                 <div className="mt-8 flex items-center justify-center gap-6 text-xs font-bold text-slate-500">
                     {mode === 'signin' ? (
                         <>
-                            <button onClick={() => setMode('signup')} className="hover:text-slate-900 transition-colors">Create Account</button>
+                            <button onClick={() => setMode('signup')} className="hover:text-slate-900 transition-colors">Créer un compte</button>
                             <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                            <button onClick={() => setMode('forgot')} className="hover:text-slate-900 transition-colors">Forgot Password?</button>
+                            <button onClick={() => setMode('forgot')} className="hover:text-slate-900 transition-colors">Mot de passe oublié ?</button>
                         </>
                     ) : (
-                        <button onClick={() => setMode('signin')} className="hover:text-slate-900 transition-colors">Back to Sign In</button>
+                        <button onClick={() => setMode('signin')} className="hover:text-slate-900 transition-colors">Retour à la connexion</button>
                     )}
                 </div>
             </div>

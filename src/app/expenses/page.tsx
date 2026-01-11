@@ -3,8 +3,11 @@
 import React, { useState, useRef } from 'react';
 import {
     Plus, Receipt, FileText, Trash2, TrendingUp, DollarSign,
-    Upload, X, CheckCircle2, Clock, Eye, AlertCircle
+    Upload, X, CheckCircle2, Clock, Eye, AlertCircle, Download, FileDown
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // --- Types ---
 type PaymentStatus = 'paid' | 'pending';
@@ -120,19 +123,29 @@ const ImageViewer = ({ src, onClose }: { src: string, onClose: () => void }) => 
 import { useAuth } from '@/context/AuthContext';
 
 import { createClient } from '@/lib/supabase';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 
 export default function ExpensesPage() {
     const { isAdmin } = useAuth();
     const [activeTab, setActiveTab] = useState<SupplierType>('beton');
     const [viewingImage, setViewingImage] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
-    const [suppliers, setSuppliers] = useState<Record<SupplierType, SupplierData>>({
-        beton: { id: 'beton', name: '', description: '', color: '', expenses: [] },
-        fer: { id: 'fer', name: '', description: '', color: '', expenses: [] },
-        ahmed: { id: 'ahmed', name: '', description: '', color: '', expenses: [] },
-        ali: { id: 'ali', name: '', description: '', color: '', expenses: [] }
+    const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
+    const [newSupplierName, setNewSupplierName] = useState('');
+    const [newSupplierColor, setNewSupplierColor] = useState('bg-slate-500');
+
+    // Deposit State
+    const [showAddDepositModal, setShowAddDepositModal] = useState(false);
+    const [newDepositData, setNewDepositData] = useState({
+        amount: '',
+        date: new Date().toISOString().split('T')[0],
+        payer: '',
+        commercial: '',
+        ref: ''
     });
+    const [editingDepositId, setEditingDepositId] = useState<string | null>(null);
+
+    const [suppliers, setSuppliers] = useState<Record<string, SupplierData>>({}); // Change type to string to allow dynamic keys
 
     const supabase = createClient();
 
@@ -268,12 +281,19 @@ export default function ExpensesPage() {
     const [scannedResult, setScannedResult] = useState<Expense | null>(null);
 
     // Calculations
-    const isPayment = (item: string) =>
-        item.toUpperCase().includes('REÇU') ||
-        item.toUpperCase().includes('PAIEMENT') ||
-        item.toUpperCase().includes('AVANCE');
+    const isPayment = (item: string) => {
+        const up = item.toUpperCase();
+        return up.includes('REÇU') ||
+            up.includes('PAIEMENT') ||
+            up.includes('AVANCE') ||
+            up.includes('ACOMPTE') ||
+            up.includes('CHEQUE') ||
+            up.includes('CHÈQUE') ||
+            up.includes('VERSEMENT') ||
+            up.includes('VIREMENT');
+    };
 
-    const supplierStats = Object.values(suppliers).map(s => {
+    const supplierStats = useMemo(() => Object.values(suppliers).map(s => {
         const d_Total = s.deposits?.reduce((sum, d) => sum + d.amount, 0) || 0;
         const hasDeposits = (s.deposits && s.deposits.length > 0);
         const isLabor = s.id === 'ali';
@@ -281,20 +301,8 @@ export default function ExpensesPage() {
         let totalInvoiceAmount = 0;
 
         s.expenses.forEach(e => {
-            const isPayEntry = isPayment(e.item);
-
-            if (isLabor) {
-                // For Ali, everything is a 'Cost' (Work done)
-                totalInvoiceAmount += e.price;
-            } else {
-                if (isPayEntry) {
-                    // It's a payment/receipt row in the table (like Cap Beton recu)
-                    // We ignore it for 'Total Montant' calculation
-                } else {
-                    // It's a real Bill/invoice
-                    totalInvoiceAmount += e.price;
-                }
-            }
+            // All expenses count towards Total Montant
+            totalInvoiceAmount += e.price;
         });
 
         // Scenario 1: Has Deposits (Mostakbel)
@@ -312,8 +320,25 @@ export default function ExpensesPage() {
             computedPaid = d_Total;
             computedRemaining = d_Total - totalInvoiceAmount;
         } else {
-            computedPaid = totalInvoiceAmount;
-            computedRemaining = 0;
+            // For standard suppliers, we calculate paid based on status
+            // All expenses (including REÇU) with status='paid' count as paid
+            const paidExpenses = s.expenses.filter(e => e.status === 'paid');
+            computedPaid = paidExpenses.reduce((sum, e) => sum + e.price, 0);
+
+            // Remaining = Paid - Cost
+            computedRemaining = computedPaid - totalInvoiceAmount;
+
+            // @ts-ignore
+            if (s.id === 'test' || s.id === 'cap_beton' || s.name.toLowerCase().includes('test') || s.name.toLowerCase().includes('cap')) {
+                console.log(`--- DEBUG: ${s.name} ---`);
+                console.log('Total Montant (All expenses):', totalInvoiceAmount);
+                console.log('Paid (Status=paid):', computedPaid);
+                console.log('Solde (Paid - Cost):', computedRemaining);
+                console.log('--- DETAILS ---');
+                s.expenses.forEach(e => {
+                    console.log(`Item: ${e.item} | Price: ${e.price} | Status: ${e.status}`);
+                });
+            }
         }
 
         return {
@@ -324,11 +349,12 @@ export default function ExpensesPage() {
             remaining: computedRemaining,
             color: s.color
         };
-    });
+    }), [suppliers]);
 
     const grandTotal = supplierStats.reduce((sum, s) => sum + s.totalCost, 0);
     const totalPaidGlobal = supplierStats.reduce((sum, s) => sum + s.totalPaid, 0);
-    const totalRemainingGlobal = supplierStats.reduce((sum, s) => sum + s.remaining, 0);
+    // Reste à Payer = Sum of ONLY negative soldes (debts)
+    const totalRemainingGlobal = supplierStats.reduce((sum, s) => sum + (s.remaining < 0 ? s.remaining : 0), 0);
 
     const currentSupplier = suppliers[activeTab];
     const activeStat = supplierStats.find(s => s.id === activeTab)!;
@@ -383,16 +409,18 @@ export default function ExpensesPage() {
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
-    const toggleStatus = async (id: string, currentStatus: PaymentStatus) => {
+
+    const updateStatus = async (id: string, newStatus: PaymentStatus) => {
         try {
-            const newStatus = currentStatus === 'paid' ? 'pending' : 'paid';
             const { error } = await supabase
                 .from('expenses')
                 .update({ status: newStatus })
                 .eq('id', id);
 
             if (error) throw error;
-            // Realtime subscription will handle the UI update
+
+            // Force immediate refresh
+            await fetchData();
         } catch (error) {
             console.error('Error updating status:', error);
             alert('Impossible de mettre à jour le statut');
@@ -414,6 +442,217 @@ export default function ExpensesPage() {
             alert('Impossible de supprimer');
         }
     };
+
+
+
+    const handleAddSupplier = async () => {
+        if (!newSupplierName) return;
+        const id = newSupplierName.toLowerCase().replace(/\s+/g, '_');
+
+        try {
+            const { error } = await supabase.from('suppliers').insert({
+                id,
+                name: newSupplierName,
+                color: newSupplierColor
+            });
+
+            if (error) throw error;
+            setShowAddSupplierModal(false);
+            setNewSupplierName('');
+            // Realtime will update UI
+        } catch (err) {
+            console.error(err);
+            alert('Erreur lors de l\'ajout');
+        }
+    };
+
+    const handleDeleteSupplier = async (id: string, name: string) => {
+        if (!confirm(`Attention ! Vous allez supprimer le fournisseur "${name}" et TOUTES ses dépenses associées. Cette action est irréversible.\n\nConfirmer la suppression ?`)) return;
+        const { error } = await supabase.from('suppliers').delete().eq('id', id);
+        if (error) {
+            console.error('Error deleting supplier:', error);
+            alert("Erreur lors de la suppression du fournisseur. Vérifiez vos permissions.");
+        } else {
+            // If we deleted the active tab, switch to another one if possible, or wait for realtime to update list.
+            // We'll trust realtime or just switch to default.
+            setActiveTab('beton'); // Fallback
+        }
+    };
+
+    const handleAddDeposit = async () => {
+        const amount = parseFloat(newDepositData.amount);
+        if (isNaN(amount) || amount <= 0) {
+            alert('Veuillez entrer un montant valide');
+            return;
+        }
+
+        try {
+            const { error } = await supabase.from('deposits').insert({
+                supplier_id: activeTab,
+                amount: amount,
+                date: newDepositData.date, // Format YYYY-MM-DD expected by Postgres date or string
+                payer: newDepositData.payer,
+                commercial: newDepositData.commercial,
+                ref: newDepositData.ref
+                // invoice_image ? We can add upload later if needed
+            });
+
+            if (error) throw error;
+
+            setShowAddDepositModal(false);
+            setNewDepositData({
+                amount: '',
+                date: new Date().toISOString().split('T')[0],
+                payer: '',
+                commercial: '',
+                ref: ''
+            });
+            fetchData(); // Refresh data
+        } catch (error) {
+            console.error('Error adding deposit:', error);
+            alert("Erreur lors de l'ajout de l'acompte");
+        }
+    };
+
+    const handleSaveDeposit = async () => {
+        const amount = parseFloat(newDepositData.amount);
+        if (isNaN(amount) || amount <= 0) {
+            alert('Veuillez entrer un montant valide');
+            return;
+        }
+
+        try {
+            if (editingDepositId) {
+                // UPDATE existing
+                const { error } = await supabase.from('deposits').update({
+                    amount: amount,
+                    date: newDepositData.date,
+                    payer: newDepositData.payer,
+                    commercial: newDepositData.commercial,
+                    ref: newDepositData.ref
+                }).eq('id', editingDepositId);
+
+                if (error) throw error;
+            } else {
+                // INSERT new
+                const { error } = await supabase.from('deposits').insert({
+                    supplier_id: activeTab,
+                    amount: amount,
+                    date: newDepositData.date,
+                    payer: newDepositData.payer,
+                    commercial: newDepositData.commercial,
+                    ref: newDepositData.ref
+                });
+
+                if (error) throw error;
+            }
+
+            closeDepositModal();
+            fetchData();
+        } catch (error) {
+            console.error('Error saving deposit:', error);
+            alert("Erreur lors de l'enregistrement");
+        }
+    };
+
+    const handleDeleteDeposit = async (id: string) => {
+        if (!confirm('Supprimer cet acompte définitivement ?')) return;
+        try {
+            const { error } = await supabase.from('deposits').delete().eq('id', id);
+            if (error) throw error;
+            fetchData();
+        } catch (error) {
+            console.error('Error deleting deposit:', error);
+            alert("Impossible de supprimer l'acompte");
+        }
+    };
+
+    const handleEditDeposit = (deposit: Deposit) => {
+        setNewDepositData({
+            amount: deposit.amount.toString(),
+            date: deposit.date,
+            payer: deposit.payer || '',
+            commercial: deposit.commercial || '',
+            ref: deposit.ref || ''
+        });
+        setEditingDepositId(deposit.id);
+        setShowAddDepositModal(true);
+    };
+
+    const closeDepositModal = () => {
+        setShowAddDepositModal(false);
+        setEditingDepositId(null);
+        setNewDepositData({
+            amount: '',
+            date: new Date().toISOString().split('T')[0],
+            payer: '',
+            commercial: '',
+            ref: ''
+        });
+    };
+
+    const handleExportPDF = () => {
+        const doc = new jsPDF();
+
+        doc.setFontSize(18);
+        doc.text("Bilan Dépenses - MaMaison", 14, 22);
+        doc.setFontSize(11);
+        doc.text(`Généré le: ${new Date().toLocaleDateString()}`, 14, 30);
+
+        const tableData: any[] = [];
+
+        Object.values(suppliers).forEach(s => {
+            // Header for supplier
+            tableData.push([{ content: s.name.toUpperCase(), colSpan: 5, styles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' } }]);
+
+            s.expenses.forEach(e => {
+                tableData.push([
+                    e.date,
+                    e.item,
+                    e.status === 'paid' ? 'Payé' : 'Attente',
+                    e.price.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT',
+                    '-'
+                ]);
+
+                if (e.items && e.items.length > 0) {
+                    e.items.forEach(i => {
+                        tableData.push([
+                            '',
+                            `-> ${i.designation}`,
+                            '-',
+                            '-',
+                            i.totalTTC.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT'
+                        ]);
+                    });
+                }
+            });
+
+            // Subtotal row
+            tableData.push([
+                { content: 'Total ' + s.name, colSpan: 3, styles: { fontStyle: 'bold', halign: 'right' } },
+                { content: s.expenses.reduce((sum, x) => sum + x.price, 0).toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT', colSpan: 2, styles: { fontStyle: 'bold' } }
+            ]);
+        });
+
+        // Final Total
+        tableData.push([
+            { content: 'TOTAL GÉNÉRAL', colSpan: 3, styles: { fillColor: [44, 62, 80], textColor: 255, fontStyle: 'bold', halign: 'right' } },
+            { content: totalRemainingGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT', colSpan: 2, styles: { fillColor: [44, 62, 80], textColor: 255, fontStyle: 'bold' } }
+        ]);
+
+        autoTable(doc, {
+            head: [['Date', 'Désignation', 'Statut', 'Montant', 'Détail TTC']],
+            body: tableData,
+            startY: 40,
+            theme: 'grid',
+            styles: { fontSize: 8 },
+            headStyles: { fillColor: [44, 62, 80] }
+        });
+
+        doc.save("Bilan_MaMaison.pdf");
+    };
+
+
 
     if (loading) {
         return (
@@ -451,11 +690,112 @@ export default function ExpensesPage() {
                     </div>
                     <h2 className="text-lg md:text-2xl font-black text-amber-700">{totalRemainingGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 })}</h2>
                 </button>
-                <div className="bg-indigo-50 border border-indigo-100 p-3 md:p-5 rounded-xl flex items-center justify-center col-span-2 lg:col-span-1">
-                    <TrendingUp className="h-4 w-4 text-indigo-500 mr-2" />
-                    <span className="text-xs font-black text-indigo-900 uppercase">Suivi Temps Réel</span>
-                </div>
+
+
+
+                <button
+                    onClick={handleExportPDF}
+                    className="bg-white p-3 md:p-5 rounded-xl border border-slate-200 shadow-sm text-left hover:bg-slate-50 transition-all group flex flex-col justify-center items-center gap-2"
+                >
+                    <FileDown className="h-6 w-6 text-slate-400 group-hover:text-red-600 transition-colors" />
+                    <span className="text-[10px] font-black text-slate-500 group-hover:text-red-700 uppercase">PDF</span>
+                </button>
             </div>
+
+            {/* Add Supplier Modal */}
+            {showAddSupplierModal && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+                    <div className="bg-white p-6 rounded-2xl w-full max-w-sm">
+                        <h3 className="text-lg font-black mb-4">Nouveau Fournisseur</h3>
+                        <input
+                            className="w-full border p-2 rounded mb-4 text-sm font-bold"
+                            placeholder="Nom (ex: Quincaillerie X)"
+                            value={newSupplierName}
+                            onChange={(e) => setNewSupplierName(e.target.value)}
+                        />
+                        <div className="flex justify-end gap-2">
+                            <button onClick={() => setShowAddSupplierModal(false)} className="text-xs font-bold px-4 py-2 text-slate-500">Annuler</button>
+                            <button onClick={handleAddSupplier} className="text-xs font-bold px-4 py-2 bg-slate-900 text-white rounded-lg">Ajouter</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Add Deposit Modal */}
+            {showAddDepositModal && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+                    <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+                        <h3 className="text-lg font-black mb-4 text-slate-900 uppercase tracking-tight">
+                            {editingDepositId ? 'Modifier Acompte' : 'Nouvel Acompte'}
+                        </h3>
+
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Montant (DT)</label>
+                                <input
+                                    type="number"
+                                    className="w-full border border-slate-200 p-3 rounded-xl text-lg font-black text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                                    placeholder="0.000"
+                                    autoFocus
+                                    value={newDepositData.amount}
+                                    onChange={(e) => setNewDepositData({ ...newDepositData, amount: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Date</label>
+                                    <input
+                                        type="date"
+                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
+                                        value={newDepositData.date}
+                                        onChange={(e) => setNewDepositData({ ...newDepositData, date: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Référence</label>
+                                    <input
+                                        type="text"
+                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
+                                        placeholder="Chèque/Virement..."
+                                        value={newDepositData.ref}
+                                        onChange={(e) => setNewDepositData({ ...newDepositData, ref: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Payeur</label>
+                                <input
+                                    type="text"
+                                    className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
+                                    placeholder="Qui a payé ?"
+                                    value={newDepositData.payer}
+                                    onChange={(e) => setNewDepositData({ ...newDepositData, payer: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Commercial</label>
+                                <input
+                                    type="text"
+                                    className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
+                                    placeholder="Reçu par..."
+                                    value={newDepositData.commercial}
+                                    onChange={(e) => setNewDepositData({ ...newDepositData, commercial: e.target.value })}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 mt-6">
+                            <button onClick={closeDepositModal} className="text-xs font-bold px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Annuler</button>
+                            <button onClick={handleSaveDeposit} className="text-xs font-bold px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-lg shadow-emerald-200 transition-all flex items-center gap-2">
+                                <CheckCircle2 className="h-4 w-4" />
+                                {editingDepositId ? 'Enregistrer' : 'Confirmer'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Breakdown Modal */}
             {showBreakdown && (
@@ -504,19 +844,39 @@ export default function ExpensesPage() {
             <div className="flex flex-col lg:flex-row gap-4">
                 {/* Tabs Mobile Side Scroll / Table Desktop Sidebar */}
                 <div className="w-full lg:w-64 flex-shrink-0">
-                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-2 flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible no-scrollbar">
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible no-scrollbar">
+                        <div className="flex items-center justify-between mb-2 px-1">
+                            <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Fournisseurs</span>
+                            {isAdmin && (
+                                <button onClick={() => setShowAddSupplierModal(true)} className="bg-slate-100 hover:bg-slate-200 p-1 rounded transition-colors">
+                                    <Plus className="h-3 w-3 text-slate-600" />
+                                </button>
+                            )}
+                        </div>
                         {(Object.values(suppliers) as SupplierData[]).map((sup) => (
-                            <button
-                                key={sup.id}
-                                onClick={() => setActiveTab(sup.id)}
-                                className={`flex-shrink-0 lg:w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 transition-all ${activeTab === sup.id
-                                    ? 'bg-slate-900 text-white'
-                                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-                                    }`}
-                            >
-                                <div className={`w-2 h-2 rounded-full ${activeTab === sup.id ? 'bg-white' : sup.color}`} />
-                                <span className="text-xs font-bold whitespace-nowrap">{sup.name}</span>
-                            </button>
+                            <div key={sup.id} className="relative group">
+                                <button
+                                    onClick={() => setActiveTab(sup.id as any)}
+                                    className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between transition-all ${activeTab === sup.id
+                                        ? 'bg-slate-900 text-white'
+                                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                                        }`}
+                                >
+                                    <span className="text-xs font-bold whitespace-nowrap truncate">{sup.name}</span>
+                                </button>
+                                {isAdmin && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteSupplier(sup.id, sup.name);
+                                        }}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                        title="Supprimer"
+                                    >
+                                        <Trash2 className="h-3 w-3" />
+                                    </button>
+                                )}
+                            </div>
                         ))}
                     </div>
                 </div>
@@ -534,6 +894,7 @@ export default function ExpensesPage() {
                             <p className="text-[10px] text-slate-400 font-bold uppercase truncate max-w-xs">{currentSupplier.address || 'Tunisie'}</p>
                         </div>
                         <div className="flex gap-2">
+
                             <div className="bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg text-right">
                                 <p className="text-[8px] font-black text-slate-500 uppercase">Total Montant</p>
                                 <p className="text-sm font-black text-slate-900">{activeStat.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
@@ -555,7 +916,22 @@ export default function ExpensesPage() {
                             <div className="flex items-center justify-between">
                                 <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pointage Acomptes</h3>
                                 {isAdmin && (
-                                    <button className="bg-emerald-600 px-2 py-1 rounded text-[9px] font-bold uppercase hover:bg-emerald-500 transition-all">+ Nouveau</button>
+                                    <button
+                                        onClick={() => {
+                                            setEditingDepositId(null);
+                                            setNewDepositData({
+                                                amount: '',
+                                                date: new Date().toISOString().split('T')[0],
+                                                payer: '',
+                                                commercial: '',
+                                                ref: ''
+                                            });
+                                            setShowAddDepositModal(true);
+                                        }}
+                                        className="bg-emerald-600 px-2 py-1 rounded text-[9px] font-bold uppercase hover:bg-emerald-500 transition-all flex items-center gap-1 shadow-lg shadow-emerald-500/20"
+                                    >
+                                        <Plus className="h-3 w-3" /> Nouveau
+                                    </button>
                                 )}
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -583,9 +959,24 @@ export default function ExpensesPage() {
                                                     <Eye className="h-3 w-3 text-blue-400" />
                                                 </button>
                                             )}
-                                            <button className="p-1.5 bg-white/10 rounded-md hover:bg-white/20 transition-all">
-                                                <Upload className="h-3 w-3 text-emerald-400" />
-                                            </button>
+                                            {isAdmin && (
+                                                <>
+                                                    <button
+                                                        onClick={() => handleEditDeposit(d)}
+                                                        className="p-1.5 bg-white/10 rounded-md hover:bg-white/20 transition-all text-amber-400 hover:text-amber-300"
+                                                        title="Modifier"
+                                                    >
+                                                        <FileText className="h-3 w-3" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteDeposit(d.id)}
+                                                        className="p-1.5 bg-white/10 rounded-md hover:bg-red-500/20 transition-all text-red-400 hover:text-red-300"
+                                                        title="Supprimer"
+                                                    >
+                                                        <Trash2 className="h-3 w-3" />
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -670,7 +1061,20 @@ export default function ExpensesPage() {
                                                 <td className="p-3 text-right text-sm font-black text-slate-900">{e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
                                                 <td className="px-4 py-3 text-right">
                                                     <div className="flex items-center justify-end gap-2">
-                                                        <StatusBadge status={e.status} onClick={() => isAdmin && toggleStatus(e.id, e.status)} />
+                                                        <select
+                                                            value={e.status}
+                                                            onChange={(ev) => {
+                                                                const newStatus = ev.target.value as PaymentStatus;
+                                                                updateStatus(e.id, newStatus);
+                                                            }}
+                                                            className={`px-2 py-1 rounded-full text-[10px] font-bold border cursor-pointer transition-all ${e.status === 'paid'
+                                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                                                : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                                                                }`}
+                                                        >
+                                                            <option value="paid">PAYÉ</option>
+                                                            <option value="pending">ATTENTE</option>
+                                                        </select>
                                                         {e.invoiceImage && (
                                                             <button onClick={() => setViewingImage(e.invoiceImage!)} className="p-1.5 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100">
                                                                 <Eye className="h-3 w-3" />

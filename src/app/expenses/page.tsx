@@ -942,9 +942,11 @@ function ExpensesContent() {
 
                     {/* Fiche de Dépôts if applicable */}
                     {currentSupplier.deposits && (
-                        <div className="bg-slate-900 rounded-2xl p-4 text-white space-y-3">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pointage Acomptes</h3>
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+                            <div className="px-6 py-4 bg-emerald-50/50 border-b border-emerald-100 flex items-center justify-between">
+                                <h3 className="text-xs font-black uppercase tracking-widest text-emerald-900 flex items-center gap-2">
+                                    <TrendingUp className="h-4 w-4 text-emerald-500" /> Historique Acomptes
+                                </h3>
                                 {isAdmin && (
                                     <button
                                         onClick={() => {
@@ -958,58 +960,89 @@ function ExpensesContent() {
                                             });
                                             setShowAddDepositModal(true);
                                         }}
-                                        className="bg-emerald-600 px-2 py-1 rounded text-[9px] font-bold uppercase hover:bg-emerald-500 transition-all flex items-center gap-1 shadow-lg shadow-emerald-500/20"
+                                        className="bg-emerald-600 px-3 py-1.5 rounded-lg text-white text-[10px] font-bold uppercase hover:bg-emerald-500 transition-all flex items-center gap-1 shadow-lg shadow-emerald-500/20"
                                     >
                                         <Plus className="h-3 w-3" /> Nouveau
                                     </button>
                                 )}
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                {currentSupplier.deposits.map(d => (
-                                    <div key={d.id} className="bg-white/5 border border-white/10 p-3 rounded-lg flex items-center justify-between group">
-                                        <div className="flex flex-col gap-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[10px] font-black text-slate-300 uppercase tracking-tight">{d.date}</span>
-                                                {d.ref && <span className="bg-white/10 px-1 py-0.5 rounded text-[7px] font-black text-blue-400 uppercase">REF: {d.ref}</span>}
-                                            </div>
-                                            <span className="text-sm md:text-lg font-black">{d.amount.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT</span>
-                                            {d.payer && (
-                                                <div className="flex flex-col text-[7px] md:text-[8px] text-slate-400 font-bold uppercase leading-none mt-1">
-                                                    <span>Payeur: {d.payer}</span>
-                                                    {d.commercial && <span>Commercial: {d.commercial}</span>}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="flex gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                                            {(d.receiptImage || d.id === 'd_cap_1') && ( // Mocking visual availability
-                                                <button
-                                                    onClick={() => setViewingImage(d.receiptImage || 'https://via.placeholder.com/800x1000?text=Recu+476+3900DT')}
-                                                    className="p-1.5 bg-blue-500/10 rounded-md hover:bg-blue-500/20 transition-all"
-                                                >
-                                                    <Eye className="h-3 w-3 text-blue-400" />
-                                                </button>
-                                            )}
-                                            {isAdmin && (
-                                                <>
-                                                    <button
-                                                        onClick={() => handleEditDeposit(d)}
-                                                        className="p-1.5 bg-white/10 rounded-md hover:bg-white/20 transition-all text-amber-400 hover:text-amber-300"
-                                                        title="Modifier"
-                                                    >
-                                                        <FileText className="h-3 w-3" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDeleteDeposit(d.id)}
-                                                        className="p-1.5 bg-white/10 rounded-md hover:bg-red-500/20 transition-all text-red-400 hover:text-red-300"
-                                                        title="Supprimer"
-                                                    >
-                                                        <Trash2 className="h-3 w-3" />
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse min-w-[500px]">
+                                    <thead className="bg-white/50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                        <tr>
+                                            <th className="px-6 py-3 w-32">Date</th>
+                                            <th className="px-6 py-3">Référence / Payeur</th>
+                                            <th className="px-6 py-3 text-right">Montant</th>
+                                            <th className="px-6 py-3 text-right w-32">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {currentSupplier.deposits.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={4} className="px-6 py-8 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
+                                                    Aucun acompte enregistré
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            currentSupplier.deposits.map(d => (
+                                                <tr key={d.id} className="hover:bg-slate-50/50 transition-colors group">
+                                                    <td className="px-6 py-4 text-xs font-bold text-slate-400 font-mono">
+                                                        {d.date}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex flex-col">
+                                                            {d.ref ? (
+                                                                <span className="text-xs font-bold text-slate-700">{d.ref}</span>
+                                                            ) : <span className="text-xs font-bold text-slate-300 italic">Sans réf.</span>}
+                                                            {(d.payer || d.commercial) && (
+                                                                <span className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
+                                                                    {d.payer} {d.commercial && `• ${d.commercial}`}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <span className="text-sm font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
+                                                            {d.amount.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <div className="flex items-center justify-end gap-1 opacity-40 group-hover:opacity-100 transition-all">
+                                                            {(d.receiptImage || d.id === 'd_cap_1') && (
+                                                                <button
+                                                                    onClick={() => setViewingImage(d.receiptImage || 'https://via.placeholder.com/800x1000?text=Recu+476+3900DT')}
+                                                                    className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors"
+                                                                    title="Voir reçu"
+                                                                >
+                                                                    <Eye className="h-3.5 w-3.5" />
+                                                                </button>
+                                                            )}
+                                                            {isAdmin && (
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => handleEditDeposit(d)}
+                                                                        className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"
+                                                                        title="Modifier"
+                                                                    >
+                                                                        <FileText className="h-3.5 w-3.5" />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleDeleteDeposit(d.id)}
+                                                                        className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+                                                                        title="Supprimer"
+                                                                    >
+                                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     )}
@@ -1073,46 +1106,65 @@ function ExpensesContent() {
 
                         <div className="overflow-x-auto overflow-y-hidden">
                             <table className="w-full text-left border-collapse min-w-[500px]">
-                                <thead className="bg-slate-900 text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                                <thead className="bg-slate-50/80 backdrop-blur-sm sticky top-0 z-10 border-b border-slate-100 text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center">
                                     <tr>
-                                        <th className="p-3">État</th>
-                                        <th className="p-3">Date</th>
-                                        <th className="p-3">Référence</th>
-                                        <th className="p-3 text-right">Montant</th>
-                                        <th className="p-3 text-center">Actions</th>
+                                        <th className="px-4 py-3 text-left w-24">État</th>
+                                        <th className="px-4 py-3 text-left w-32">Date</th>
+                                        <th className="px-4 py-3 text-left">Référence</th>
+                                        <th className="px-4 py-3 text-right">Montant</th>
+                                        <th className="px-4 py-3 text-right w-32">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {currentSupplier.expenses.map(e => (
                                         <React.Fragment key={e.id}>
-                                            <tr id={e.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                                                <td className="p-3 text-[10px] font-bold text-slate-400">{e.date}</td>
-                                                <td className="p-3 text-xs font-black text-slate-900 uppercase">{e.item}</td>
-                                                <td className="p-3 text-right text-sm font-black text-slate-900">{e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                                            <tr id={e.id} className="group border-b border-slate-50 hover:bg-slate-50/50 transition-all duration-200">
+                                                <td className="px-4 py-3">
+                                                    <div className={`
+                                                        inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold transition-all border
+                                                        ${e.status === 'paid'
+                                                            ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                                            : 'bg-amber-50 text-amber-600 border-amber-100'}
+                                                    `}>
+                                                        {e.status === 'paid' ? 'PAYÉ' : 'ATTENTE'}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-[11px] font-bold text-slate-400 font-mono tracking-tight">{e.date}</td>
+                                                <td className="px-4 py-3">
+                                                    <span className="text-xs font-bold text-slate-700 uppercase group-hover:text-blue-600 transition-colors cursor-default">
+                                                        {e.item}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-right text-sm font-black text-slate-900 tabular-nums tracking-tight">
+                                                    {e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-400 font-bold ml-0.5">DT</span>
+                                                </td>
                                                 <td className="px-4 py-3 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
+                                                    <div className="flex items-center justify-end gap-1 opacity-40 group-hover:opacity-100 transition-all duration-300">
                                                         <select
                                                             value={e.status}
                                                             onChange={(ev) => {
                                                                 const newStatus = ev.target.value as PaymentStatus;
                                                                 updateStatus(e.id, newStatus);
                                                             }}
-                                                            className={`px-2 py-1 rounded-full text-[10px] font-bold border cursor-pointer transition-all ${e.status === 'paid'
-                                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                                                : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-                                                                }`}
+                                                            className="w-4 h-4 opacity-0 absolute"
+                                                        />
+                                                        {/* Custom Action Buttons for minimal look */}
+                                                        <button
+                                                            onClick={() => updateStatus(e.id, e.status === 'paid' ? 'pending' : 'paid')}
+                                                            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                                                            title="Changer statut"
                                                         >
-                                                            <option value="paid">PAYÉ</option>
-                                                            <option value="pending">ATTENTE</option>
-                                                        </select>
+                                                            {e.status === 'paid' ? <X className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                                        </button>
+
                                                         {e.invoiceImage && (
-                                                            <button onClick={() => setViewingImage(e.invoiceImage!)} className="p-1.5 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100">
-                                                                <Eye className="h-3 w-3" />
+                                                            <button onClick={() => setViewingImage(e.invoiceImage!)} className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors">
+                                                                <Eye className="h-3.5 w-3.5" />
                                                             </button>
                                                         )}
                                                         {isAdmin && (
-                                                            <button onClick={() => handleDelete(e.id)} className="p-1.5 bg-red-50 text-red-500 rounded-md hover:bg-red-100">
-                                                                <Trash2 className="h-3 w-3" />
+                                                            <button onClick={() => handleDelete(e.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
+                                                                <Trash2 className="h-3.5 w-3.5" />
                                                             </button>
                                                         )}
                                                     </div>

@@ -449,37 +449,68 @@ export default function OrdersPage() {
                 </div>
 
                 {/* DELIVERED */}
-                <div className="space-y-4 opacity-80 hover:opacity-100 transition-opacity">
-                    <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-sm font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-                            <CheckCircle2 className="h-4 w-4" /> Terminées
+                {/* DELIVERED */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-8">
+                    <div className="px-6 py-4 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
+                        <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Historique Livraisons
                         </h2>
-                        <span className="bg-emerald-100 text-emerald-600 text-xs font-black px-2 py-0.5 rounded-full">{deliveredOrders.length}</span>
+                        <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-emerald-100">{deliveredOrders.length}</span>
                     </div>
-                    {deliveredOrders.map(order => (
-                        <div key={order.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-5 relative grayscale hover:grayscale-0 transition-all">
-                            <div className="flex justify-between items-start mb-2">
-                                <div className="flex items-start gap-3">
-                                    {isAdmin && (
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedOrders.includes(order.id)}
-                                            onChange={() => toggleSelectOrder(order.id)}
-                                            className="mt-1 h-5 w-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                                        />
-                                    )}
-                                    <div>
-                                        <h3 className="font-black text-slate-700">{order.supplier_name}</h3>
-                                        <p className="text-xs text-slate-400 font-bold mb-4">{order.date} • {(order.items || []).length} articles</p>
-                                    </div>
-                                </div>
-                                <span className="text-emerald-600 text-[10px] font-black uppercase border border-emerald-200 px-2 py-0.5 rounded-full">Livré</span>
-                            </div>
-                            <div className="text-xs text-slate-500">
-                                {(order.items || []).map(i => i.article_name).join(', ')}
-                            </div>
-                        </div>
-                    ))}
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="bg-white/50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                <tr>
+                                    <th className="px-6 py-3 w-12 text-center">
+                                        #
+                                    </th>
+                                    <th className="px-6 py-3">Fournisseur</th>
+                                    <th className="px-6 py-3">Date</th>
+                                    <th className="px-6 py-3">Articles</th>
+                                    <th className="px-6 py-3 text-right">Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                {deliveredOrders.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-8 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
+                                            Aucune commande livrée
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    deliveredOrders.map(order => (
+                                        <tr key={order.id} className="hover:bg-slate-50/50 transition-colors group">
+                                            <td className="px-6 py-4 text-center">
+                                                {isAdmin && (
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedOrders.includes(order.id)}
+                                                        onChange={() => toggleSelectOrder(order.id)}
+                                                        className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-500"
+                                                    />
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 font-bold text-slate-700 text-sm">
+                                                {order.supplier_name}
+                                            </td>
+                                            <td className="px-6 py-4 text-xs font-bold text-slate-400 font-mono">
+                                                {order.date}
+                                            </td>
+                                            <td className="px-6 py-4 text-xs text-slate-500 max-w-md truncate font-medium">
+                                                {(order.items || []).map(i => i.article_name).join(', ')}
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                                    <CheckCircle2 className="h-3 w-3" /> LIVRÉ
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 

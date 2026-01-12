@@ -10,7 +10,7 @@ import { createClient } from '@/lib/supabase';
 
 export default function Navbar() {
     const pathname = usePathname();
-    const { signOut, isAdmin } = useAuth();
+    const { signOut, isAdmin, user, isApproved } = useAuth();
     const [pendingCount, setPendingCount] = useState(0);
     const supabase = useMemo(() => createClient(), []);
 
@@ -50,8 +50,9 @@ export default function Navbar() {
     }, [isAdmin, supabase]);
 
 
-    // Don't show navbar on auth related pages
+    // Don't show navbar on auth related pages or root landing page
     if (pathname === '/login' || pathname?.startsWith('/auth/')) return null;
+    if (pathname === '/' && (!user || !isApproved)) return null;
 
     const navItems = [
         { name: 'DÉPENSES', path: '/expenses', icon: ReceiptText },

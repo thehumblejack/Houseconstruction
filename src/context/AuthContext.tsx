@@ -211,11 +211,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
 
         const isAuthPage = pathname === '/login' || pathname?.startsWith('/auth/');
+        const isPublicPage = pathname === '/' || pathname === '/login';
         console.log('Auth: Processing route', { pathname, isAuthPage, user: !!user, hasProfile: !!userProfile });
 
         if (!user) {
             // Not logged in
-            if (!isAuthPage) {
+            if (!isPublicPage && !isAuthPage) {
                 console.log('Auth: Redirecting to login (unauthenticated)');
                 router.replace('/login');
             }

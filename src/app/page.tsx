@@ -13,16 +13,33 @@ import {
     ChevronUp,
     TrendingUp
 } from 'lucide-react';
+import LandingPage from '@/components/LandingPage';
+import { useAuth } from '@/context/AuthContext';
 
-export default function ConstructionDashboard() {
+export default function Home() {
+    const { user, isApproved, loading } = useAuth();
+
+    // While checking auth, we show landing as it's the public face
+    if (loading) return <LandingPage />;
+
+    // Only show dashboard if logged in and approved
+    if (user && isApproved) {
+        return <ConstructionDashboard />;
+    }
+
+    // Default to landing page for everyone else
+    return <LandingPage />;
+}
+
+function ConstructionDashboard() {
     const [steps, setSteps] = useState<ConstructionStep[]>(constructionSteps);
     const [activeStepId, setActiveStepId] = useState<string>('1');
     const [hoveredDetailIndex, setHoveredDetailIndex] = useState<number | null>(null);
 
-    const activeStep = steps.find(s => s.id === activeStepId) || steps[0];
+    const activeStep = steps.find((s: ConstructionStep) => s.id === activeStepId) || steps[0];
 
     const toggleStepCompletion = (id: string) => {
-        setSteps(steps.map(step =>
+        setSteps(steps.map((step: ConstructionStep) =>
             step.id === id
                 ? { ...step, completed: !step.completed, timestamp: !step.completed ? new Date().toISOString() : undefined }
                 : step
@@ -45,7 +62,7 @@ export default function ConstructionDashboard() {
             <div className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200">
                 <div className="max-w-[1600px] mx-auto overflow-x-auto no-scrollbar scroll-smooth p-2 md:p-3">
                     <div className="flex items-center gap-1.5 md:gap-2 min-w-max">
-                        {steps.map((step) => (
+                        {steps.map((step: ConstructionStep) => (
                             <button
                                 key={step.id}
                                 onClick={() => {
@@ -124,7 +141,7 @@ export default function ConstructionDashboard() {
                                 <TrendingUp className="h-3 w-3" /> Étapes de déploiement
                             </h3>
                             <div className="grid grid-cols-1 gap-2">
-                                {activeStep.details.map((detail, idx) => (
+                                {activeStep.details?.map((detail: any, idx: number) => (
                                     <div
                                         key={idx}
                                         onMouseEnter={() => setHoveredDetailIndex(idx)}
@@ -165,7 +182,8 @@ export default function ConstructionDashboard() {
                                 size="sm"
                                 onClick={() => {
                                     const prevId = String(Number(activeStepId) - 1);
-                                    if (steps.find(s => s.id === prevId)) {
+                                    const prevStep = steps.find((s: ConstructionStep) => s.order === (activeStep.order - 1));
+                                    if (prevStep) {
                                         setActiveStepId(prevId);
                                         setHoveredDetailIndex(null);
                                         window.scrollTo({ top: 0, behavior: 'smooth' });

@@ -159,6 +159,7 @@ function ExpensesContent() {
     const [noteEditorType, setNoteEditorType] = useState<'supplier' | 'general'>('supplier');
     const [tempNoteValue, setTempNoteValue] = useState('');
     const [generalNote, setGeneralNote] = useState('');
+    const [showUploadModal, setShowUploadModal] = useState(false);
 
     const searchParams = useSearchParams();
     const supabase = useMemo(() => createClient(), []);
@@ -1398,117 +1399,145 @@ function ExpensesContent() {
 
 
 
-                    {/* Quick Document Upload */}
+                    {/* Quick Document Upload Button */}
                     {isAdmin && (
-                        <div className="bg-white rounded-[24px] p-6 border border-slate-200 shadow-sm transition-all hover:shadow-md max-w-2xl mx-auto">
-                            <div className="flex items-center gap-3 mb-6 justify-center">
-                                <div className="p-2 bg-slate-900 rounded-xl">
-                                    <Upload className="h-5 w-5 text-white" />
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Importer un Document</h3>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Facture, Devis ou Reçu</p>
-                                </div>
-                            </div>
+                        <div className="flex justify-center mb-6">
+                            <button
+                                onClick={() => setShowUploadModal(true)}
+                                className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-black uppercase tracking-wide transition-all flex items-center gap-3 shadow-lg hover:shadow-xl text-sm"
+                            >
+                                <Upload className="h-5 w-5" />
+                                Importer un Document
+                            </button>
+                        </div>
+                    )}
 
-                            <div className="flex flex-col items-center gap-6">
-                                {/* File Upload Zone */}
-                                <div
-                                    onClick={() => !isUploading && fileInputRef.current?.click()}
-                                    onDragOver={handleDragOver}
-                                    onDragLeave={handleDragLeave}
-                                    onDrop={handleDrop}
-                                    className={`
-                                        w-full relative group cursor-pointer
-                                        border-2 border-dashed rounded-2xl p-8
-                                        flex flex-col items-center justify-center text-center transition-all min-h-[200px]
-                                        ${isDragging ? 'border-blue-500 bg-blue-50' : ''}
-                                        ${manualForm.files.length > 0 && !isDragging
-                                            ? 'border-emerald-200 bg-emerald-50/30'
-                                            : !isDragging ? 'border-slate-200 hover:border-blue-400 hover:bg-slate-50' : ''
-                                        }
-                                        ${isUploading ? 'opacity-50 pointer-events-none' : ''}
-                                    `}
-                                >
-                                    {manualForm.files.length > 0 ? (
-                                        <>
-                                            <div className="flex flex-wrap gap-2 mb-4 justify-center">
-                                                {previewUrls.map((url, i) => (
-                                                    <div key={i} className="relative group/preview">
-                                                        <div className="w-20 h-20 rounded-lg border-2 border-white shadow-md overflow-hidden bg-white">
-                                                            {manualForm.files[i]?.type.startsWith('image/') ? (
-                                                                <img src={url} className="w-full h-full object-cover" alt="Preview" />
-                                                            ) : (
-                                                                <div className="w-full h-full flex items-center justify-center bg-slate-100 flex-col gap-1">
-                                                                    <FileText className="h-6 w-6 text-slate-400" />
-                                                                    <span className="text-[6px] text-slate-500 px-1 truncate w-full">{manualForm.files[i]?.name}</span>
+                    {/* Upload Modal */}
+                    {showUploadModal && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowUploadModal(false)}>
+                            <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                                <div className="sticky top-0 bg-white border-b border-slate-200 p-6 flex items-center justify-between rounded-t-2xl">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-slate-900 rounded-xl">
+                                            <Upload className="h-5 w-5 text-white" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Importer un Document</h3>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Facture, Devis ou Reçu</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowUploadModal(false)}
+                                        className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                    >
+                                        <X className="h-5 w-5 text-slate-400" />
+                                    </button>
+                                </div>
+
+                                <div className="p-6">
+                                    <div className="flex flex-col items-center gap-6">
+                                        {/* File Upload Zone */}
+                                        <div
+                                            onClick={() => !isUploading && fileInputRef.current?.click()}
+                                            onDragOver={handleDragOver}
+                                            onDragLeave={handleDragLeave}
+                                            onDrop={handleDrop}
+                                            className={`
+                                                w-full relative group cursor-pointer
+                                                border-2 border-dashed rounded-2xl p-8
+                                                flex flex-col items-center justify-center text-center transition-all min-h-[200px]
+                                                ${isDragging ? 'border-blue-500 bg-blue-50' : ''}
+                                                ${manualForm.files.length > 0 && !isDragging
+                                                    ? 'border-emerald-200 bg-emerald-50/30'
+                                                    : !isDragging ? 'border-slate-200 hover:border-blue-400 hover:bg-slate-50' : ''
+                                                }
+                                                ${isUploading ? 'opacity-50 pointer-events-none' : ''}
+                                            `}
+                                        >
+                                            {manualForm.files.length > 0 ? (
+                                                <>
+                                                    <div className="flex flex-wrap gap-2 mb-4 justify-center">
+                                                        {previewUrls.map((url, i) => (
+                                                            <div key={i} className="relative group/preview">
+                                                                <div className="w-20 h-20 rounded-lg border-2 border-white shadow-md overflow-hidden bg-white">
+                                                                    {manualForm.files[i]?.type.startsWith('image/') ? (
+                                                                        <img src={url} className="w-full h-full object-cover" alt="Preview" />
+                                                                    ) : (
+                                                                        <div className="w-full h-full flex items-center justify-center bg-slate-100 flex-col gap-1">
+                                                                            <FileText className="h-6 w-6 text-slate-400" />
+                                                                            <span className="text-[6px] text-slate-500 px-1 truncate w-full">{manualForm.files[i]?.name}</span>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
-                                                            )}
-                                                        </div>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleRemoveFile(i);
+                                                                    }}
+                                                                    className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/preview:opacity-100 transition-opacity hover:bg-red-600"
+                                                                >
+                                                                    <X className="w-3 h-3" />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <p className="text-sm font-black text-emerald-700 uppercase">{manualForm.files.length} fichiers sélectionnés</p>
+                                                    <div className="flex items-center gap-2 mt-2">
+                                                        <p className="text-[10px] font-bold text-emerald-500 uppercase">Cliquez ou Glissez pour ajouter plus</p>
+                                                        <span className="text-emerald-300">•</span>
                                                         <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleRemoveFile(i);
-                                                            }}
-                                                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/preview:opacity-100 transition-opacity hover:bg-red-600"
+                                                            onClick={handleClearAll}
+                                                            className="text-[10px] font-bold text-red-400 hover:text-red-500 uppercase hover:underline z-10 relative"
                                                         >
-                                                            <X className="w-3 h-3" />
+                                                            Tout supprimer
                                                         </button>
                                                     </div>
-                                                ))}
-                                            </div>
-                                            <p className="text-sm font-black text-emerald-700 uppercase">{manualForm.files.length} fichiers sélectionnés</p>
-                                            <div className="flex items-center gap-2 mt-2">
-                                                <p className="text-[10px] font-bold text-emerald-500 uppercase">Cliquez ou Glissez pour ajouter plus</p>
-                                                <span className="text-emerald-300">•</span>
-                                                <button
-                                                    onClick={handleClearAll}
-                                                    className="text-[10px] font-bold text-red-400 hover:text-red-500 uppercase hover:underline z-10 relative"
-                                                >
-                                                    Tout supprimer
-                                                </button>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                                <Upload className={`h-8 w-8 ${isDragging ? 'text-blue-500' : 'text-slate-400'} group-hover:text-blue-500`} />
-                                            </div>
-                                            <p className="text-sm font-black text-slate-500 uppercase">
-                                                {isDragging ? 'Déposez les fichiers ici' : 'Cliquez ou Glissez pour choisir'}
-                                            </p>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase mt-2">Sélection multiple supportée</p>
-                                        </>
-                                    )}
-                                    <input
-                                        type="file"
-                                        ref={fileInputRef}
-                                        className="hidden"
-                                        accept="image/*,application/pdf"
-                                        multiple
-                                        onChange={handleManualFileSelect}
-                                    />
-                                </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                                        <Upload className={`h-8 w-8 ${isDragging ? 'text-blue-500' : 'text-slate-400'} group-hover:text-blue-500`} />
+                                                    </div>
+                                                    <p className="text-sm font-black text-slate-500 uppercase">
+                                                        {isDragging ? 'Déposez les fichiers ici' : 'Cliquez ou Glissez pour choisir'}
+                                                    </p>
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-2">Sélection multiple supportée</p>
+                                                </>
+                                            )}
+                                            <input
+                                                type="file"
+                                                ref={fileInputRef}
+                                                className="hidden"
+                                                accept="image/*,application/pdf"
+                                                multiple
+                                                onChange={handleManualFileSelect}
+                                            />
+                                        </div>
 
-                                {manualForm.files.length > 0 && (
-                                    <button
-                                        onClick={handleManualSubmitNew}
-                                        disabled={isUploading}
-                                        className="w-full max-w-sm bg-slate-900 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg text-xs"
-                                    >
-                                        {isUploading ? (
-                                            <>
-                                                <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                                Importation {uploadProgress}%
-                                            </>
-                                        ) : (
-                                            <>
-                                                <CheckCircle2 className="h-4 w-4" />
-                                                Importer {manualForm.files.length} {manualForm.files.length > 1 ? 'Documents' : 'Document'}
-                                            </>
+                                        {manualForm.files.length > 0 && (
+                                            <button
+                                                onClick={async () => {
+                                                    await handleManualSubmitNew();
+                                                    setShowUploadModal(false);
+                                                }}
+                                                disabled={isUploading}
+                                                className="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg text-xs"
+                                            >
+                                                {isUploading ? (
+                                                    <>
+                                                        <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                        Importation {uploadProgress}%
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <CheckCircle2 className="h-4 w-4" />
+                                                        Importer {manualForm.files.length} {manualForm.files.length > 1 ? 'Documents' : 'Document'}
+                                                    </>
+                                                )}
+                                            </button>
                                         )}
-                                    </button>
-                                )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}

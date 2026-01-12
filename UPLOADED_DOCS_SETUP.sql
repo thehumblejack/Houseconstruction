@@ -12,29 +12,53 @@ CREATE TABLE IF NOT EXISTS uploaded_documents (
 -- Enable RLS
 ALTER TABLE uploaded_documents ENABLE ROW LEVEL SECURITY;
 
--- Allow authenticated users to read all documents
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Allow authenticated users to view documents" ON uploaded_documents;
+DROP POLICY IF EXISTS "Allow authenticated users to insert documents" ON uploaded_documents;
+DROP POLICY IF EXISTS "Allow authenticated users to update documents" ON uploaded_documents;
+DROP POLICY IF EXISTS "Allow authenticated users to delete documents" ON uploaded_documents;
+
+-- Allow all authenticated users to read documents
 CREATE POLICY "Allow authenticated users to view documents"
 ON uploaded_documents FOR SELECT
 TO authenticated
 USING (true);
 
--- Allow authenticated users to insert documents
+-- Allow ONLY ADMIN users to insert documents
 CREATE POLICY "Allow authenticated users to insert documents"
 ON uploaded_documents FOR INSERT
 TO authenticated
-WITH CHECK (true);
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM user_profiles
+        WHERE user_profiles.id = auth.uid()
+        AND user_profiles.role = 'admin'
+    )
+);
 
--- Allow authenticated users to update their own documents
+-- Allow ONLY ADMIN users to update documents
 CREATE POLICY "Allow authenticated users to update documents"
 ON uploaded_documents FOR UPDATE
 TO authenticated
-USING (true);
+USING (
+    EXISTS (
+        SELECT 1 FROM user_profiles
+        WHERE user_profiles.id = auth.uid()
+        AND user_profiles.role = 'admin'
+    )
+);
 
--- Allow authenticated users to delete documents
+-- Allow ONLY ADMIN users to delete documents
 CREATE POLICY "Allow authenticated users to delete documents"
 ON uploaded_documents FOR DELETE
 TO authenticated
-USING (true);
+USING (
+    EXISTS (
+        SELECT 1 FROM user_profiles
+        WHERE user_profiles.id = auth.uid()
+        AND user_profiles.role = 'admin'
+    )
+);
 
 -- Create index for faster queries
 CREATE INDEX IF NOT EXISTS idx_uploaded_documents_supplier ON uploaded_documents(supplier_id);

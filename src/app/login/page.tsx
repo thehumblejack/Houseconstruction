@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -14,9 +14,9 @@ export default function LoginPage() {
     const [message, setMessage] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
     const router = useRouter();
-    const supabase = createClient();
+    const supabase = useMemo(() => createClient(), []);
 
-    const handleAuth = async (e: React.FormEvent) => {
+    const handleAuth = useCallback(async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError(null);
@@ -52,7 +52,7 @@ export default function LoginPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [mode, email, password, supabase, router]);
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4 font-jakarta">

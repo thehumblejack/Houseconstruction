@@ -31,22 +31,36 @@ export default function SuppliersPage() {
     const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
     const [notesValue, setNotesValue] = useState('');
 
-    const supabase = createClient();
+    const supabase = useMemo(() => createClient(), []);
 
     const fetchData = async () => {
+        console.log('Suppliers: Fetching data started...');
         try {
-            const { data: sups } = await supabase.from('suppliers').select('*');
-            const { data: exps } = await supabase.from('expenses').select('*');
-            const { data: deps } = await supabase.from('deposits').select('*');
-            const { data: its } = await supabase.from('invoice_items').select('*');
+            const [sups, exps, deps, its] = await Promise.all([
+                supabase.from('suppliers').select('*'),
+                supabase.from('expenses').select('*'),
+                supabase.from('deposits').select('*'),
+                supabase.from('invoice_items').select('*')
+            ]);
 
-            setSuppliers(sups || []);
-            setExpenses(exps || []);
-            setDeposits(deps || []);
-            setItems(its || []);
+            if (sups.error) console.error('Suppliers: Error fetching suppliers:', sups.error);
+            if (exps.error) console.error('Suppliers: Error fetching expenses:', exps.error);
+            if (deps.error) console.error('Suppliers: Error fetching deposits:', deps.error);
+            if (its.error) console.error('Suppliers: Error fetching invoice_items:', its.error);
+
+            setSuppliers(sups.data || []);
+            setExpenses(exps.data || []);
+            setDeposits(deps.data || []);
+            setItems(its.data || []);
+
+            console.log('Suppliers: Data received:', {
+                suppliers: sups.data?.length ?? 0,
+                expenses: exps.data?.length ?? 0
+            });
         } catch (error) {
-            console.error('Error fetching data:', error);
+            console.error('Suppliers: Critical error fetching data:', error);
         } finally {
+            console.log('Suppliers: Fetching complete.');
             setLoading(false);
         }
     };

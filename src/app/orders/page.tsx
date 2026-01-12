@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { ShoppingCart, Plus, Calendar, Package, Truck, CheckCircle2, XCircle, ChevronDown, ChevronUp, Trash2, Save, User, Search, Store } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -41,7 +41,7 @@ interface CatalogItem {
 
 export default function OrdersPage() {
     const { isAdmin } = useAuth();
-    const supabase = createClient();
+    const supabase = useMemo(() => createClient(), []);
 
     // Main Data
     const [orders, setOrders] = useState<Order[]>([]);

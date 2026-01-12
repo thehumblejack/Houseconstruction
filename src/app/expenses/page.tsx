@@ -148,6 +148,7 @@ function ExpensesContent() {
     const [generalNote, setGeneralNote] = useState('');
 
     const searchParams = useSearchParams();
+    const supabase = useMemo(() => createClient(), []);
 
     // Sync URL params to State
     useEffect(() => {
@@ -159,13 +160,11 @@ function ExpensesContent() {
 
             const highlightId = searchParams.get('highlight');
             if (highlightId) {
-                // Wait for tab switch and render
                 setTimeout(() => {
                     const el = document.getElementById(highlightId);
                     if (el) {
                         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        // Add highlight effect
-                        el.style.backgroundColor = '#fef3c7'; // amber-100
+                        el.style.backgroundColor = '#fef3c7';
                         el.style.transition = 'background-color 1s';
                         setTimeout(() => {
                             el.style.backgroundColor = '';
@@ -174,19 +173,35 @@ function ExpensesContent() {
                 }, 500);
             }
         }
-    }, [searchParams, loading, suppliers]);
-
-    const supabase = createClient();
+    }, [searchParams, loading, suppliers, activeTab]);
 
     const fetchData = useCallback(async () => {
+        console.log('Expenses: Fetching data started...');
         try {
-            const { data: suppliersData } = await supabase.from('suppliers').select('*');
-            const { data: expensesData } = await supabase.from('expenses').select('*, items:invoice_items(*)');
-            const { data: depositsData } = await supabase.from('deposits').select('*');
-            const { data: settingsData } = await supabase.from('project_settings').select('*');
+            const [suppliersRes, expensesRes, depositsRes, settingsRes] = await Promise.all([
+                supabase.from('suppliers').select('*'),
+                supabase.from('expenses').select('*, items:invoice_items(*)'),
+                supabase.from('deposits').select('*'),
+                supabase.from('project_settings').select('*')
+            ]);
+
+            if (suppliersRes.error) console.error('Expenses: Suppliers fetch error:', suppliersRes.error);
+            if (expensesRes.error) console.error('Expenses: Expenses fetch error:', expensesRes.error);
+            if (depositsRes.error) console.error('Expenses: Deposits fetch error:', depositsRes.error);
+            if (settingsRes.error) console.error('Expenses: Settings fetch error:', settingsRes.error);
+
+            const suppliersData = suppliersRes.data;
+            const expensesData = expensesRes.data;
+            const depositsData = depositsRes.data;
+            const settingsData = settingsRes.data;
+
+            console.log('Expenses: Data received:', {
+                suppliers: suppliersData?.length ?? 0,
+                expenses: expensesData?.length ?? 0
+            });
 
             if (settingsData) {
-                const note = settingsData.find(s => s.key === 'general_note')?.value || '';
+                const note = settingsData.find((s: any) => s.key === 'general_note')?.value || '';
                 setGeneralNote(note);
             }
 
@@ -279,10 +294,14 @@ function ExpensesContent() {
                 });
 
                 setSuppliers(newSuppliers as Record<SupplierType, SupplierData>);
+            } else {
+                console.warn('Expenses: Missing required data (suppliers or expenses)');
+                setSuppliers({});
             }
         } catch (error) {
-            console.error('Error fetching data:', error);
+            console.error('Expenses: Critical error in fetchData:', error);
         } finally {
+            console.log('Expenses: Fetching data complete.');
             setLoading(false);
         }
     }, [supabase]);
@@ -299,7 +318,7 @@ function ExpensesContent() {
                     event: '*',
                     schema: 'public',
                 },
-                (payload) => {
+                (payload: any) => {
                     console.log('Change received!', payload);
                     fetchData();
                 }
@@ -419,7 +438,18 @@ function ExpensesContent() {
         return sorted;
     }, [currentSupplier, sortConfig]);
 
-    const activeStat = supplierStats.find(s => s.id === activeTab)!;
+    const activeStat = useMemo(() => {
+        const stat = supplierStats.find(s => s.id === activeTab);
+        if (stat) return stat;
+        return {
+            id: activeTab,
+            name: activeTab,
+            totalCost: 0,
+            totalPaid: 0,
+            remaining: 0,
+            color: 'bg-slate-500'
+        };
+    }, [supplierStats, activeTab]);
     // We no longer need manual currentSolde calculation, we use activeStat
 
     // Handlers

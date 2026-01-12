@@ -3,15 +3,55 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { LayoutGrid, Package, LogOut, ReceiptText, HardHat, ShoppingCart, User } from 'lucide-react';
+import { LayoutGrid, Package, LogOut, ReceiptText, HardHat, ShoppingCart, User, Shield } from 'lucide-react';
 import GlobalSearch from './GlobalSearch';
+import { useEffect, useState, useMemo } from 'react';
+import { createClient } from '@/lib/supabase';
 
 export default function Navbar() {
     const pathname = usePathname();
-    const { signOut } = useAuth();
+    const { signOut, isAdmin } = useAuth();
+    const [pendingCount, setPendingCount] = useState(0);
+    const supabase = useMemo(() => createClient(), []);
 
-    // Don't show navbar on login page
-    if (pathname === '/login') return null;
+    useEffect(() => {
+        if (isAdmin) {
+            const fetchPendingCount = async () => {
+                try {
+                    const { count, error } = await supabase
+                        .from('user_profiles')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('status', 'pending');
+
+                    if (error) {
+                        // Table likely doesn't exist yet, ignore
+                        return;
+                    }
+                    setPendingCount(count || 0);
+                } catch (err) {
+                    // Silently fail if table doesn't exist
+                }
+            };
+            fetchPendingCount();
+
+            // Subscribe to changes
+            const channel = supabase
+                .channel('user_profiles_changes')
+                .on('postgres_changes',
+                    { event: '*', schema: 'public', table: 'user_profiles' },
+                    () => fetchPendingCount()
+                )
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(channel);
+            };
+        }
+    }, [isAdmin, supabase]);
+
+
+    // Don't show navbar on auth related pages
+    if (pathname === '/login' || pathname?.startsWith('/auth/')) return null;
 
     const navItems = [
         { name: 'DÉPENSES', path: '/expenses', icon: ReceiptText },
@@ -67,6 +107,31 @@ export default function Navbar() {
                         <GlobalSearch />
                     </div>
 
+                    {/* Admin Link */}
+                    {isAdmin && (
+                        <>
+                            <div className="w-px h-6 bg-white/10 mx-2" />
+                            <Link
+                                href="/admin/users"
+                                className={`
+                                    relative flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all duration-300
+                                    ${pathname === '/admin/users'
+                                        ? 'text-white bg-purple-600 shadow-lg'
+                                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                                    }
+                                `}
+                            >
+                                <Shield className="h-4 w-4" />
+                                <span className="tracking-wide">ADMIN</span>
+                                {pendingCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center animate-pulse">
+                                        {pendingCount}
+                                    </span>
+                                )}
+                            </Link>
+                        </>
+                    )}
+
                     {/* Actions */}
                     <div className="w-px h-6 bg-white/10 mx-2" />
 
@@ -103,6 +168,30 @@ export default function Navbar() {
                             </Link>
                         );
                     })}
+
+                    {isAdmin && (
+                        <>
+                            <div className="w-px h-8 bg-white/10 mx-1" />
+                            <Link
+                                href="/admin/users"
+                                className={`
+                                    relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-300 gap-1
+                                    ${pathname === '/admin/users'
+                                        ? 'bg-gradient-to-br from-purple-600 to-purple-700 text-white shadow-lg shadow-purple-900/50 translate-y-[-4px]'
+                                        : 'text-slate-500 hover:bg-white/5'
+                                    }
+                                `}
+                            >
+                                <Shield className="h-5 w-5" strokeWidth={pathname === '/admin/users' ? 2.5 : 2} />
+                                <span className={`text-[9px] font-black uppercase tracking-tight ${pathname === '/admin/users' ? 'opacity-100' : 'opacity-60'}`}>ADMIN</span>
+                                {pendingCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
+                                        {pendingCount}
+                                    </span>
+                                )}
+                            </Link>
+                        </>
+                    )}
 
                     <div className="w-px h-8 bg-white/10 mx-2" />
 

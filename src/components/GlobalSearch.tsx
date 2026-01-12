@@ -71,7 +71,7 @@ export default function GlobalSearch() {
                     .limit(3);
 
                 if (suppliers) {
-                    suppliers.forEach(s => searchResults.push({
+                    suppliers.forEach((s: any) => searchResults.push({
                         id: s.id,
                         type: 'supplier',
                         title: s.name,
@@ -90,7 +90,7 @@ export default function GlobalSearch() {
                     .limit(5);
 
                 if (expenses) {
-                    expenses.forEach(e => searchResults.push({
+                    expenses.forEach((e: any) => searchResults.push({
                         id: e.id,
                         type: 'expense',
                         title: `Facture: ${e.item}`,
@@ -109,7 +109,7 @@ export default function GlobalSearch() {
                     .limit(5);
 
                 if (orders) {
-                    orders.forEach(o => searchResults.push({
+                    orders.forEach((o: any) => searchResults.push({
                         id: o.id,
                         type: 'order',
                         title: `Commande: ${o.supplier_name}`,
@@ -130,7 +130,7 @@ export default function GlobalSearch() {
                     .limit(5);
 
                 if (deposits) {
-                    deposits.forEach(d => searchResults.push({
+                    deposits.forEach((d: any) => searchResults.push({
                         id: d.id,
                         type: 'deposit',
                         title: `Acompte: ${d.amount} DT`,

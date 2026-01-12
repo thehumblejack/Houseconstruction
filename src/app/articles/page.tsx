@@ -1,14 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo, Suspense } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import { Search, Loader2, Package, Calendar, FileText, Plus, X, Pencil, Trash2, Save, ChevronDown, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import {
+    Plus, Receipt, FileText, Trash2, TrendingUp, DollarSign,
+    Upload, X, CheckCircle2, Clock, Eye, AlertCircle, Download, FileDown, ChevronDown,
+    Package, Search, Pencil, Save, Loader2
+} from 'lucide-react';
 
 interface ArticleRow {
     id: string;
-    sourceTable: 'expenses' | 'invoice_items'; // Track source for edits
-    parentId?: string; // For invoice_items, who is the parent expense?
+    sourceTable: 'expenses' | 'invoice_items';
+    parentId?: string;
     date: string;
     supplierId: string;
     supplierName: string;
@@ -47,7 +53,7 @@ export default function ArticlesPage() {
         setExpandedSuppliers(prev => ({ ...prev, [name]: !prev[name] }));
     };
 
-    const supabase = createClient();
+    const supabase = useMemo(() => createClient(), []);
 
     const fetchArticles = async () => {
         try {

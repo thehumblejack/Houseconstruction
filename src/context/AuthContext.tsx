@@ -151,40 +151,34 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     // Real-time listener for user profile updates
     useEffect(() => {
-        if (!user || loading) return; // Wait for initial load to finish before setting up real-time
+        if (!user || loading) return;
 
-        console.log('Auth: Setting up real-time listener for profile', user.id);
+        console.log('Auth: Initializing real-time listener for user_id:', user.id);
+
         const channel = supabase
-            .channel(`profile:${user.id}`)
+            .channel(`user_profile_${user.id}`)
             .on(
                 'postgres_changes',
                 {
-                    event: 'UPDATE',
+                    event: '*',
                     schema: 'public',
                     table: 'user_profiles',
                     filter: `user_id=eq.${user.id}`,
                 },
                 (payload: any) => {
-                    const newStatus = payload.new.status;
-                    const oldStatus = payload.old?.status || userProfile?.status;
-
-                    console.log('Auth: Profile updated via real-time', { oldStatus, newStatus });
-
-                    if (oldStatus === 'pending' && newStatus === 'approved') {
-                        window.alert('Bienvenue ! Votre compte a été approuvé. Vous pouvez maintenant accéder à la plateforme.');
-                    } else if (newStatus === 'rejected') {
-                        window.alert('Désolé, votre accès a été révoqué par un administrateur.');
-                    }
-
-                    setUserProfile(payload.new as UserProfile);
+                    console.log('Auth: Real-time event received:', payload.eventType);
+                    refreshProfile();
                 }
             )
-            .subscribe();
+            .subscribe((status: any) => {
+                console.log('Auth: Real-time subscription status:', status);
+            });
 
         return () => {
+            console.log('Auth: Cleaning up real-time listener');
             supabase.removeChannel(channel);
         };
-    }, [user, supabase]);
+    }, [user, loading, supabase, refreshProfile]);
 
     // Role fallbacks for safe operation
     const isAdmin = userProfile
@@ -194,6 +188,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const isApproved = userProfile
         ? userProfile.status === 'approved'
         : (user?.email === 'hamzahadjtaieb@gmail.com');
+
+    // Hard redirect on status change
+    useEffect(() => {
+        if (!userProfile) return;
+
+        const currentPath = window.location.pathname;
+        if (userProfile.status === 'rejected' && currentPath !== '/auth/rejected') {
+            window.location.href = '/auth/rejected';
+        } else if (userProfile.status === 'approved' && (currentPath === '/auth/pending' || currentPath === '/auth/rejected')) {
+            window.location.href = '/';
+        } else if (userProfile.status === 'pending' && currentPath !== '/auth/pending' && currentPath !== '/login') {
+            window.location.href = '/auth/pending';
+        }
+    }, [userProfile?.status]);
 
     // Route Protection and Redirection
     useEffect(() => {

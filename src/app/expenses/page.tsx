@@ -123,7 +123,7 @@ const ImageViewer = ({ src, onClose }: { src: string, onClose: () => void }) => 
 };
 
 function ExpensesContent() {
-    const { isAdmin } = useAuth();
+    const { isAdmin, user } = useAuth();
     const [activeTab, setActiveTab] = useState<SupplierType>('beton');
     const [viewingImage, setViewingImage] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -586,19 +586,21 @@ function ExpensesContent() {
 
                 // Insert into uploaded_documents table (NOT expenses)
                 if (publicUrl) {
+                    const cleanFileName = file.name.replace(/[:\\/]/g, '-');
                     const { data: insertedDoc, error: insertError } = await supabase
                         .from('uploaded_documents')
                         .insert({
                             supplier_id: activeTab,
                             file_url: publicUrl,
-                            file_name: file.name,
-                            note: ''
+                            file_name: cleanFileName,
+                            note: '',
+                            created_by: user?.id
                         })
                         .select()
                         .single();
 
                     if (insertError) {
-                        console.error(`Failed to save document ${file.name}:`, insertError);
+                        console.error(`Failed to save document ${file.name}:`, insertError.message, insertError.details, insertError.hint);
                     } else if (insertedDoc) {
                         newUploadedDocs.push({
                             id: insertedDoc.id,

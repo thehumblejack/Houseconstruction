@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
-import { ShoppingCart, Plus, Calendar, Package, Truck, CheckCircle2, XCircle, ChevronDown, ChevronUp, Trash2, Save, User, Search, Store } from 'lucide-react';
+import { ShoppingCart, Plus, Calendar, Package, Truck, CheckCircle2, XCircle, ChevronDown, ChevronUp, Trash2, Save, User, Search, Store, Pencil } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 // --- Interfaces ---
@@ -37,6 +37,28 @@ interface CatalogItem {
     lastDate: string;
 }
 
+const MOSTAKBEL_PRICES: Record<string, number> = {
+    "FER ROND DE 06/": 2.650,
+    "FER ROND DE 08/": 13.000,
+    "FER ROND DE 10/": 18.000,
+    "FER ROND DE 12/": 25.000,
+    "FER ROND DE 14/": 36.000,
+    "FER ROND DE 16/": 48.000,
+    "BRIQUE 12": 0.680,
+    "BRIQUE 8": 0.650,
+    "OM SABLE": 120.000,
+    "OM GRAVIER": 140.000,
+    "BERLIET - SABLE SUPER M3 (1m3)": 350.000,
+    "BERLIET - GRAVIER 04/15 (1m3)": 370.000
+};
+
+const BEN_HDEYA_PRICES: Record<string, number> = {
+    "FER 08": 13.000,
+    "FER 16": 48.000,
+    "OM SABLE": 90.000,
+    "OM GRAVIER": 110.000
+};
+
 // --- Component ---
 
 export default function OrdersPage() {
@@ -51,6 +73,8 @@ export default function OrdersPage() {
 
     // UI State
     const [isAdding, setIsAdding] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
     const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
 
     // Form State
@@ -180,10 +204,20 @@ export default function OrdersPage() {
         // @ts-ignore
         updated[index][field] = value;
 
+        // Auto-fill price for Reference items
+        if (field === 'article_name') {
+            const name = value.trim().toUpperCase();
+            if (MOSTAKBEL_PRICES[name]) {
+                updated[index].unitPrice = MOSTAKBEL_PRICES[name];
+            } else if (BEN_HDEYA_PRICES[name]) {
+                updated[index].unitPrice = BEN_HDEYA_PRICES[name];
+            }
+        }
+
         // Auto-recalculate total if qty or unit price changes
-        if (field === 'quantity' || field === 'unitPrice') {
-            const qty = field === 'quantity' ? Number(value) : updated[index].quantity;
-            const price = field === 'unitPrice' ? Number(value) : (updated[index].unitPrice || 0);
+        if (field === 'quantity' || field === 'unitPrice' || field === 'article_name') {
+            const qty = Number(updated[index].quantity || 0);
+            const price = Number(updated[index].unitPrice || 0);
             updated[index].totalPrice = qty * price;
         }
 
@@ -192,15 +226,41 @@ export default function OrdersPage() {
         if (field === 'article_name') {
             const query = value.toString().toLowerCase();
             if (query.length > 0) {
-                // Filter catalog
-                // Deduplicate by name to keep clean list? For now show all variants as price might switch
-                const hits = catalog.filter(c =>
+                // 1. Filter history
+                const catalogHits = catalog.filter(c =>
                     c.designation.toLowerCase().includes(query) ||
                     c.supplierName.toLowerCase().includes(query)
-                ).slice(0, 10); // Limit to 10
-                setSearchResults(hits);
+                );
+
+                // 2. Add Reference price hits
+                const mostakbelHits = Object.entries(MOSTAKBEL_PRICES)
+                    .filter(([name]) => name.toLowerCase().includes(query))
+                    .map(([name, price]) => ({
+                        id: `ref-mos-${name}`,
+                        designation: name,
+                        supplierId: 'fer',
+                        supplierName: 'STE Mostakbel',
+                        unitPrice: price,
+                        lastDate: 'Prix Officiel'
+                    }));
+
+                const benHdyaHits = Object.entries(BEN_HDEYA_PRICES)
+                    .filter(([name]) => name.toLowerCase().includes(query))
+                    .map(([name, price]) => ({
+                        id: `ref-ben-${name}`,
+                        designation: name,
+                        supplierId: 'ahmed',
+                        supplierName: 'Ahmed Ben Hdya',
+                        unitPrice: price,
+                        lastDate: 'Prix Officiel'
+                    }));
+
+                // Combine and limit
+                const combined = [...mostakbelHits, ...benHdyaHits, ...catalogHits].slice(0, 15);
+                setSearchResults(combined);
                 setActiveSearchIndex(index);
             } else {
+                setSearchResults([]);
                 setActiveSearchIndex(null);
             }
         }
@@ -221,37 +281,56 @@ export default function OrdersPage() {
         setActiveSearchIndex(null);
     };
 
-    const handleCreateOrder = async () => {
+    const handleSaveOrder = async () => {
         if (!newOrder.supplierId) {
             alert('Veuillez sélectionner un fournisseur');
             return;
         }
 
         try {
-            // Convert date to readable FR format for display if preferred, or keep ISO. 
-            // DB stores text so we can do whatever. App seemingly uses DD/MM/YYYY.
-            // Let's convert current ISO input (YYYY-MM-DD) to DD/MM/YYYY
             const [y, m, d] = newOrder.date.split('-');
             const formattedDate = `${d}/${m}/${y}`;
 
-            const { data: orderData, error: orderError } = await supabase
-                .from('orders')
-                .insert({
-                    supplier_id: newOrder.supplierId,
-                    date: formattedDate,
-                    notes: newOrder.notes,
-                    status: 'pending'
-                })
-                .select()
-                .single();
+            let orderId = editingOrderId;
 
-            if (orderError) throw orderError;
+            if (isEditing && orderId) {
+                // Update Order
+                const { error: orderError } = await supabase
+                    .from('orders')
+                    .update({
+                        supplier_id: newOrder.supplierId,
+                        date: formattedDate,
+                        notes: newOrder.notes,
+                    })
+                    .eq('id', orderId);
+
+                if (orderError) throw orderError;
+
+                // Simple strategy: Delete old items and insert new ones
+                const { error: deleteError } = await supabase.from('order_items').delete().eq('order_id', orderId);
+                if (deleteError) throw deleteError;
+            } else {
+                // Create Order
+                const { data: orderData, error: orderError } = await supabase
+                    .from('orders')
+                    .insert({
+                        supplier_id: newOrder.supplierId,
+                        date: formattedDate,
+                        notes: newOrder.notes,
+                        status: 'pending'
+                    })
+                    .select()
+                    .single();
+
+                if (orderError) throw orderError;
+                orderId = orderData.id;
+            }
 
             if (newItems.length > 0) {
                 const itemsToInsert = newItems
                     .filter(i => i.article_name.trim() !== '')
                     .map(i => ({
-                        order_id: orderData.id,
+                        order_id: orderId,
                         article_name: i.article_name,
                         quantity: i.quantity,
                         unit: i.unit,
@@ -265,14 +344,59 @@ export default function OrdersPage() {
                 }
             }
 
-            setIsAdding(false);
-            setNewOrder({ supplierId: '', date: new Date().toISOString().split('T')[0], notes: '' });
-            setNewItems([{ article_name: '', quantity: 1, unit: 'pcs', unitPrice: 0, totalPrice: 0 }]);
+            closeModal();
             fetchData();
         } catch (err) {
             console.error(err);
-            alert("Erreur lors de la création.");
+            alert("Erreur lors de l'enregistrement.");
         }
+    };
+
+    const openAdd = () => {
+        setIsEditing(false);
+        setEditingOrderId(null);
+        setNewOrder({ supplierId: '', date: new Date().toISOString().split('T')[0], notes: '' });
+        setNewItems([{ article_name: '', quantity: 1, unit: 'pcs', unitPrice: 0, totalPrice: 0 }]);
+        setIsAdding(true);
+    };
+
+    const openEdit = (order: Order) => {
+        setIsEditing(true);
+        setEditingOrderId(order.id);
+
+        let dateVal = '';
+        if (order.date && order.date.includes('/')) {
+            const [d, m, y] = order.date.split('/');
+            dateVal = `${y}-${m}-${d}`;
+        } else {
+            dateVal = order.date;
+        }
+
+        setNewOrder({
+            supplierId: order.supplier_id,
+            date: dateVal,
+            notes: order.notes || ''
+        });
+
+        if (order.items && order.items.length > 0) {
+            setNewItems(order.items.map(i => ({
+                article_name: i.article_name,
+                quantity: i.quantity,
+                unit: i.unit,
+                unitPrice: i.unitPrice || 0,
+                totalPrice: (i.quantity || 0) * (i.unitPrice || 0)
+            })));
+        } else {
+            setNewItems([{ article_name: '', quantity: 1, unit: 'pcs', unitPrice: 0, totalPrice: 0 }]);
+        }
+
+        setIsAdding(true);
+    };
+
+    const closeModal = () => {
+        setIsAdding(false);
+        setIsEditing(false);
+        setEditingOrderId(null);
     };
 
     const handleUpdateStatus = async (orderId: string, newStatus: string) => {
@@ -377,7 +501,7 @@ export default function OrdersPage() {
                         </button>
                     )}
                     <button
-                        onClick={() => setIsAdding(true)}
+                        onClick={openAdd}
                         className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-3 rounded-2xl flex items-center gap-2 font-black uppercase tracking-wide transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1"
                     >
                         <Plus className="h-5 w-5" />
@@ -398,8 +522,8 @@ export default function OrdersPage() {
                     </div>
                     {pendingOrders.map(order => (
                         <div key={order.id} className="bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition-shadow p-5 relative overflow-hidden group">
-                            <div className={`absolute top - 0 left - 0 w - 1 h - full ${order.supplier_color}`} />
-                            <div className="flex justify-between items-start mb-3">
+                            <div className={`absolute top-0 left-0 w-1 h-full ${order.supplier_color}`} />
+                            <div className="flex justify-between items-start w-full">
                                 <div className="flex items-start gap-4">
                                     {isAdmin && (
                                         <input
@@ -419,23 +543,33 @@ export default function OrdersPage() {
                                         </div>
                                     </div>
                                 </div>
+
+                                {isAdmin && (
+                                    <button
+                                        onClick={() => openEdit(order)}
+                                        className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"
+                                    >
+                                        <Pencil className="h-4 w-4" />
+                                    </button>
+                                )}
                             </div>
                             <div className="space-y-2 mb-4">
-                                {(order.items || []).slice(0, 3).map(item => (
-                                    <div key={item.id} className="flex justify-between text-sm items-center border-b border-slate-50 pb-1">
+                                {(order.items || []).map(item => (
+                                    <div key={item.id} className="flex justify-between text-[11px] items-center border-b border-slate-50 pb-1.5 pt-0.5">
                                         <div className="flex items-center gap-2">
                                             <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
                                             <span className="font-bold text-slate-700">{item.article_name}</span>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            {/* If we had price here we could show it, but we dont store it in order_items yet so skipping */}
-                                            <span className="text-slate-500 font-mono text-xs bg-slate-50 px-1 rounded">{item.quantity} {item.unit}</span>
+                                        <div className="flex flex-col items-end">
+                                            <span className="text-slate-900 font-black tabular-nums">
+                                                {((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[8px] text-slate-400">DT</span>
+                                            </span>
+                                            <span className="text-[9px] text-slate-400 font-bold uppercase">
+                                                {item.quantity} {item.unit} × {item.unitPrice?.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                            </span>
                                         </div>
                                     </div>
                                 ))}
-                                {(order.items?.length || 0) > 3 && (
-                                    <p className="text-xs text-slate-400 font-bold text-center lowercase">+ {(order.items?.length || 0) - 3} autres</p>
-                                )}
                             </div>
                             <div className="flex gap-2 mt-4">
                                 <button onClick={() => handleUpdateStatus(order.id, 'delivered')} className="flex-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 py-2 rounded-xl text-xs font-black uppercase flex items-center justify-center gap-1 transition-colors">
@@ -519,11 +653,15 @@ export default function OrdersPage() {
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                     <div className="bg-white w-full max-w-2xl rounded-3xl p-6 md:p-8 shadow-2xl max-h-[90vh] overflow-visible" ref={wrapperRef}>
                         <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-black uppercase text-slate-900 flex items-center gap-2">
-                                <Plus className="h-6 w-6 text-blue-600" />
-                                Nouvelle Commande
-                            </h2>
-                            <button onClick={() => setIsAdding(false)}><XCircle className="h-8 w-8 text-slate-300 hover:text-red-500 transition-colors" /></button>
+                            <div className="flex items-center gap-3">
+                                <div className={`p-3 rounded-2xl ${isEditing ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
+                                    {isEditing ? <Pencil className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
+                                </div>
+                                <h2 className="text-xl font-black uppercase text-slate-900 tracking-tight">
+                                    {isEditing ? 'Modifier la Commande' : 'Nouvelle Commande'}
+                                </h2>
+                            </div>
+                            <button onClick={closeModal}><XCircle className="h-8 w-8 text-slate-300 hover:text-red-500 transition-colors" /></button>
                         </div>
 
                         <div className="space-y-6">
@@ -574,10 +712,10 @@ export default function OrdersPage() {
 
                                                 {/* Dropdown Results - positioned absolutely with high z-index */}
                                                 {activeSearchIndex === idx && searchResults.length > 0 && (
-                                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-slate-100 z-[100] max-h-60 overflow-y-auto w-[150%] md:w-[120%] transform -translate-x-0">
-                                                        {searchResults.map((res) => (
+                                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-slate-100 z-[110] max-h-60 overflow-y-auto w-[150%] md:w-[120%] transform -translate-x-0">
+                                                        {searchResults.map((res, sIdx) => (
                                                             <button
-                                                                key={res.id}
+                                                                key={`${res.id}-${sIdx}`}
                                                                 onClick={() => handleSelectCatalogItem(idx, res)}
                                                                 className="w-full text-left p-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex justify-between items-center group"
                                                             >
@@ -600,27 +738,28 @@ export default function OrdersPage() {
 
                                             <div className="flex gap-2 w-full md:w-auto">
                                                 <div className="flex flex-col w-20">
-                                                    <label className="text-[8px] uppercase font-black text-slate-400 pl-1 mb-0.5">Qté</label>
+                                                    <label className="text-[9px] uppercase font-black text-slate-400 pl-1 mb-0.5">Quantité</label>
                                                     <input
                                                         type="number"
-                                                        className="w-full p-3 bg-white border border-slate-100 rounded-xl font-bold text-sm text-center outline-none"
+                                                        className="w-full p-3 bg-white border border-slate-100 rounded-xl font-bold text-sm text-center outline-none focus:border-blue-500 transition-colors"
                                                         value={item.quantity}
                                                         onChange={e => handleItemChange(idx, 'quantity', e.target.value)}
                                                     />
                                                 </div>
-                                                <div className="flex flex-col w-24">
-                                                    <label className="text-[8px] uppercase font-black text-slate-400 pl-1 mb-0.5">Px Univ.</label>
+                                                <div className="flex flex-col w-28">
+                                                    <label className="text-[9px] uppercase font-black text-slate-400 pl-1 mb-0.5">Prix Unit.</label>
                                                     <input
                                                         type="number"
-                                                        className="w-full p-3 bg-white border border-slate-100 rounded-xl font-bold text-sm text-center outline-none text-slate-600"
+                                                        step="0.001"
+                                                        className="w-full p-3 bg-white border border-slate-100 rounded-xl font-bold text-sm text-center outline-none text-slate-600 focus:border-blue-500 transition-colors"
                                                         value={item.unitPrice || ''}
                                                         onChange={e => handleItemChange(idx, 'unitPrice', e.target.value)}
                                                     />
                                                 </div>
-                                                <div className="flex flex-col w-24">
-                                                    <label className="text-[8px] uppercase font-black text-emerald-500 pl-1 mb-0.5">Total</label>
-                                                    <div className="w-full p-3 bg-emerald-50 border border-emerald-100 rounded-xl font-bold text-sm text-center text-emerald-700">
-                                                        {(item.totalPrice || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                <div className="flex flex-col w-28">
+                                                    <label className="text-[9px] uppercase font-black text-emerald-500 pl-1 mb-0.5 font-jakarta">Total</label>
+                                                    <div className="w-full p-3 bg-emerald-50 border border-emerald-100 rounded-xl font-black text-sm text-center text-emerald-700 font-mono">
+                                                        {(item.totalPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 3 })}
                                                     </div>
                                                 </div>
                                             </div>
@@ -645,11 +784,11 @@ export default function OrdersPage() {
                             </div>
 
                             <button
-                                onClick={handleCreateOrder}
-                                className="w-full bg-blue-600 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-blue-500 hover:scale-[1.01] transition-all flex justify-center items-center gap-2 shadow-xl"
+                                onClick={handleSaveOrder}
+                                className={`w-full py-4 rounded-xl font-black uppercase tracking-widest hover:scale-[1.01] transition-all flex justify-center items-center gap-2 shadow-xl ${isEditing ? 'bg-amber-500 hover:bg-amber-400 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
                             >
                                 <Save className="h-5 w-5" />
-                                Valider la Commande
+                                {isEditing ? 'Mettre à jour' : 'Valider la Commande'}
                             </button>
                         </div>
                     </div>

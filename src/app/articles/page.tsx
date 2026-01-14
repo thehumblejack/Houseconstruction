@@ -9,6 +9,28 @@ import {
     ChevronDown, Trash2
 } from 'lucide-react';
 
+const MOSTAKBEL_PRICES: Record<string, number> = {
+    "FER ROND DE 06/": 2.650,
+    "FER ROND DE 08/": 13.000,
+    "FER ROND DE 10/": 18.000,
+    "FER ROND DE 12/": 25.000,
+    "FER ROND DE 14/": 36.000,
+    "FER ROND DE 16/": 48.000,
+    "BRIQUE 12": 0.680,
+    "BRIQUE 8": 0.650,
+    "OM SABLE": 120.000,
+    "OM GRAVIER": 140.000,
+    "BERLIET - SABLE SUPER M3 (1m3)": 350.000,
+    "BERLIET - GRAVIER 04/15 (1m3)": 370.000
+};
+
+const BEN_HDEYA_PRICES: Record<string, number> = {
+    "FER 08": 13.000,
+    "FER 16": 48.000,
+    "OM SABLE": 90.000,
+    "OM GRAVIER": 110.000
+};
+
 interface ArticleRow {
     id: string;
     sourceTable: 'expenses' | 'invoice_items';
@@ -30,7 +52,10 @@ export default function ArticlesPage() {
     const [articles, setArticles] = useState<ArticleRow[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [suppliersList, setSuppliersList] = useState<{ id: string, name: string }[]>([]);
-    const [viewMode, setViewMode] = useState<'inventory' | 'comparison'>('inventory');
+    const [viewMode, setViewMode] = useState<'inventory' | 'comparison' | 'matrix'>('matrix');
+    const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
+    const [columnOrder, setColumnOrder] = useState<string[]>([]);
+    const [showColumnSettings, setShowColumnSettings] = useState(false);
 
     // Edit/Add States
     const [editingItem, setEditingItem] = useState<ArticleRow | null>(null);
@@ -67,6 +92,21 @@ export default function ArticlesPage() {
             });
             setSuppliersList(sList);
 
+            const parseQuantity = (q: any): number => {
+                if (typeof q === 'number') return q || 1;
+                if (!q || typeof q !== 'string') return 1;
+                const match = q.match(/(\d+(?:[.,]\d+)?)/);
+                if (match) return parseFloat(match[1].replace(',', '.')) || 1;
+                return 1;
+            };
+
+            const parseDate = (d: string) => {
+                if (!d) return 0;
+                const parts = d.split('/');
+                if (parts.length === 3) return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])).getTime();
+                return 0;
+            };
+
             // Fetch expenses
             const { data: expensesData } = await supabase.from('expenses').select('*, items:invoice_items(*)');
             const rows: ArticleRow[] = [];
@@ -92,6 +132,8 @@ export default function ArticlesPage() {
                         });
                     });
                 } else {
+                    const qty = parseQuantity(e.quantity);
+                    const uPrice = e.price / qty;
                     rows.push({
                         id: e.id,
                         sourceTable: 'expenses',
@@ -102,19 +144,62 @@ export default function ArticlesPage() {
                         reference: '-',
                         designation: e.item,
                         quantity: e.quantity || 1,
-                        unitPrice: e.price,
+                        unitPrice: uPrice,
                         totalPrice: e.price,
                     });
                 }
             });
 
-            const parseDate = (d: string) => {
-                if (!d) return 0;
-                const parts = d.split('/');
-                if (parts.length === 3) return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])).getTime();
-                return 0;
-            };
             rows.sort((a, b) => parseDate(b.date) - parseDate(a.date));
+
+            // Initial column setup if not yet set
+            const initialSuppliers = Array.from(new Set(rows.map(r => r.supplierName)));
+            if (!initialSuppliers.includes('STE Mostakbel')) initialSuppliers.push('STE Mostakbel');
+            if (!initialSuppliers.includes('Ahmed Ben Hdya')) initialSuppliers.push('Ahmed Ben Hdya');
+            initialSuppliers.sort();
+
+            setVisibleColumns(initialSuppliers);
+            setColumnOrder(initialSuppliers);
+
+            // 3. Inject Virtual Mostakbel Order Prices as baseline articles
+            Object.entries(MOSTAKBEL_PRICES).forEach(([designation, price], idx) => {
+                const sup = suppliersMap['fer'] || { name: 'STE Mostakbel', color: 'bg-blue-600' };
+                // Check if we already have a real Mostakbel entry for this specific Fer item to avoid duplicates in Inventory Global
+                // But for comparison, we ALWAYS want the order price as reference.
+                // We'll add it as a special sourceTable 'order_ref' to differentiate if needed.
+                rows.push({
+                    id: `ref-mostakbel-${idx}`,
+                    sourceTable: 'expenses', // Use expenses to make it appear in global list if needed, or handle separately
+                    date: 'Réf. 2024',
+                    supplierId: 'fer',
+                    supplierName: 'STE Mostakbel',
+                    supplierColor: sup.color,
+                    reference: 'PRIX COMMANDE',
+                    designation: designation,
+                    quantity: 1,
+                    unitPrice: price,
+                    totalPrice: price,
+                });
+            });
+
+            // 4. Inject Virtual Ben Hdeya Order Prices
+            Object.entries(BEN_HDEYA_PRICES).forEach(([designation, price], idx) => {
+                const sup = suppliersMap['ahmed'] || { name: 'Ahmed Ben Hdya', color: 'bg-[#FF5722]' };
+                rows.push({
+                    id: `ref-benhdeya-${idx}`,
+                    sourceTable: 'expenses',
+                    date: 'Réf. 2024',
+                    supplierId: 'ahmed',
+                    supplierName: 'Ahmed Ben Hdya',
+                    supplierColor: sup.color,
+                    reference: 'PRIX COMMANDE',
+                    designation: designation,
+                    quantity: 1,
+                    unitPrice: price,
+                    totalPrice: price,
+                });
+            });
+
             setArticles(rows);
         } catch (error) {
             console.error('Error fetching articles:', error);
@@ -224,12 +309,73 @@ export default function ArticlesPage() {
         color: rows[0].supplierColor
     })).sort((a, b) => b.total - a.total);
 
+    const normalizeArticleName = (name: string) => {
+        if (!name) return "";
+        let n = name.toUpperCase().trim();
+        // Remove trailing /
+        n = n.replace(/\/$/, "").trim();
+
+        // Handle Iron/Fer specifically
+        if (n.startsWith("FER")) {
+            const match = n.match(/FER\s*(?:ROND\s*DE|DE|Ø)?\s*(\d+)/);
+            if (match) {
+                const size = match[1].padStart(2, '0');
+                return `FER Ø${size}`;
+            }
+        }
+
+        // Handle Fil Attaché
+        if (n.includes("FIL") && (n.includes("DATACHE") || n.includes("ATTACHÉ") || n.includes("RECUIT"))) {
+            return "FIL ATTACHE";
+        }
+
+        // Handle Briques
+        const briqueMatch = n.match(/BRIQUE.*?\b(\d+)\b/);
+        if (briqueMatch) {
+            const num = briqueMatch[1];
+            if (num === "8" || num === "12") {
+                return `BRIQUE ${num}`;
+            }
+        }
+
+        // Specific OM normalization to avoid redundancy
+        if (n.includes("SABLE") && n.includes("OM")) return "OM SABLE";
+        if (n.includes("GRAVIER") && n.includes("OM")) return "OM GRAVIER";
+        if (n.includes("SABLE") && n.includes("SUPER")) return "BERLIET - SABLE SUPER M3 (1m3)";
+        if (n.includes("GRAVIER") && n.includes("04/15")) return "BERLIET - GRAVIER 04/15 (1m3)";
+
+        // Remove multiple spaces
+        return n.replace(/\s+/g, ' ');
+    };
+
+    // Helper to pick a clean label for merged items
+    const normalizedNameLabel = (normalized: string, originalItems: ArticleRow[]) => {
+        if (normalized.startsWith("FER Ø")) return normalized;
+        if (normalized === "FIL ATTACHE") return "FIL ATTACHÉ (RECUIT)";
+        if (normalized === "BRIQUE 8") {
+            const detailed = originalItems.find(i => i.designation.toUpperCase().includes("BCM"));
+            return detailed ? detailed.designation : "BRIQUE DE 8";
+        }
+        if (normalized === "BRIQUE 12") {
+            const detailed = originalItems.find(i => i.designation.toUpperCase().includes("BCM"));
+            return detailed ? detailed.designation : "BRIQUE DE 12";
+        }
+
+        // If it already has unit info from normalizeArticleName, return it
+        if (normalized.includes("(1m3)")) return normalized;
+        if (normalized.startsWith("OM ")) return normalized;
+        if (normalized.startsWith("BERLIET ")) return normalized;
+
+        // Otherwise use the most frequent original name or just the first one
+        return originalItems[0].designation;
+    };
+
     // Comparison Logic
     const comparisonGroups = useMemo(() => {
         const groups: Record<string, ArticleRow[]> = {};
 
         filteredArticles.forEach(row => {
-            const normalizedName = row.designation.trim().toLowerCase();
+            const normalizedName = normalizeArticleName(row.designation);
             if (!groups[normalizedName]) {
                 groups[normalizedName] = [];
             }
@@ -240,16 +386,88 @@ export default function ArticlesPage() {
             .map(([name, items]) => {
                 const sortedItems = [...items].sort((a, b) => a.unitPrice - b.unitPrice);
                 return {
-                    name: items[0].designation,
+                    name: normalizedNameLabel(name, items),
                     items: sortedItems,
                     bestPrice: sortedItems[0].unitPrice,
                     bestSupplier: sortedItems[0].supplierName,
                     priceSpread: sortedItems[sortedItems.length - 1].unitPrice - sortedItems[0].unitPrice
                 };
             })
-            // Filter groups that have useful comparison data (optional: or just sort by Relevance)
             .sort((a, b) => b.items.length - a.items.length);
     }, [filteredArticles]);
+
+    // Matrix View Logic
+    const matrixData = useMemo(() => {
+        // 1. Consolidate Suppliers case-insensitively and filter out blanks
+        const supplierNamesRaw = articles.map(a => a.supplierName);
+        const standardizedNames = new Set<string>();
+        const rawToLowerMap: Record<string, string> = {};
+
+        supplierNamesRaw.forEach(name => {
+            if (!name) return;
+            let standard = name.trim();
+            const lower = standard.toLowerCase();
+            if (lower.includes('mostakbel')) {
+                standard = 'STE Mostakbel';
+            } else if (lower.includes('ben hdya') || lower.includes('ben hdeya')) {
+                standard = 'Ahmed Ben Hdya';
+            }
+            standardizedNames.add(standard);
+            rawToLowerMap[name.toLowerCase().trim()] = standard;
+        });
+
+        const allSuppliers = Array.from(standardizedNames).sort();
+
+        const articleMap: Record<string, Record<string, { price: number, isRef?: boolean }>> = {};
+
+        articles.forEach(a => {
+            const name = normalizeArticleName(a.designation);
+            if (!name) return; // Skip empty names
+
+            const rawSupName = a.supplierName?.toLowerCase().trim() || "";
+            const standardSupName = rawToLowerMap[rawSupName] || (rawSupName.includes('mostakbel') ? 'STE Mostakbel' : a.supplierName);
+            const isRef = a.reference === 'PRIX COMMANDE';
+
+            if (!articleMap[name]) articleMap[name] = {};
+
+            // Prioritization:
+            // 1. If it's a PRIX COMMANDE (virtual reference), it ALWAYS takes precedence and overwrites.
+            // 2. If it's a real purchase, it only sets the price if no price (real or ref) has been set yet.
+            //    Since rows are sorted by date desc, the first real purchase we encounter is the most recent one.
+            if (isRef) {
+                articleMap[name][standardSupName] = { price: a.unitPrice, isRef: true };
+            } else if (!articleMap[name][standardSupName]) {
+                articleMap[name][standardSupName] = { price: a.unitPrice, isRef: false };
+            }
+        });
+
+        const rows = Object.keys(articleMap).map(name => ({
+            name,
+            prices: articleMap[name]
+        }));
+
+        // Filter suppliers to only those who have at least one price in the matrix
+        const suppliersWithPrices = allSuppliers.filter(sup =>
+            rows.some(row => row.prices[sup] !== undefined)
+        );
+
+        // 3. Custom Sorting: Fer products first, then others, sorted by Ø
+        rows.sort((a, b) => {
+            const isAFer = a.name.startsWith('FER Ø');
+            const isBFer = b.name.startsWith('FER Ø');
+
+            if (isAFer && !isBFer) return -1;
+            if (!isAFer && isBFer) return 1;
+            if (isAFer && isBFer) {
+                const diameterA = parseInt(a.name.replace('FER Ø', ''));
+                const diameterB = parseInt(b.name.replace('FER Ø', ''));
+                return diameterA - diameterB;
+            }
+            return a.name.localeCompare(b.name);
+        });
+
+        return { suppliers: suppliersWithPrices, rows };
+    }, [articles]);
 
     if (loading) {
         return (
@@ -263,20 +481,19 @@ export default function ArticlesPage() {
         <div className="max-w-[1600px] mx-auto p-6 space-y-8 pb-32 font-jakarta bg-slate-50 min-h-screen">
 
             {/* Header Section */}
-            <div className="bg-slate-900 rounded-[40px] p-8 md:p-12 text-white relative overflow-hidden shadow-2xl">
+            <div className="bg-slate-900 rounded-[32px] p-6 md:p-8 text-white relative overflow-hidden shadow-xl">
                 <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#FFB800]/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/3"></div>
 
-                <div className="relative z-10 flex flex-col lg:flex-row justify-between items-start lg:items-end gap-10">
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-3">
-                            <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-sm">
-                                <Package className="h-8 w-8 text-[#FFB800]" />
+                <div className="relative z-10 flex flex-col lg:flex-row justify-between items-center gap-6">
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                            <div className="p-2 bg-white/10 rounded-xl backdrop-blur-sm">
+                                <Package className="h-5 w-5 text-[#FFB800]" />
                             </div>
-                            <span className="text-[#FFB800] font-black tracking-widest uppercase text-xs">Gestion de Matériaux</span>
+                            <span className="text-[#FFB800] font-black tracking-widest uppercase text-[10px]">Gestion de Matériaux</span>
                         </div>
-                        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter leading-none">
-                            Inventaire & <br />
-                            <span className="text-[#FFB800]">Market Analytics</span>
+                        <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter leading-none">
+                            Inventaire & <span className="text-[#FFB800]">Market Analytics</span>
                         </h1>
                     </div>
 
@@ -286,12 +503,12 @@ export default function ArticlesPage() {
                             <button
                                 onClick={() => setViewMode('inventory')}
                                 className={`
-                                    flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all
-                                    ${viewMode === 'inventory' ? 'bg-[#FFB800] text-slate-900 shadow-lg' : 'text-white hover:bg-white/5'}
+                                    flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all
+                                    ${viewMode === 'inventory' ? 'bg-[#FFB800] text-slate-900 shadow-md' : 'text-white hover:bg-white/5'}
                                 `}
                             >
-                                <List className="w-4 h-4" />
-                                Inventaire Global
+                                <List className="w-3.5 h-3.5" />
+                                Inventaire
                             </button>
                             <button
                                 onClick={() => setViewMode('comparison')}
@@ -301,19 +518,29 @@ export default function ArticlesPage() {
                                 `}
                             >
                                 <ArrowRightLeft className="w-4 h-4" />
-                                Comparateur Prix
+                                Analyse
+                            </button>
+                            <button
+                                onClick={() => setViewMode('matrix')}
+                                className={`
+                                    flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all
+                                    ${viewMode === 'matrix' ? 'bg-[#FFB800] text-slate-900 shadow-lg' : 'text-white hover:bg-white/5'}
+                                `}
+                            >
+                                <LayoutGrid className="w-4 h-4" />
+                                Tableau Comparatif
                             </button>
                         </div>
 
                         {/* Search Bar */}
-                        <div className="relative w-full lg:w-[400px]">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                        <div className="relative w-full lg:w-[350px]">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                             <input
                                 type="text"
-                                placeholder={viewMode === 'inventory' ? "Rechercher un article..." : "Comparer un matériau (ex: Ciment, Fer)..."}
+                                placeholder={viewMode === 'inventory' ? "Rechercher..." : "Comparer un matériau..."}
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-white text-slate-900 h-14 pl-12 pr-6 rounded-2xl font-bold text-sm placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-[#FFB800]/50 transition-all shadow-xl"
+                                className="w-full bg-white text-slate-900 h-11 pl-11 pr-4 rounded-xl font-bold text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/50 transition-all shadow-md"
                             />
                         </div>
                     </div>
@@ -330,63 +557,60 @@ export default function ArticlesPage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                         {comparisonGroups.map((group, idx) => (
-                            <div key={idx} className="bg-white rounded-[32px] p-6 shadow-sm hover:shadow-xl transition-all border border-slate-100 group flex flex-col h-full relative overflow-hidden">
+                            <div key={idx} className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-md hover:shadow-xl transition-all group h-full flex flex-col relative overflow-hidden">
                                 {/* Decor */}
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-bl-[100px] -z-0 transition-colors group-hover:bg-[#FFB800]/10"></div>
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-bl-[60px] -z-0 transition-colors group-hover:bg-[#FFB800]/10"></div>
 
-                                <div className="relative z-10 mb-6">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-slate-900 rounded-full mb-2">
-                                            <Package className="w-3 h-3 text-[#FFB800]" />
-                                            <span className="text-[9px] font-black text-white uppercase tracking-widest">{group.items.length} Achats</span>
-                                        </div>
-                                    </div>
-                                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight leading-tight line-clamp-2 min-h-[3rem]" title={group.name}>
-                                        {group.name}
-                                    </h3>
-                                </div>
-
-                                {/* Stats Bar */}
-                                <div className="grid grid-cols-2 gap-4 mb-6">
-                                    <div className="bg-green-50 p-4 rounded-2xl border border-green-100">
-                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Meilleur Prix</span>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xl font-black text-green-700">{group.bestPrice.toFixed(3)}</span>
-                                            <span className="text-[10px] font-bold text-green-600">DT</span>
-                                        </div>
-                                    </div>
-                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Dernier Achat</span>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-lg font-black text-slate-700 truncate">{group.items[0].date}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="flex-1 space-y-3">
-                                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-2">Historique des prix</span>
-                                    {group.items.slice(0, 5).map((item, i) => (
-                                        <div key={i} className={`flex justify-between items-center p-3 rounded-xl border ${i === 0 ? 'bg-[#FFB800]/10 border-[#FFB800] relative overflow-hidden' : 'bg-white border-slate-100'}`}>
-                                            {i === 0 && (
-                                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#FFB800]"></div>
-                                            )}
-                                            <div className="flex items-center gap-3">
-                                                {i === 0 && <Medal className="w-4 h-4 text-[#FFB800] fill-[#FFB800]" />}
-                                                <div>
-                                                    <div className="text-xs font-black text-slate-900 uppercase">{item.supplierName}</div>
-                                                    <div className="text-[9px] font-bold text-slate-400">{item.date}</div>
+                                <div className="relative z-10 flex flex-col h-full">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="flex-1">
+                                            <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-slate-900 rounded-full mb-2">
+                                                <Package className="w-2.5 h-2.5 text-[#FFB800]" />
+                                                <span className="text-[8px] font-black text-white uppercase tracking-widest">{group.items.length} Achats</span>
+                                            </div>
+                                            <h3 className="text-base font-black text-slate-900 uppercase tracking-tight mb-1 group-hover:text-[#FFB800] transition-colors line-clamp-1" title={group.name}>
+                                                {group.name}
+                                            </h3>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-xl font-black text-emerald-600">{group.bestPrice.toFixed(3)}</span>
+                                                <div className="flex flex-col">
+                                                    <span className="text-[9px] font-black text-emerald-500 uppercase leading-none">DT</span>
+                                                    <span className="text-[7px] font-bold text-slate-400 uppercase tracking-widest">PRIX UNITÉ</span>
                                                 </div>
                                             </div>
-                                            <span className={`text-sm font-black ${i === 0 ? 'text-[#e5a500]' : 'text-slate-600'}`}>
-                                                {item.unitPrice.toFixed(3)}
-                                            </span>
                                         </div>
-                                    ))}
-                                    {group.items.length > 5 && (
-                                        <div className="text-center py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                            + {group.items.length - 5} autres entrées
+                                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Meilleur</span>
+                                            <div className="flex items-center gap-1">
+                                                <Medal className="w-3.5 h-3.5 text-[#FFB800]" />
+                                                <span className="text-[10px] font-black text-slate-700 truncate max-w-[60px]">{group.bestSupplier}</span>
+                                            </div>
                                         </div>
-                                    )}
+                                    </div>
+
+                                    <div className="flex-1 space-y-2">
+                                        <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest px-1">Historique</span>
+                                        {group.items.slice(0, 5).map((item, i) => (
+                                            <div key={i} className={`flex justify-between items-center px-3 py-2 rounded-lg border ${i === 0 ? 'bg-[#FFB800]/5 border-[#FFB800] relative overflow-hidden' : 'bg-white border-slate-50'}`}>
+                                                {i === 0 && (
+                                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#FFB800]"></div>
+                                                )}
+                                                <div className="flex items-center gap-2">
+                                                    {i === 0 && <Medal className="w-3.5 h-3.5 text-[#FFB800] fill-[#FFB800]" />}
+                                                    <div>
+                                                        <div className="text-[10px] font-black text-slate-900 uppercase leading-none">{item.supplierName}</div>
+                                                        <div className="text-[7px] font-bold text-slate-400">{item.date}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col items-end">
+                                                    <span className={`text-xs font-black tabular-nums ${i === 0 ? 'text-[#e5a500]' : 'text-slate-600'}`}>
+                                                        {item.unitPrice.toFixed(3)}
+                                                    </span>
+                                                    <span className="text-[6px] font-bold text-slate-300 uppercase tracking-tighter">UNITÉ</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -401,6 +625,147 @@ export default function ArticlesPage() {
                             <p className="text-slate-500 font-medium">Essayez de rechercher un autre matériau.</p>
                         </div>
                     )}
+                </div>
+            ) : viewMode === 'matrix' ? (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-8">
+                    <div className="flex items-center justify-between px-2">
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-4">
+                                <LayoutGrid className="text-[#FFB800] w-6 h-6" />
+                                <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Comparatif Multi-Fournisseurs</h2>
+                            </div>
+
+                            {/* Filter Chips */}
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    { label: 'Tous', value: '' },
+                                    { label: 'Briques', value: 'BRIQUE' },
+                                    { label: 'Fer', value: 'FER' },
+                                    { label: 'Gravier', value: 'GRAVIER' },
+                                    { label: 'Sable', value: 'SABLE' }
+                                ].map((chip) => {
+                                    const isActive = searchTerm.toUpperCase() === chip.value.toUpperCase() || (chip.value === '' && searchTerm === '');
+                                    return (
+                                        <button
+                                            key={chip.label}
+                                            onClick={() => setSearchTerm(chip.value)}
+                                            className={`
+                                                px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all
+                                                ${isActive
+                                                    ? 'bg-[#FFB800] text-slate-900 shadow-lg scale-105'
+                                                    : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-100'
+                                                }
+                                            `}
+                                        >
+                                            {chip.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowColumnSettings(!showColumnSettings)}
+                                className={`p-4 rounded-2xl transition-all shadow-xl border flex items-center gap-3 ${showColumnSettings ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-100 hover:border-[#FFB800]'}`}
+                            >
+                                <LayoutGrid className="w-5 h-5" />
+                                <span className="text-[10px] font-black uppercase tracking-widest">Colonnes</span>
+                            </button>
+
+                            {showColumnSettings && (
+                                <div className="absolute top-full right-0 mt-4 w-72 bg-white rounded-[32px] shadow-2xl border border-slate-100 p-6 z-[120] animate-in zoom-in-95 duration-200">
+                                    <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-4 px-2">Fournisseurs Affichés</h3>
+                                    <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar">
+                                        {matrixData.suppliers.map((s) => (
+                                            <label key={s} className="flex items-center gap-3 p-3 hover:bg-slate-50 rounded-2xl cursor-pointer group transition-colors">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={visibleColumns.includes(s)}
+                                                    onChange={() => {
+                                                        setVisibleColumns(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
+                                                    }}
+                                                    className="w-5 h-5 rounded-lg border-2 border-slate-200 checked:bg-slate-900 checked:border-slate-900 transition-all cursor-pointer"
+                                                />
+                                                <span className="text-sm font-bold text-slate-700 group-hover:text-slate-900">{s}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-[32px] border border-slate-100 shadow-xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-900">
+                                        <th className="sticky left-0 z-20 bg-slate-900 px-5 py-3.5 text-[9px] font-black text-[#FFB800] uppercase tracking-[0.2em] border-r border-white/5 min-w-[200px]">Article</th>
+                                        {columnOrder.filter(s => visibleColumns.includes(s) && matrixData.suppliers.includes(s)).map((s, idx) => (
+                                            <th
+                                                key={s}
+                                                draggable
+                                                onDragStart={(e) => e.dataTransfer.setData('text/plain', s)}
+                                                onDragOver={(e) => e.preventDefault()}
+                                                onDrop={(e) => {
+                                                    e.preventDefault();
+                                                    const draggedSup = e.dataTransfer.getData('text/plain');
+                                                    if (draggedSup === s) return;
+                                                    const newOrder = [...columnOrder];
+                                                    const draggedIdx = newOrder.indexOf(draggedSup);
+                                                    const targetIdx = newOrder.indexOf(s);
+                                                    newOrder.splice(draggedIdx, 1);
+                                                    newOrder.splice(targetIdx, 0, draggedSup);
+                                                    setColumnOrder(newOrder);
+                                                }}
+                                                className="px-4 py-3.5 text-[9px] font-black text-white uppercase tracking-[0.2em] text-center border-r border-white/5 min-w-[140px] cursor-move hover:bg-slate-800 transition-colors"
+                                            >
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    <List className="w-3 h-3 text-slate-500" />
+                                                    {s}
+                                                </div>
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {matrixData.rows.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase())).map((row) => (
+                                        <tr key={row.name} className="hover:bg-slate-50 transition-colors group">
+                                            <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 transition-colors px-5 py-2.5 border-r border-slate-100">
+                                                <span className="text-xs font-black text-slate-900 uppercase tracking-tight">{row.name}</span>
+                                            </td>
+                                            {columnOrder.filter(s => visibleColumns.includes(s) && matrixData.suppliers.includes(s)).map(sup => {
+                                                const entry = row.prices[sup];
+                                                const price = entry?.price;
+                                                const visiblePrices = Object.entries(row.prices)
+                                                    .filter(([s]) => visibleColumns.includes(s))
+                                                    .map(([, v]) => v.price);
+                                                const isBest = price && price === Math.min(...visiblePrices);
+
+                                                return (
+                                                    <td key={sup} className="px-4 py-2.5 text-center border-r border-slate-50">
+                                                        {price ? (
+                                                            <div className={`inline-flex flex-col items-center p-1.5 rounded-xl w-full transition-all ${isBest ? 'bg-emerald-50 border border-emerald-100 shadow-sm' : ''}`}>
+                                                                <span className={`text-[11px] font-black tabular-nums ${isBest ? 'text-emerald-600' : 'text-slate-600'}`}>
+                                                                    {price.toFixed(3)}
+                                                                </span>
+                                                                <span className={`text-[7px] font-black uppercase mt-0.5 ${isBest ? 'text-emerald-400' : entry?.isRef ? 'text-blue-500' : 'text-slate-300'}`}>
+                                                                    {entry?.isRef ? 'CMD' : isBest ? 'MIN' : 'DER'}
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-slate-200 font-bold text-[10px]">---</span>
+                                                        )}
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             ) : (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -423,74 +788,72 @@ export default function ArticlesPage() {
                     {supplierGroups.map((group) => {
                         const isExpanded = expandedSuppliers[group.name];
                         return (
-                            <div key={group.name} className="bg-white rounded-[32px] p-1 shadow-sm border border-slate-100 overflow-hidden transition-all duration-300">
+                            <div key={group.name} className="bg-white rounded-[24px] p-0.5 shadow-sm border border-slate-100 overflow-hidden transition-all duration-300">
                                 <div
                                     onClick={() => toggleSupplier(group.name)}
                                     className={`
-                                        p-6 flex items-center justify-between cursor-pointer rounded-[28px] transition-all
+                                        p-4 flex items-center justify-between cursor-pointer rounded-[20px] transition-all
                                         ${isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50'}
                                     `}
                                 >
-                                    <div className="flex items-center gap-6">
-                                        <div className={`w-14 h-14 rounded-2xl ${group.color} flex items-center justify-center text-white shadow-lg text-xl font-black`}>
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-10 h-10 rounded-xl ${group.color} flex items-center justify-center text-white shadow-md text-base font-black`}>
                                             {group.name.charAt(0).toUpperCase()}
                                         </div>
                                         <div>
-                                            <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">{group.name}</h2>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className="bg-white px-2 py-0.5 rounded text-[10px] font-black text-slate-500 uppercase tracking-widest border border-slate-100">
-                                                    {group.rows.length} Articles
+                                            <h2 className="text-base font-black text-slate-900 uppercase tracking-tight">{group.name}</h2>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                                                    {group.rows.length} Matériaux
                                                 </span>
                                             </div>
                                         </div>
                                     </div>
 
-                                    <div className="flex items-start gap-8">
+                                    <div className="flex items-center gap-6">
                                         <div className="hidden sm:flex flex-col items-end">
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Dépensé</span>
-                                            <span className="text-2xl font-black text-slate-900 tabular-nums leading-none">
-                                                {group.total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-slate-400 ml-0.5 font-bold">DT</span>
+                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Total</span>
+                                            <span className="text-lg font-black text-slate-900 tabular-nums leading-none">
+                                                {group.total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-400 font-bold">DT</span>
                                             </span>
                                         </div>
-                                        <div className={`p-3 rounded-full border transition-all duration-300 ${isExpanded ? 'bg-slate-900 text-white border-slate-900 rotate-180' : 'bg-white text-slate-400 border-slate-200'}`}>
-                                            <ChevronDown className="h-5 w-5" />
+                                        <div className={`p-2 rounded-full border transition-all duration-300 ${isExpanded ? 'bg-slate-900 text-white border-slate-900 rotate-180' : 'bg-white text-slate-400 border-slate-200'}`}>
+                                            <ChevronDown className="h-4 w-4" />
                                         </div>
                                     </div>
                                 </div>
 
                                 {isExpanded && (
-                                    <div className="p-2 animate-in slide-in-from-top-4 duration-300">
-                                        <div className="bg-white rounded-[24px] border border-slate-100 overflow-hidden">
-                                            <table className="w-full text-left border-collapse min-w-[800px]">
+                                    <div className="p-1.5 animate-in slide-in-from-top-2 duration-300">
+                                        <div className="bg-white rounded-[16px] border border-slate-100 overflow-hidden">
+                                            <table className="w-full text-left border-collapse min-w-[700px]">
                                                 <thead className="bg-slate-50 border-b border-slate-100">
                                                     <tr>
-                                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32">Date</th>
-                                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-40">Référence</th>
-                                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Désignation</th>
-                                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-24 text-center">Qté</th>
-                                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-40 text-right">Prix Unitaire</th>
-                                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-40 text-right">Total TTC</th>
-                                                        {isAdmin && <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-24 text-center">Actions</th>}
+                                                        <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-28">Date</th>
+                                                        <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Désignation</th>
+                                                        <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-20 text-center">Qté</th>
+                                                        <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-32 text-right">P.U</th>
+                                                        <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-32 text-right">Total</th>
+                                                        {isAdmin && <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-16 text-center"></th>}
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-50">
-                                                    {group.rows.map((row, i) => (
-                                                        <tr key={row.id} className="hover:bg-blue-50/30 transition-colors group">
-                                                            <td className="px-6 py-5">
-                                                                <div className="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-[10px] font-bold text-slate-600">{row.date}</div>
+                                                    {group.rows.map((row) => (
+                                                        <tr key={row.id} className="hover:bg-blue-50/20 transition-colors group">
+                                                            <td className="px-5 py-3">
+                                                                <div className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-[9px] font-bold text-slate-600">{row.date}</div>
                                                             </td>
-                                                            <td className="px-6 py-5 text-sm font-bold text-slate-500">{row.reference}</td>
-                                                            <td className="px-6 py-5 text-sm font-black text-slate-900 uppercase">{row.designation}</td>
-                                                            <td className="px-6 py-5 text-center">
-                                                                <span className="text-xs font-bold text-slate-600 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">{row.quantity}</span>
+                                                            <td className="px-5 py-3 text-xs font-black text-slate-800 uppercase line-clamp-1">{normalizeArticleName(row.designation)}</td>
+                                                            <td className="px-5 py-3 text-center">
+                                                                <span className="text-[10px] font-bold text-slate-600 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">{row.quantity}</span>
                                                             </td>
-                                                            <td className="px-6 py-5 text-right font-bold text-slate-500 tabular-nums">{row.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                                                            <td className="px-6 py-5 text-right font-black text-slate-900 tabular-nums">{row.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                                                            <td className="px-5 py-3 text-right font-bold text-slate-500 tabular-nums text-xs">{row.unitPrice.toFixed(3)}</td>
+                                                            <td className="px-5 py-3 text-right font-black text-slate-900 tabular-nums text-xs">{row.totalPrice.toFixed(3)}</td>
                                                             {isAdmin && (
-                                                                <td className="px-6 py-5 text-center">
-                                                                    <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                                                                        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="p-2 hover:bg-blue-50 rounded-xl text-slate-400 hover:text-blue-600 transition-colors"><Pencil className="h-4 w-4" /></button>
-                                                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(row); }} className="p-2 hover:bg-red-50 rounded-xl text-slate-400 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
+                                                                <td className="px-5 py-3 text-center">
+                                                                    <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                                                        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="p-1.5 hover:bg-blue-50 rounded-lg text-slate-300 hover:text-blue-600 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                                                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(row); }} className="p-1.5 hover:bg-red-50 rounded-lg text-slate-300 hover:text-red-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                                                                     </div>
                                                                 </td>
                                                             )}

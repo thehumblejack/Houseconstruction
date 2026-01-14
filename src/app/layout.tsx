@@ -23,7 +23,8 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="fr" className={jakarta.variable}>
-            <body className={`${jakarta.className} bg-slate-50`} suppressHydrationWarning={true}>
+            <body className={`${jakarta.className} bg-slate-50 relative`} suppressHydrationWarning={true}>
+                <div className="grain" />
                 <AuthProvider>
                     <Navbar />
                     <main className="min-h-screen">{children}</main>

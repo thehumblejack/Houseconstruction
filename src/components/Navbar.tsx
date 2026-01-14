@@ -7,11 +7,13 @@ import { LayoutGrid, Package, LogOut, ReceiptText, Building2, ShoppingCart, User
 import GlobalSearch from './GlobalSearch';
 import { useEffect, useState, useMemo } from 'react';
 import { createClient } from '@/lib/supabase';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Navbar() {
     const pathname = usePathname();
     const { signOut, isAdmin, user, isApproved } = useAuth();
     const [pendingCount, setPendingCount] = useState(0);
+    const [isMoreOpen, setIsMoreOpen] = useState(false);
     const supabase = useMemo(() => createClient(), []);
 
     useEffect(() => {
@@ -55,11 +57,11 @@ export default function Navbar() {
     if (pathname === '/' && (!user || !isApproved)) return null;
 
     const navItems = [
+        { name: 'CHANTIER', path: '/', icon: LayoutGrid },
         { name: 'DÉPENSES', path: '/expenses', icon: ReceiptText },
         { name: 'FOURNISSEURS', path: '/suppliers', icon: User },
         { name: 'ARTICLES', path: '/articles', icon: Package },
         { name: 'COMMANDES', path: '/orders', icon: ShoppingCart },
-        { name: 'CHANTIER', path: '/', icon: LayoutGrid },
     ];
 
     return (
@@ -148,61 +150,118 @@ export default function Navbar() {
                 </nav>
             </div>
 
-            {/* Mobile Navbar - Modern Floating Dock */}
+            {/* Mobile Navbar - Clean App-style Dock */}
             <div className="md:hidden fixed bottom-6 left-4 right-4 z-[60] font-jakarta">
-                <nav className="flex items-center justify-between bg-slate-900/95 backdrop-blur-2xl border border-white/10 p-2 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)]">
-                    {navItems.map((item) => {
+
+                {/* Dropdown Menu Overlay */}
+                <AnimatePresence>
+                    {isMoreOpen && (
+                        <>
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                onClick={() => setIsMoreOpen(false)}
+                                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[-1]"
+                            />
+                            <motion.div
+                                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: 20, scale: 0.95 }}
+                                className="absolute bottom-[calc(100%+12px)] right-0 left-0 bg-slate-900/95 backdrop-blur-2xl border border-white/10 rounded-2xl overflow-hidden shadow-2xl"
+                            >
+                                <div className="p-2 space-y-1">
+                                    {[
+                                        { name: 'ARTICLES', path: '/articles', icon: Package },
+                                        { name: 'COMMANDES', path: '/orders', icon: ShoppingCart },
+                                    ].map((item) => (
+                                        <Link
+                                            key={item.path}
+                                            href={item.path}
+                                            onClick={() => setIsMoreOpen(false)}
+                                            className="flex items-center gap-4 px-5 py-4 text-white hover:bg-white/5 transition-colors rounded-xl group"
+                                        >
+                                            <div className="p-2 bg-white/5 rounded-lg text-slate-400 group-hover:text-[#FFB800] transition-colors">
+                                                <item.icon className="w-5 h-5" />
+                                            </div>
+                                            <span className="text-xs font-black uppercase tracking-widest">{item.name}</span>
+                                        </Link>
+                                    ))}
+
+                                    {isAdmin && (
+                                        <Link
+                                            href="/admin/users"
+                                            onClick={() => setIsMoreOpen(false)}
+                                            className="flex items-center justify-between px-5 py-4 text-white hover:bg-white/5 transition-colors rounded-xl group border-t border-white/5"
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className="p-2 bg-[#FFB800]/10 rounded-lg text-[#FFB800]">
+                                                    <Shield className="w-5 h-5" />
+                                                </div>
+                                                <span className="text-xs font-black uppercase tracking-widest">Administration</span>
+                                            </div>
+                                            {pendingCount > 0 && (
+                                                <span className="bg-[#FFB800] text-black text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center">
+                                                    {pendingCount}
+                                                </span>
+                                            )}
+                                        </Link>
+                                    )}
+                                </div>
+                            </motion.div>
+                        </>
+                    )}
+                </AnimatePresence>
+
+                <nav className="flex items-center justify-around bg-slate-900/95 backdrop-blur-2xl border border-white/10 p-2 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+                    {[
+                        { name: 'Chantier', path: '/', icon: LayoutGrid },
+                        { name: 'Dépenses', path: '/expenses', icon: ReceiptText },
+                        { name: 'Fourn.', path: '/suppliers', icon: User },
+                    ].map((item) => {
                         const isActive = pathname === item.path;
                         const Icon = item.icon;
                         return (
                             <Link
                                 key={item.path}
                                 href={item.path}
+                                onClick={() => setIsMoreOpen(false)}
                                 className={`
-                                    flex flex-col items-center justify-center flex-1 h-16 rounded-xl transition-all duration-300 gap-1
-                                    ${isActive
-                                        ? 'bg-[#FFB800] text-slate-900 shadow-lg shadow-amber-900/20 translate-y-[-4px]'
-                                        : 'text-slate-500 hover:bg-white/5'
-                                    }
+                                    flex flex-col items-center justify-center flex-1 h-14 rounded-xl transition-all duration-300 gap-1
+                                    ${isActive ? 'text-[#FFB800]' : 'text-slate-500'}
                                 `}
                             >
-                                <Icon className={`h-5 w-5 ${isActive ? 'animate-pulse-once' : ''}`} strokeWidth={isActive ? 2.5 : 2} />
-                                <span className={`text-[9px] font-bold uppercase tracking-tight ${isActive ? 'opacity-100' : 'opacity-60'}`}>{item.name}</span>
+                                <div className={`p-2 rounded-lg transition-colors ${isActive ? 'bg-[#FFB800]/10' : ''}`}>
+                                    <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
+                                </div>
+                                <span className={`text-[8px] font-black uppercase tracking-widest ${isActive ? 'opacity-100' : 'opacity-40'}`}>
+                                    {item.name}
+                                </span>
                             </Link>
                         );
                     })}
 
-                    {isAdmin && (
-                        <>
-                            <div className="w-px h-8 bg-white/10 mx-1" />
-                            <Link
-                                href="/admin/users"
-                                className={`
-                                    relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-300 gap-1
-                                    ${pathname === '/admin/users'
-                                        ? 'bg-[#FFB800] text-slate-900 shadow-lg shadow-amber-900/20 translate-y-[-4px]'
-                                        : 'text-slate-500 hover:bg-white/5'
-                                    }
-                                `}
-                            >
-                                <Shield className="h-5 w-5" strokeWidth={pathname === '/admin/users' ? 2.5 : 2} />
-                                <span className={`text-[9px] font-bold uppercase tracking-tight ${pathname === '/admin/users' ? 'opacity-100' : 'opacity-60'}`}>ADMIN</span>
-                                {pendingCount > 0 && (
-                                    <span className="absolute -top-1 -right-1 bg-white text-red-600 text-[9px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
-                                        {pendingCount}
-                                    </span>
-                                )}
-                            </Link>
-                        </>
-                    )}
+                    {/* More Menu Toggle */}
+                    <button
+                        onClick={() => setIsMoreOpen(!isMoreOpen)}
+                        className={`
+                            flex flex-col items-center justify-center flex-1 h-14 rounded-xl transition-all duration-300 gap-1
+                            ${isMoreOpen || (pathname === '/articles' || pathname === '/orders' || pathname === '/admin/users') ? 'text-[#FFB800]' : 'text-slate-500'}
+                        `}
+                    >
+                        <div className={`p-2 rounded-lg transition-colors ${isMoreOpen || (pathname === '/articles' || pathname === '/orders' || pathname === '/admin/users') ? 'bg-[#FFB800]/10' : ''}`}>
+                            <Package className="h-5 w-5" />
+                        </div>
+                        <span className="text-[8px] font-black uppercase tracking-widest opacity-40">Plus</span>
+                    </button>
 
-                    <div className="w-px h-8 bg-white/10 mx-2" />
+                    <div className="w-px h-8 bg-white/10 mx-1" />
 
                     <button
                         onClick={() => signOut()}
-                        className="flex flex-col items-center justify-center w-16 h-16 rounded-xl text-slate-500 hover:bg-red-500/10 hover:text-red-500 transition-all"
+                        className="flex items-center justify-center w-12 h-12 rounded-xl text-slate-500 hover:text-red-500 transition-colors"
                     >
-                        <LogOut className="h-5 w-5 my-auto" strokeWidth={2.5} />
+                        <LogOut className="h-5 w-5" strokeWidth={2} />
                     </button>
                 </nav>
             </div>

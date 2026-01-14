@@ -1,7 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Hammer, Ruler, Clock, ArrowRight, CheckCircle2, Building2, HardHat, ChevronRight, MapPin, Phone, Mail, Facebook, Instagram, Linkedin, Twitter, Star } from 'lucide-react';
+import {
+    Shield, Hammer, Ruler, Clock, ArrowRight, CheckCircle2,
+    Building2, HardHat, ChevronRight, MapPin, Phone, Mail,
+    Facebook, Instagram, Linkedin, Twitter, Star, ExternalLink,
+    Zap, Gem, Award, Globe
+} from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
@@ -9,17 +14,12 @@ import { useAuth } from '@/context/AuthContext';
 export default function LandingPage() {
     const { user, isApproved } = useAuth();
     const [scrolled, setScrolled] = useState(false);
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     useEffect(() => {
-        const handleScroll = () => setScrolled(window.scrollY > 50);
+        const handleScroll = () => setScrolled(window.scrollY > 20);
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
-
-    const GoldText = ({ children }: { children: React.ReactNode }) => (
-        <span className="text-[#FFB800]">{children}</span>
-    );
 
     const portfolioItems = [
         { title: 'Villa Azure', category: 'Architecture Moderne', image: 'https://images.unsplash.com/photo-1600596542815-2a4290aa315c?q=80&w=2071&auto=format&fit=crop' },
@@ -28,43 +28,31 @@ export default function LandingPage() {
         { title: 'Havre de Paix', category: 'Maison Individuelle', image: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?q=80&w=2070&auto=format&fit=crop' },
     ];
 
-    const partners = [
-        { name: 'ArchiBuild', logo: Building2 },
-        { name: 'SteelCore', logo: Shield },
-        { name: 'EcoConstruct', logo: HardHat },
-        { name: 'SmartDev', logo: Ruler },
-        { name: 'SafeHome', logo: Hammer },
-    ];
-
-    const testimonials = [
-        { name: 'Ahmed Mansour', role: 'Propriétaire Villa', content: 'Une gestion exemplaire du début à la fin. La transparence sur les coûts et les délais a été le point fort.', photo: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?q=80&w=1974&auto=format&fit=crop' },
-        { name: 'Sarah Ben Ali', role: 'Investisseur', content: 'Leur approche numérique de la construction est révolutionnaire. Je pouvais suivre mon chantier en temps réel.', photo: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=1974&auto=format&fit=crop' },
-        { name: 'Karim Dridi', role: 'Architecte', content: 'En tant qu\'architecte, travailler avec HouseExpert est un plaisir. Ils respectent scrupuleusement les détails.', photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=1974&auto=format&fit=crop' },
-    ];
-
-    const articles = [
-        { title: 'L\'avenir de la construction durable', date: '12 Jan 2026', image: 'https://images.unsplash.com/photo-1518780664697-55e3ad937233?q=80&w=2070&auto=format&fit=crop' },
-        { title: 'Comment optimiser son budget chantier', date: '08 Jan 2026', image: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?q=80&w=2070&auto=format&fit=crop' },
-        { title: 'Top 5 des tendances archi 2026', date: '05 Jan 2026', image: 'https://images.unsplash.com/photo-1531834685032-c34bf0d84c77?q=80&w=2070&auto=format&fit=crop' },
+    const stats = [
+        { label: "Années d'Expertise", value: "41+" },
+        { label: "Projets Réalisés", value: "500+" },
+        { label: "Partenaires Stratégiques", value: "25" },
+        { label: "Satisfaction Client", value: "99%" },
     ];
 
     return (
-        <div className="bg-white text-slate-900 font-sans selection:bg-yellow-200 scroll-smooth">
-            {/* Navigation */}
-            <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-white/95 backdrop-blur-xl shadow-lg py-3' : 'bg-transparent py-5 md:py-8'}`}>
-                <div className="max-w-[1400px] mx-auto px-6 md:px-10 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center shadow-lg shadow-black/10">
-                            <Building2 className="text-[#FFB800] w-6 h-6" />
+        <div className="bg-[#fcfcfc] text-slate-900 font-jakarta selection:bg-amber-100 scroll-smooth min-h-screen">
+
+            {/* Navigation - Ultra Minimalist Glassmorphism */}
+            <nav className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-700 px-4 md:px-10 ${scrolled ? 'py-4' : 'py-8'}`}>
+                <div className={`max-w-[1400px] mx-auto flex items-center justify-between transition-all duration-700 rounded-[2rem] px-6 md:px-10 ${scrolled ? 'bg-white/70 backdrop-blur-2xl shadow-[0_8px_32px_0_rgba(0,0,0,0.05)] border border-white/20 py-3' : 'bg-transparent py-0'}`}>
+                    <div className="flex items-center gap-2 group cursor-pointer">
+                        <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center transition-transform group-hover:rotate-12">
+                            <Building2 className="text-[#FFB800] w-5 h-5" />
                         </div>
-                        <span className={`font-black text-xl tracking-tighter uppercase ${scrolled ? 'text-slate-900' : 'text-slate-900 md:text-white'}`}>
+                        <span className="font-bold text-lg tracking-[-0.05em] uppercase">
                             House<span className="text-[#FFB800]">Expert</span>
                         </span>
                     </div>
 
-                    <div className="hidden lg:flex items-center gap-10">
-                        {['Accueil', 'Services', 'Projets', 'Témoignages', 'Contact'].map((item) => (
-                            <a key={item} href={`#${item.toLowerCase()}`} className={`text-[10px] font-black uppercase tracking-[0.2em] hover:text-[#FFB800] transition-colors ${scrolled ? 'text-slate-500' : 'text-white/60'}`}>
+                    <div className="hidden lg:flex items-center gap-8">
+                        {['Accueil', 'Services', 'Projets', 'Contact'].map((item) => (
+                            <a key={item} href={`#${item.toLowerCase()}`} className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 hover:text-slate-900 transition-colors">
                                 {item}
                             </a>
                         ))}
@@ -73,269 +61,256 @@ export default function LandingPage() {
                     <div className="flex items-center gap-4">
                         <Link
                             href={user ? (isApproved ? '/' : '/auth/pending') : '/login'}
-                            className="bg-[#FFB800] hover:bg-[#D49A00] text-slate-900 px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:scale-105 active:scale-95 shadow-xl shadow-yellow-500/20"
+                            className="bg-slate-900 text-white px-6 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-[#FFB800] hover:text-slate-900 transition-all active:scale-95 border border-slate-900"
                         >
-                            {user ? 'Mon Dashboard' : 'Authentification'}
+                            {user ? 'Dashboard' : 'Accès Client'}
                         </Link>
                     </div>
                 </div>
             </nav>
 
-            {/* Hero Section */}
-            <section id="accueil" className="relative min-h-[90vh] flex items-center overflow-hidden bg-[#FAF9F6]">
-                <div className="max-w-[1400px] mx-auto px-6 md:px-10 w-full grid lg:grid-cols-2 gap-12 items-center pt-24">
-                    <div className="space-y-8 animate-in fade-in slide-in-from-left-12 duration-1000">
-                        <div className="inline-flex items-center gap-3 px-4 py-2 bg-slate-900/5 rounded-full border border-slate-900/10">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#FFB800] animate-pulse"></span>
-                            <span className="text-slate-900 text-[9px] font-black uppercase tracking-[0.3em]">L'excellence en Construction</span>
+            {/* Hero Section - Bento Inspired Hybrid */}
+            <section id="accueil" className="relative pt-32 pb-20 md:pt-48 md:pb-32 overflow-hidden">
+                <div className="max-w-[1400px] mx-auto px-6 md:px-10">
+                    <div className="grid lg:grid-cols-2 gap-20 items-center">
+                        <div className="space-y-10">
+                            <div className="inline-flex items-center gap-3 px-4 py-2 bg-amber-50 rounded-full border border-amber-100">
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#FFB800] animate-pulse"></span>
+                                <span className="text-[#B48A00] text-[9px] font-bold uppercase tracking-[0.2em]">L'excellence en Archi-Tech</span>
+                            </div>
+
+                            <h1 className="text-6xl md:text-8xl font-black text-slate-900 leading-[0.9] tracking-[-0.06em] uppercase">
+                                Redéfinir <br />
+                                <span className="text-[#FFB800] italic">L'Espace</span> <br />
+                                Construit.
+                            </h1>
+
+                            <p className="text-lg md:text-xl text-slate-500 max-w-xl font-medium leading-relaxed tracking-tight">
+                                Précision technique et vision architecturale. Nous transformons vos ambitions en structures durables grâce à une gestion numérique de pointe.
+                            </p>
+
+                            <div className="flex flex-wrap gap-4 pt-4">
+                                <Link href="/login" className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold uppercase tracking-widest hover:bg-[#FFB800] hover:text-slate-900 transition-all flex items-center gap-3 group text-xs shadow-2xl shadow-slate-900/10">
+                                    Démarrer un projet
+                                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                </Link>
+                                <button className="bg-white text-slate-900 px-8 py-4 rounded-2xl font-bold uppercase tracking-widest border border-slate-200 hover:border-slate-900 transition-all text-xs">
+                                    Voir Portfolio
+                                </button>
+                            </div>
                         </div>
 
-                        <h1 className="text-6xl md:text-7xl lg:text-8xl font-black text-slate-900 leading-[0.85] tracking-tighter uppercase">
-                            Construction <br />
-                            <GoldText>Management</GoldText> <br />
-                            Solutions.
-                        </h1>
-
-                        <p className="text-base md:text-lg text-slate-500 max-w-xl font-medium leading-relaxed">
-                            Nous redéfinissons les standards de la construction moderne. Précision technique, transparence totale et résultats d'exception pour vos projets résidentiels et commerciaux.
-                        </p>
-
-                        <div className="flex flex-wrap gap-5">
-                            <Link href="/login" className="bg-[#FFB800] text-slate-900 px-10 py-5 rounded-2xl font-black uppercase tracking-[0.1em] hover:bg-slate-900 hover:text-white transition-all flex items-center justify-center gap-4 group text-xs">
-                                Commencer ICI
-                                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                            </Link>
-                        </div>
-                    </div>
-
-                    <div className="relative flex justify-center lg:justify-end animate-in fade-in zoom-in duration-1000 delay-200">
-                        <div className="relative w-full max-w-[500px] aspect-square rounded-full border-t-8 border-r-8 border-[#FFB800] p-4">
-                            <div className="w-full h-full rounded-full overflow-hidden relative shadow-2xl">
+                        {/* Bento Hero Grid */}
+                        <div className="grid grid-cols-12 gap-4 h-[500px] md:h-[600px]">
+                            <div className="col-span-8 overflow-hidden rounded-[2.5rem] relative shadow-2xl group">
                                 <Image
                                     src="https://images.unsplash.com/photo-1541888946425-d81bb19240f5?q=80&w=2070&auto=format&fit=crop"
-                                    alt="Construction Expert"
+                                    alt="Modern Construction"
                                     fill
-                                    className="object-cover"
+                                    className="object-cover transition-transform duration-1000 group-hover:scale-105"
+                                    priority
                                 />
+                                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent"></div>
+                                <div className="absolute bottom-8 left-8">
+                                    <div className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-2xl text-white">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Impact</p>
+                                        <p className="text-xl font-black tracking-tighter uppercase">Structure Pure</p>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="absolute -bottom-10 -left-10 bg-white p-6 rounded-3xl shadow-xl border border-slate-50 flex flex-col gap-1">
-                                <span className="text-slate-900 text-3xl font-black tracking-tighter uppercase">41</span>
-                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Ans d'Expertise</span>
+                            <div className="col-span-4 flex flex-col gap-4">
+                                <div className="flex-1 overflow-hidden rounded-[2.5rem] relative shadow-xl group">
+                                    <Image
+                                        src="https://images.unsplash.com/photo-1600585154340-be6199f7d009?q=80&w=2070&auto=format&fit=crop"
+                                        alt="Interior Design"
+                                        fill
+                                        className="object-cover transition-transform duration-1000 group-hover:scale-110"
+                                    />
+                                    <div className="absolute inset-0 bg-amber-500/10 mix-blend-overlay"></div>
+                                </div>
+                                <div className="flex-1 bg-[#FFB800] rounded-[2.5rem] p-8 flex flex-col justify-end transition-transform hover:-rotate-3 duration-500 cursor-default">
+                                    <Award className="w-10 h-10 text-slate-900 mb-4" />
+                                    <p className="text-slate-900 text-3xl font-black leading-tight tracking-tighter uppercase">41 Ans</p>
+                                    <p className="text-slate-900/60 text-[10px] font-bold uppercase tracking-widest">D'Excellence</p>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                {/* Background Decor */}
+                <div className="absolute top-0 right-[-10%] w-[500px] h-[500px] bg-amber-100/30 rounded-full blur-[120px] -z-10"></div>
             </section>
 
-            {/* Reliable Solutions Section (The '41' Section) */}
-            <section id="expertise" className="py-24 md:py-32 bg-white relative overflow-hidden">
+            {/* Core Services - Bento Grid Section */}
+            <section id="services" className="py-24 md:py-40 bg-white">
                 <div className="max-w-[1400px] mx-auto px-6 md:px-10">
-                    <div className="grid lg:grid-cols-2 gap-16 items-center">
-                        <div className="relative">
-                            <div className="absolute -top-20 -left-10 text-[280px] font-black text-slate-50 select-none z-0 leading-none">41</div>
-                            <div className="relative z-10 rounded-[40px] overflow-hidden aspect-[4/3] shadow-2xl transform -rotate-1 hover:rotate-0 transition-transform duration-700">
-                                <Image
-                                    src="https://images.unsplash.com/photo-1581094794329-cd11179a28eb?q=80&w=2135&auto=format&fit=crop"
-                                    alt="Expertise"
-                                    fill
-                                    className="object-cover"
-                                />
-                            </div>
-                        </div>
-                        <div className="space-y-8 relative z-10">
-                            <div className="w-12 h-1 bg-[#FFB800]"></div>
-                            <h2 className="text-4xl md:text-6xl font-black text-slate-900 uppercase leading-[0.9] tracking-tighter">
-                                Build with quality, <br />
-                                safety, & Durability, <br />
-                                delivering <GoldText>reliable solutions</GoldText> <br />
-                                for all project needs.
+                    <div className="flex flex-col md:flex-row md:items-end justify-between gap-10 mb-20">
+                        <div className="space-y-4">
+                            <span className="text-[10px] font-bold uppercase tracking-[0.4em] text-[#FFB800]">Services & Expertise</span>
+                            <h2 className="text-5xl md:text-7xl font-black text-slate-900 uppercase leading-[0.85] tracking-[-0.04em]">
+                                Une Approche <br />
+                                <span className="opacity-20 italic">Sans Compromis</span>
                             </h2>
-                            <p className="text-slate-500 font-medium leading-relaxed max-w-lg">
-                                Plus de 4 décennies d'excellence. Nous combinons l'artisanat traditionnel avec les technologies de gestion les plus avancées pour garantir le succès de vos chantiers.
-                            </p>
-                            <div className="flex gap-4">
-                                <Link href="/login" className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest border-b-2 border-slate-900 pb-1 hover:border-[#FFB800] transition-colors">
-                                    En savoir plus <ChevronRight className="w-4 h-4" />
-                                </Link>
-                            </div>
                         </div>
-                    </div>
-                </div>
-            </section>
-
-            {/* Wide Construction View */}
-            <section className="px-6 md:px-10 h-[400px] md:h-[600px] relative overflow-hidden rounded-[60px] max-w-[1500px] mx-auto group">
-                <Image
-                    src="https://images.unsplash.com/photo-1590486803833-1c5c5050130a?q=80&w=2070&auto=format&fit=crop"
-                    alt="Massive Construction Site"
-                    fill
-                    className="object-cover transition-transform duration-[2s] group-hover:scale-110"
-                />
-                <div className="absolute inset-0 bg-black/10 transition-colors group-hover:bg-transparent duration-700"></div>
-            </section>
-
-            {/* Partners Bar */}
-            <section className="py-20 border-y border-slate-100">
-                <div className="max-w-[1400px] mx-auto px-6 md:px-10 flex flex-wrap justify-between items-center gap-12 opacity-40 grayscale group hover:grayscale-0 transition-all">
-                    {partners.map((P, i) => (
-                        <div key={i} className="flex items-center gap-3">
-                            <P.logo className="w-8 h-8" />
-                            <span className="text-sm font-black uppercase tracking-widest">{P.name}</span>
-                        </div>
-                    ))}
-                </div>
-            </section>
-
-            {/* Testimonials (Reviews) Section */}
-            <section id="témoignages" className="py-24 md:py-32 bg-[#FAF9F6]">
-                <div className="max-w-[1400px] mx-auto px-6 md:px-10 text-center space-y-20">
-                    <div className="space-y-4">
-                        <span className="text-[10px] font-black uppercase tracking-[0.4em] text-[#FFB800]">Nos Clients</span>
-                        <h2 className="text-5xl md:text-[80px] font-black text-slate-900 uppercase leading-[0.8] tracking-tighter">
-                            What do people <GoldText>think</GoldText> about <br />
-                            New developments?
-                        </h2>
+                        <p className="text-slate-400 max-w-sm font-medium leading-relaxed">
+                            De la conception technique à la livraison clé en main, nous utilisons le BIM et le management agile pour garantir vos délais et budgets.
+                        </p>
                     </div>
 
-                    <div className="grid md:grid-cols-3 gap-8">
-                        {testimonials.map((t, i) => (
-                            <div key={i} className="bg-white p-10 rounded-[40px] shadow-sm hover:shadow-xl transition-all border border-slate-100 text-left space-y-8">
-                                <div className="flex gap-1">
-                                    {[...Array(5)].map((_, j) => <Star key={j} className="w-4 h-4 fill-[#FFB800] text-[#FFB800]" />)}
+                    <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-6 gap-6">
+                        {/* Big Bento Item */}
+                        <div className="md:col-span-2 lg:col-span-3 bg-slate-50 rounded-[3rem] p-10 md:p-14 flex flex-col justify-between group hover:bg-slate-900 transition-all duration-700 hover:shadow-2xl">
+                            <div className="space-y-6">
+                                <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-500">
+                                    <Zap className="w-8 h-8 text-[#FFB800]" />
                                 </div>
-                                <p className="text-slate-600 font-medium italic leading-relaxed text-lg italic">"{t.content}"</p>
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-full overflow-hidden relative bg-slate-100">
-                                        <Image src={t.photo} alt={t.name} fill className="object-cover" />
-                                    </div>
-                                    <div>
-                                        <div className="text-sm font-black uppercase tracking-tight text-slate-900">{t.name}</div>
-                                        <div className="text-[10px] font-black uppercase tracking-widest text-[#FFB800]">{t.role}</div>
-                                    </div>
-                                </div>
+                                <h3 className="text-3xl font-black uppercase tracking-tighter leading-none group-hover:text-white transition-colors duration-500">
+                                    Management <br />Intelligent
+                                </h3>
+                                <p className="text-slate-500 font-medium group-hover:text-slate-400 transition-colors duration-500">
+                                    Suivi en temps réel de votre chantier. Transparence totale sur l'approvisionnement et les ressources.
+                                </p>
                             </div>
-                        ))}
-                    </div>
-                </div>
-            </section>
-
-            {/* News & Articles Section */}
-            <section className="py-24 md:py-32 bg-white">
-                <div className="max-w-[1400px] mx-auto px-6 md:px-10 space-y-20">
-                    <div className="text-center md:text-left">
-                        <div className="flex items-center gap-3 mb-4 justify-center md:justify-start">
-                            <div className="w-10 h-0.5 bg-[#FFB800]"></div>
-                            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-[#FFB800]">Blog & News</span>
-                        </div>
-                        <h2 className="text-5xl md:text-7xl font-black text-slate-900 uppercase tracking-tighter italic">
-                            Latest <GoldText>News</GoldText> & <br />Articles.
-                        </h2>
-                    </div>
-                    <div className="grid gap-0">
-                        {articles.map((art, i) => (
-                            <div key={i} className="flex flex-col md:flex-row md:items-center gap-6 md:gap-12 py-10 border-b border-slate-100 group cursor-pointer hover:pl-4 transition-all duration-500">
-                                <div className="w-full md:w-48 h-32 relative rounded-3xl overflow-hidden shrink-0 shadow-lg">
-                                    <Image src={art.image} alt={art.title} fill className="object-cover transition-transform duration-700 group-hover:scale-110" />
-                                </div>
-                                <div className="flex-1 space-y-2">
-                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#FFB800]">{art.date}</span>
-                                    <h3 className="text-2xl md:text-3xl font-black uppercase tracking-tight text-slate-900 group-hover:text-[#FFB800] transition-colors leading-tight">{art.title}</h3>
-                                    <p className="text-slate-400 text-sm font-medium line-clamp-1">Découvrez comment nous réinventons la construction pour le 21ème siècle...</p>
-                                </div>
-                                <div className="w-14 h-14 rounded-full border border-slate-200 flex items-center justify-center group-hover:bg-slate-900 group-hover:border-slate-900 group-hover:text-[#FFB800] transition-all duration-500 shrink-0">
-                                    <ArrowRight className="w-6 h-6" />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </section>
-
-            {/* Black Section - Luxury Brand Identity */}
-            <section className="py-24 md:py-10">
-                <div className="max-w-[1400px] mx-auto px-6 md:px-10">
-                    <div className="bg-slate-900 rounded-[60px] overflow-hidden relative min-h-[600px] flex items-center">
-                        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[#FFB800]/5 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2"></div>
-
-                        <div className="grid lg:grid-cols-2 gap-20 items-center p-10 md:p-20 w-full">
-                            <div className="space-y-10">
-                                <div className="space-y-4">
-                                    <div className="w-12 h-1 bg-[#FFB800]"></div>
-                                    <h2 className="text-4xl md:text-6xl font-black text-white uppercase leading-[0.9] tracking-tighter">
-                                        How We Create a <br />
-                                        <GoldText>Luxury</GoldText> Brand <br />
-                                        Identity.
-                                    </h2>
-                                    <p className="text-white/40 font-medium leading-relaxed max-w-lg">
-                                        L'élégance architecturale ne tolère aucun compromis. Notre processus intègre les plus hauts standards de design mondial avec une gestion technique rigoureuse.
-                                    </p>
-                                </div>
-                                <div className="space-y-2">
-                                    {[
-                                        { title: 'Conception Architecturale', val: 'Premium' },
-                                        { title: 'Expertise Structurelle', val: 'Avancée' },
-                                        { title: 'Gestion de Projet', val: 'Numérique' }
-                                    ].map((row, i) => (
-                                        <div key={i} className="flex items-center justify-between py-6 border-b border-white/10 group cursor-pointer hover:border-[#FFB800]/50 transition-all">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-[#FFB800]"></div>
-                                                <span className="text-white text-xs font-black uppercase tracking-widest">{row.title}</span>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-white/20 group-hover:text-[#FFB800] group-hover:translate-x-1 transition-all" />
+                            <div className="pt-10 flex items-center justify-between">
+                                <div className="flex -space-x-3">
+                                    {[1, 2, 3].map(i => (
+                                        <div key={i} className="w-10 h-10 rounded-full border-2 border-white bg-slate-200 overflow-hidden relative shadow-sm">
+                                            <Image src={`https://i.pravatar.cc/100?u=${i}`} alt="Avatar" fill className="object-cover" />
                                         </div>
                                     ))}
-                                </div>
-                            </div>
-                            <div className="relative aspect-square rounded-[40px] overflow-hidden shadow-2xl">
-                                <Image
-                                    src="https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?q=80&w=2070&auto=format&fit=crop"
-                                    alt="Luxury Identity"
-                                    fill
-                                    className="object-cover"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent"></div>
-                                <div className="absolute bottom-8 left-8 right-8 flex justify-center">
-                                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center animate-bounce">
-                                        <div className="w-2 h-2 rounded-full bg-slate-900"></div>
+                                    <div className="w-10 h-10 rounded-full border-2 border-white bg-slate-900 flex items-center justify-center text-[10px] text-white font-bold">
+                                        +50
                                     </div>
                                 </div>
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-[#FFB800]">Voir détails</span>
                             </div>
+                        </div>
+
+                        {/* Bento Item - Color Accent */}
+                        <div className="md:col-span-2 lg:col-span-3 bg-slate-900 rounded-[3rem] p-10 md:p-14 flex flex-col justify-center relative overflow-hidden group">
+                            <div className="absolute inset-0 opacity-10 pointer-events-none">
+                                <div className="absolute top-0 right-0 w-64 h-64 bg-[#FFB800] rounded-full blur-[80px]"></div>
+                            </div>
+                            <div className="relative z-10 space-y-8">
+                                <h3 className="text-4xl md:text-5xl font-black text-white uppercase leading-[0.8] tracking-tighter italic">
+                                    Qualité <br />
+                                    <span className="text-[#FFB800]">Absolue</span>
+                                </h3>
+                                <p className="text-white/50 font-medium leading-relaxed max-w-xs">
+                                    Plus de 40 ans d'expertise dans le béton armé et la finition haut de gamme.
+                                </p>
+                                <ul className="space-y-4 pt-4">
+                                    {['Structure Certifiée', 'Matériaux Premium', 'Finition de Luxe'].map(item => (
+                                        <li key={item} className="flex items-center gap-3 text-white text-[10px] font-bold uppercase tracking-widest opacity-60 hover:opacity-100 transition-opacity cursor-default">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-[#FFB800]"></div>
+                                            {item}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+
+                        {/* Smaller Bento Items */}
+                        <div className="md:col-span-2 lg:col-span-2 bg-[#FAF9F6] rounded-[3rem] p-10 border border-slate-100 flex flex-col gap-6 group hover:translate-y-[-8px] transition-all duration-500">
+                            <Clock className="w-10 h-10 text-slate-400 group-hover:text-slate-900 transition-colors" />
+                            <h4 className="text-xl font-bold uppercase tracking-tight text-slate-900">Respect des Délais</h4>
+                            <p className="text-sm text-slate-400 font-medium leading-relaxed">Planning rigoureux et anticipation de tous les aléas techniques.</p>
+                        </div>
+
+                        <div className="md:col-span-2 lg:col-span-2 bg-white rounded-[3rem] p-10 border-2 border-slate-900 flex flex-col gap-6 transition-all hover:bg-slate-900 hover:text-white group">
+                            <Gem className="w-10 h-10 text-[#FFB800]" />
+                            <h4 className="text-xl font-bold uppercase tracking-tight">Design Unique</h4>
+                            <p className="text-sm text-slate-400 font-medium leading-relaxed group-hover:text-slate-300">Intégration parfaite entre l'architecte et l'exécution terrain.</p>
+                        </div>
+
+                        <div className="md:col-span-2 lg:col-span-2 bg-slate-50 rounded-[3rem] p-10 border border-slate-100 flex flex-col gap-6 group hover:shadow-xl transition-all">
+                            <Globe className="w-10 h-10 text-[#FFB800]" />
+                            <h4 className="text-xl font-bold uppercase tracking-tight text-slate-900 tracking-[-0.02em]">Durable</h4>
+                            <p className="text-sm text-slate-400 font-medium leading-relaxed">Engagement pour des constructions à faible empreinte carbone.</p>
                         </div>
                     </div>
                 </div>
             </section>
 
-            {/* Portfolio Section */}
-            <section id="projets" className="py-24 md:py-32 bg-white">
-                <div className="max-w-[1400px] mx-auto px-6 md:px-10 space-y-20">
-                    <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-0.5 bg-[#FFB800]"></div>
-                                <span className="text-[10px] font-black uppercase tracking-[0.4em] text-[#FFB800]">Galerie</span>
-                            </div>
-                            <h2 className="text-5xl md:text-8xl font-black text-slate-900 uppercase leading-[0.8] tracking-tighter italic">
-                                Our <GoldText>Portfolio</GoldText>
+            {/* Testimonials - Large Typography Style */}
+            <section id="témoignages" className="py-24 md:py-40 bg-slate-900 overflow-hidden relative">
+                <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                <div className="max-w-[1400px] mx-auto px-6 md:px-10">
+                    <div className="grid lg:grid-cols-12 gap-20">
+                        <div className="lg:col-span-4 space-y-8">
+                            <span className="text-[10px] font-bold uppercase tracking-[0.4em] text-[#FFB800]">Témoignages</span>
+                            <h2 className="text-5xl md:text-6xl font-black text-white uppercase leading-[0.85] tracking-tighter">
+                                L'Excellence <br />
+                                Reconnue.
                             </h2>
+                            <div className="flex items-center gap-6 pt-10">
+                                <div className="text-white">
+                                    <p className="text-4xl font-black">4.9/5</p>
+                                    <div className="flex gap-1 text-[#FFB800]">
+                                        {[...Array(5)].map((_, i) => <Star key={i} className="w-4 h-4 fill-current" />)}
+                                    </div>
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mt-2">Score de Confiance</p>
+                                </div>
+                            </div>
                         </div>
-                        <button className="flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.2em] group border-b-2 border-slate-900 pb-2 hover:border-[#FFB800] transition-colors">
-                            Voir Tout <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                        </button>
+
+                        <div className="lg:col-span-8 space-y-12">
+                            {[
+                                { name: 'Ahmed Mansour', role: 'Investisseur Immobilier', quote: "Une gestion exemplaire du début à la fin. La transparence sur les coûts et les délais a été le point fort de cette collaboration." },
+                                { name: 'Sarah Ben Ali', role: 'Architecte DPLG', quote: "Travailler avec HouseExpert permet une liberté de conception rare. Leur maîtrise technique assure que chaque détail est respecté." }
+                            ].map((t, i) => (
+                                <div key={i} className="group cursor-default">
+                                    <p className="text-2xl md:text-4xl font-medium text-white/90 leading-snug tracking-tight mb-8 group-hover:text-white transition-colors duration-500 italic font-serif">
+                                        "{t.quote}"
+                                    </p>
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-0.5 bg-[#FFB800]"></div>
+                                        <div>
+                                            <p className="text-sm font-black text-white uppercase tracking-wider">{t.name}</p>
+                                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.1em]">{t.role}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Featured Projects - Full Width Elegant Slider/Grid */}
+            <section id="projets" className="py-24 md:py-40 bg-white">
+                <div className="max-w-[1400px] mx-auto px-6 md:px-10">
+                    <div className="flex items-baseline justify-between mb-20 gap-4 flex-wrap">
+                        <h2 className="text-6xl md:text-9xl font-black text-slate-900 tracking-[-0.05em] uppercase leading-none">
+                            Portfolio
+                        </h2>
+                        <a href="#" className="inline-flex items-center gap-4 text-[11px] font-black uppercase tracking-widest text-[#FFB800] hover:text-slate-900 transition-colors group">
+                            Voir tous les projets <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                        </a>
                     </div>
 
-                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        {portfolioItems.map((item, i) => (
-                            <div key={i} className="group relative aspect-[3/4] rounded-[40px] overflow-hidden cursor-pointer">
-                                <Image
-                                    src={item.image}
-                                    alt={item.title}
-                                    fill
-                                    className="object-cover transition-transform duration-1000 group-hover:scale-110"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-60 group-hover:opacity-100 transition-opacity"></div>
-                                <div className="absolute inset-x-8 bottom-8 translate-y-4 group-hover:translate-y-0 transition-transform">
-                                    <div className="text-[#FFB800] text-[9px] font-black uppercase tracking-widest mb-1">{item.category}</div>
-                                    <div className="text-white text-xl font-black uppercase tracking-tight">{item.title}</div>
+                    <div className="grid md:grid-cols-2 gap-10">
+                        {portfolioItems.slice(0, 2).map((item, i) => (
+                            <div key={i} className="group space-y-6">
+                                <div className="relative aspect-[4/3] rounded-[3rem] overflow-hidden bg-slate-100 shadow-xl group">
+                                    <Image
+                                        src={item.image}
+                                        alt={item.title}
+                                        fill
+                                        className="object-cover grayscale group-hover:grayscale-0 transition-all duration-1000 group-hover:scale-105"
+                                    />
+                                    <div className="absolute inset-0 bg-slate-900/10 group-hover:bg-transparent transition-colors duration-700"></div>
+                                    <div className="absolute top-8 right-8 w-14 h-14 bg-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 scale-50 group-hover:scale-100 translate-x-4 group-hover:translate-x-0">
+                                        <ExternalLink className="w-6 h-6 text-slate-900" />
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-between px-4">
+                                    <div>
+                                        <h4 className="text-2xl font-black uppercase tracking-tighter text-slate-900">{item.title}</h4>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{item.category}</p>
+                                    </div>
+                                    <span className="text-slate-200 font-bold text-6xl italic transition-colors group-hover:text-amber-100 cursor-default">0{i + 1}</span>
                                 </div>
                             </div>
                         ))}
@@ -343,95 +318,93 @@ export default function LandingPage() {
                 </div>
             </section>
 
-            {/* Call to Action - Dream Together */}
-            <section className="py-24 bg-slate-50">
+            {/* CTA Section - Minimalist & Bold */}
+            <section className="py-24 md:py-32">
                 <div className="max-w-[1400px] mx-auto px-6 md:px-10">
-                    <div className="bg-slate-900 rounded-[60px] p-10 md:p-24 text-center relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/black-paper.png')] opacity-20"></div>
-                        <div className="relative z-10 space-y-10">
-                            <h2 className="text-4xl md:text-7xl font-black text-white uppercase leading-none tracking-tighter">
-                                Build Your <GoldText>Dream</GoldText> <br />
-                                Together With Us
+                    <div className="bg-[#FFB800] rounded-[4rem] p-10 md:p-32 text-center relative overflow-hidden group shadow-2xl shadow-amber-200/50 transition-transform hover:scale-[0.99] duration-700">
+                        <div className="relative z-10 space-y-12">
+                            <h2 className="text-5xl md:text-8xl font-black text-slate-900 uppercase leading-[0.9] tracking-[-0.04em] italic transform group-hover:scale-105 transition-transform duration-1000">
+                                Votre Projet, <br />
+                                <span className="underline decoration-slate-900/20 underline-offset-8">Notre Engagement.</span>
                             </h2>
-                            <p className="text-white/40 font-medium max-w-xl mx-auto">
-                                Rejoignez plus de 500 clients qui ont fait confiance à notre expertise pour leurs projets de vie.
+                            <p className="text-slate-900/60 font-medium max-w-xl mx-auto text-lg leading-relaxed">
+                                Commençons dès aujourd'hui la construction de votre héritage. Notre équipe est prête à relever vos défis architecturaux.
                             </p>
-                            <div className="flex justify-center">
-                                <Link href="/login" className="bg-[#FFB800] text-slate-900 px-12 py-5 rounded-2xl font-black uppercase tracking-[0.1em] hover:bg-white transition-all text-sm">
-                                    Démarrer Mon Projet
+                            <div className="flex justify-center flex-wrap gap-6 pt-4">
+                                <Link href="/login" className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-bold uppercase tracking-widest hover:scale-105 hover:shadow-2xl active:scale-95 transition-all text-sm shadow-xl shadow-slate-900/20">
+                                    Démarrer gratuitement
                                 </Link>
                             </div>
                         </div>
+                        {/* Abstract Decor */}
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] bg-white opacity-20 rounded-full blur-[100px] -z-0"></div>
                     </div>
                 </div>
             </section>
 
-            {/* Footer */}
+            {/* Footer - High End Clean */}
             <footer id="contact" className="bg-white pt-24 pb-12">
                 <div className="max-w-[1400px] mx-auto px-6 md:px-10">
-                    <div className="grid lg:grid-cols-4 gap-16 pb-20 border-b border-slate-100">
-                        <div className="lg:col-span-2 space-y-8">
+                    <div className="grid lg:grid-cols-12 gap-20 pb-20 border-b border-slate-100">
+                        <div className="lg:col-span-5 space-y-12">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center">
+                                <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center transition-transform hover:rotate-12">
                                     <Building2 className="text-[#FFB800] w-6 h-6" />
                                 </div>
-                                <span className="font-black text-2xl tracking-tighter uppercase">
+                                <span className="font-bold text-2xl tracking-tighter uppercase transition-colors">
                                     House<span className="text-[#FFB800]">Expert</span>
                                 </span>
                             </div>
-                            <p className="text-slate-400 font-medium max-w-md leading-relaxed">
-                                Leader de la construction haut de gamme, nous mettons notre expertise au service de vos ambitions architecturales.
+                            <p className="text-slate-400 font-medium max-w-sm leading-relaxed text-lg tracking-tight">
+                                L'excellence technique au service de l'architecture moderne. Nous construisons le futur avec précision et passion.
                             </p>
-                            <div className="flex gap-4">
-                                {[Facebook, Twitter, Instagram, Linkedin].map((Icon, i) => (
-                                    <a key={i} href="#" className="w-10 h-10 rounded-full border border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-900 hover:text-[#FFB800] transition-all">
-                                        <Icon className="w-4 h-4" />
+                            <div className="flex gap-6">
+                                {[Instagram, Linkedin, Facebook].map((Icon, i) => (
+                                    <a key={i} href="#" className="text-slate-300 hover:text-slate-900 transition-colors p-1 transform hover:scale-125 duration-300">
+                                        <Icon className="w-5 h-5" />
                                     </a>
                                 ))}
                             </div>
                         </div>
 
-                        <div className="space-y-8">
-                            <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-900">Contact</h4>
-                            <div className="space-y-6">
-                                <div className="flex items-start gap-4">
-                                    <MapPin className="w-5 h-5 text-[#FFB800] shrink-0" />
-                                    <span className="text-xs font-bold text-slate-500 uppercase leading-loose">Ave Mohamed V, Tunis, Tunisie</span>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                    <Phone className="w-5 h-5 text-[#FFB800] shrink-0" />
-                                    <span className="text-xs font-bold text-slate-500 uppercase">+216 22 222 222</span>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                    <Mail className="w-5 h-5 text-[#FFB800] shrink-0" />
-                                    <span className="text-xs font-bold text-slate-500 uppercase">contact@houseexpert.tn</span>
-                                </div>
-                            </div>
+                        <div className="lg:col-span-3 space-y-10 pt-4">
+                            <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-900 opacity-30">Plan du site</h4>
+                            <ul className="space-y-4">
+                                {['Accueil', 'Expertise', 'Portfolio', 'Collaborer', 'Login'].map(link => (
+                                    <li key={link}>
+                                        <a href="#" className="text-sm font-bold uppercase tracking-widest text-slate-500 hover:text-slate-900 transition-colors">{link}</a>
+                                    </li>
+                                ))}
+                            </ul>
                         </div>
 
-                        <div className="space-y-8">
-                            <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-900">Newsletter</h4>
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-tighter leading-relaxed">
-                                Abonnez-vous pour recevoir nos dernières actualités et projets.
-                            </p>
-                            <div className="relative">
-                                <input
-                                    type="email"
-                                    placeholder="VOTRE EMAIL"
-                                    className="w-full bg-slate-50 border-none rounded-xl py-4 px-6 text-xs font-bold placeholder:text-slate-300 focus:ring-2 focus:ring-[#FFB800] transition-all"
-                                />
-                                <button className="absolute right-2 top-2 bottom-2 bg-slate-900 text-[#FFB800] px-4 rounded-lg">
-                                    <ArrowRight className="w-4 h-4" />
-                                </button>
+                        <div className="lg:col-span-4 space-y-12 pt-4">
+                            <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-900 opacity-30">Contact</h4>
+                            <div className="space-y-6">
+                                <a href="mailto:contact@houseexpert.tn" className="group block">
+                                    <p className="text-[10px] font-bold text-[#FFB800] uppercase tracking-widest mb-1 group-hover:text-slate-900 transition-colors">Email</p>
+                                    <p className="text-xl font-bold text-slate-900 transition-transform group-hover:translate-x-2 duration-300 tracking-tight underline hidden md:block decoration-slate-200">contact@houseexpert.tn</p>
+                                    <p className="text-base font-bold text-slate-900 md:hidden">contact@houseexpert.tn</p>
+                                </a>
+                                <div className="group block select-none">
+                                    <p className="text-[10px] font-bold text-[#FFB800] uppercase tracking-widest mb-1 group-hover:text-slate-900 transition-colors">Siège</p>
+                                    <p className="text-sm font-bold text-slate-500 uppercase leading-relaxed max-w-[200px]">Ave Mohamed V, Tunis, Tunisie</p>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <div className="pt-12 flex flex-col md:flex-row justify-between items-center gap-6">
-                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">© 2026 HouseExpert Construction. Tous droits réservés.</span>
-                        <div className="flex gap-8">
-                            <a href="#" className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-slate-900 transition-colors">Politique de Confidentialité</a>
-                            <a href="#" className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-slate-900 transition-colors">Mentions Légales</a>
+                    <div className="pt-12 flex flex-col md:flex-row justify-between items-center gap-8">
+                        <div className="flex items-center gap-8">
+                            <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-300">© 2026 HouseExpert</span>
+                            <div className="flex gap-6">
+                                <a href="#" className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-300 hover:text-slate-900 transition-colors">Privacy</a>
+                                <a href="#" className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-300 hover:text-slate-900 transition-colors">Legal</a>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+                            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 tracking-[0.1em]">Serveur Opérationnel</span>
                         </div>
                     </div>
                 </div>

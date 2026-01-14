@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import {
     Plus, Receipt, FileText, Trash2, TrendingUp, DollarSign,
     Upload, X, CheckCircle2, Clock, Eye, AlertCircle, Download, FileDown, ChevronDown,
-    ArrowUpDown, ArrowUp, ArrowDown, ArrowRight, Search, Pencil
+    ArrowUpDown, ArrowUp, ArrowDown, ArrowRight, Search, Pencil, Image as ImageIcon
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -95,7 +95,7 @@ interface SupplierData {
 const ImageViewer = ({ src, onClose }: { src: string, onClose: () => void }) => {
     const isPdf = src.toLowerCase().includes('.pdf') || src.startsWith('data:application/pdf');
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={onClose}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={onClose}>
             <div className="relative max-w-5xl w-full h-[90vh] flex flex-col items-center">
                 <button
                     onClick={onClose}
@@ -160,6 +160,10 @@ function ExpensesContent() {
     const [tempNoteValue, setTempNoteValue] = useState('');
     const [generalNote, setGeneralNote] = useState('');
     const [showUploadModal, setShowUploadModal] = useState(false);
+
+    // Document Picker State
+    const [showDocPicker, setShowDocPicker] = useState(false);
+    const [pickerTarget, setPickerTarget] = useState<{ type: 'expense' | 'deposit', id: string } | null>(null);
 
     const searchParams = useSearchParams();
     const supabase = useMemo(() => createClient(), []);
@@ -956,6 +960,34 @@ function ExpensesContent() {
         });
     };
 
+    const handleOpenDocPicker = (type: 'expense' | 'deposit', id: string) => {
+        setPickerTarget({ type, id });
+        setShowDocPicker(true);
+    };
+
+    const handleSelectDocLink = async (url: string) => {
+        if (!pickerTarget) return;
+
+        try {
+            const table = pickerTarget.type === 'expense' ? 'expenses' : 'deposits';
+            const column = pickerTarget.type === 'expense' ? 'invoice_image' : 'receipt_image';
+
+            const { error } = await supabase
+                .from(table)
+                .update({ [column]: url })
+                .eq('id', pickerTarget.id);
+
+            if (error) throw error;
+
+            setShowDocPicker(false);
+            setPickerTarget(null);
+            fetchData(); // Refresh to show the Eye icon
+        } catch (error) {
+            console.error('Error linking document:', error);
+            alert('Erreur lors de la liaison du document');
+        }
+    };
+
     const handleExportPDF = () => {
         const doc = new jsPDF();
 
@@ -1634,6 +1666,7 @@ function ExpensesContent() {
                                 <table className="w-full text-left border-collapse min-w-[500px]">
                                     <thead className="bg-slate-50/80 backdrop-blur-sm sticky top-0 z-10 border-b border-slate-100 text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center">
                                         <tr>
+                                            <th className="px-4 py-3 text-left w-8">#</th>
                                             <th className="px-4 py-3 text-left w-10"></th>
                                             <th className="px-4 py-3 text-left w-24">État</th>
                                             <th
@@ -1662,7 +1695,7 @@ function ExpensesContent() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
-                                        {sortedExpenses.map(e => {
+                                        {sortedExpenses.map((e, index) => {
                                             const isExpanded = expandedRows[e.id];
                                             return (
                                                 <React.Fragment key={e.id}>
@@ -1674,6 +1707,9 @@ function ExpensesContent() {
                                                     `}
                                                         onClick={() => toggleRow(e.id)}
                                                     >
+                                                        <td className="px-2 py-4 text-center text-[10px] font-bold text-slate-300">
+                                                            {index + 1}
+                                                        </td>
                                                         <td className="px-4 py-4 text-center">
                                                             <ChevronDown className={`h-4 w-4 text-slate-300 transition-transform duration-300 ${isExpanded ? 'rotate-180 text-blue-500' : ''}`} />
                                                         </td>
@@ -1714,11 +1750,27 @@ function ExpensesContent() {
                                                         </td>
                                                         <td className="px-4 py-4 text-right">
                                                             <div className="flex items-center justify-end gap-1 opacity-40 group-hover:opacity-100 transition-all duration-300" onClick={(ev) => ev.stopPropagation()}>
-                                                                {e.invoiceImage && (
-                                                                    <button onClick={() => setViewingImage(e.invoiceImage!)} className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors">
-                                                                        <Eye className="h-3.5 w-3.5" />
+                                                                {/* Eye Icon: Only active if image exists */}
+                                                                <button
+                                                                    onClick={() => e.invoiceImage && setViewingImage(e.invoiceImage)}
+                                                                    disabled={!e.invoiceImage}
+                                                                    className={`p-1.5 rounded-lg transition-colors ${e.invoiceImage ? 'hover:bg-blue-50 text-blue-500 cursor-pointer' : 'text-slate-200 cursor-not-allowed'}`}
+                                                                    title={e.invoiceImage ? 'Voir le document' : 'Aucun document lié'}
+                                                                >
+                                                                    <Eye className="h-3.5 w-3.5" />
+                                                                </button>
+
+                                                                {/* Image Icon: Always present for admin to link */}
+                                                                {isAdmin && (
+                                                                    <button
+                                                                        onClick={() => handleOpenDocPicker('expense', e.id)}
+                                                                        className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"
+                                                                        title="Lier un document"
+                                                                    >
+                                                                        <ImageIcon className="h-3.5 w-3.5" />
                                                                     </button>
                                                                 )}
+
                                                                 {isAdmin && (
                                                                     <button onClick={() => handleDelete(e.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
                                                                         <Trash2 className="h-3.5 w-3.5" />
@@ -1775,6 +1827,7 @@ function ExpensesContent() {
                                                                             <table className="w-full text-left border-collapse">
                                                                                 <thead className="bg-slate-50 border-b border-slate-100 text-[8px] font-black text-slate-400 uppercase tracking-widest">
                                                                                     <tr>
+                                                                                        <th className="px-4 py-2 w-8">#</th>
                                                                                         <th className="px-4 py-2">Désignation</th>
                                                                                         <th className="px-4 py-2 text-center">Qté</th>
                                                                                         <th className="px-4 py-2 text-right">Prix Unité</th>
@@ -1785,6 +1838,9 @@ function ExpensesContent() {
                                                                                 <tbody className="divide-y divide-slate-50">
                                                                                     {e.items?.map((item, idx) => (
                                                                                         <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                                                                            <td className="px-4 py-2 text-[9px] font-bold text-slate-300">
+                                                                                                {idx + 1}
+                                                                                            </td>
                                                                                             <td className="px-4 py-2 font-bold text-slate-700 text-[10px]">{item.designation}</td>
                                                                                             <td className="px-4 py-2 text-center font-black text-slate-900 text-[10px]">{item.quantity}</td>
                                                                                             <td className="px-4 py-2 text-right text-slate-500 font-mono text-[10px]">{(item.unitPriceHT || item.unitPrice).toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
@@ -1849,6 +1905,7 @@ function ExpensesContent() {
                                         <table className="w-full text-left border-collapse min-w-[500px]">
                                             <thead className="bg-slate-50/50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                                                 <tr>
+                                                    <th className="px-4 py-4 text-center w-8">#</th>
                                                     <th className="px-6 py-4 w-32">Date</th>
                                                     <th className="px-6 py-4">Référence / Payeur</th>
                                                     <th className="px-6 py-4 text-right">Montant</th>
@@ -1863,8 +1920,11 @@ function ExpensesContent() {
                                                         </td>
                                                     </tr>
                                                 ) : (
-                                                    currentSupplier.deposits.map(d => (
+                                                    currentSupplier.deposits.map((d, index) => (
                                                         <tr key={d.id} className="hover:bg-slate-50/50 transition-colors group">
+                                                            <td className="px-4 py-4 text-center text-[10px] font-bold text-slate-300">
+                                                                {index + 1}
+                                                            </td>
                                                             <td className="px-6 py-4 text-xs font-bold text-slate-400 font-mono">
                                                                 {d.date}
                                                             </td>
@@ -1887,15 +1947,27 @@ function ExpensesContent() {
                                                             </td>
                                                             <td className="px-6 py-4 text-right">
                                                                 <div className="flex items-center justify-end gap-1 opacity-20 group-hover:opacity-100 transition-all">
-                                                                    {(d.receiptImage || d.id === 'd_cap_1') && (
+                                                                    {/* Eye Icon: Only active if image exists */}
+                                                                    <button
+                                                                        onClick={() => (d.receiptImage || d.id === 'd_cap_1') && setViewingImage(d.receiptImage || 'https://via.placeholder.com/800x1000?text=Recu+476+3900DT')}
+                                                                        disabled={!d.receiptImage && d.id !== 'd_cap_1'}
+                                                                        className={`p-1.5 rounded-lg transition-colors ${(d.receiptImage || d.id === 'd_cap_1') ? 'hover:bg-blue-50 text-blue-500 cursor-pointer' : 'text-slate-200 cursor-not-allowed'}`}
+                                                                        title={(d.receiptImage || d.id === 'd_cap_1') ? 'Voir reçu' : 'Aucun reçu lié'}
+                                                                    >
+                                                                        <Eye className="h-4 w-4" />
+                                                                    </button>
+
+                                                                    {/* Image Icon: Always present for admin to link */}
+                                                                    {isAdmin && (
                                                                         <button
-                                                                            onClick={() => setViewingImage(d.receiptImage || 'https://via.placeholder.com/800x1000?text=Recu+476+3900DT')}
-                                                                            className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors"
-                                                                            title="Voir reçu"
+                                                                            onClick={() => handleOpenDocPicker('deposit', d.id)}
+                                                                            className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"
+                                                                            title="Lier un reçu"
                                                                         >
-                                                                            <Eye className="h-4 w-4" />
+                                                                            <ImageIcon className="h-4 w-4" />
                                                                         </button>
                                                                     )}
+
                                                                     {isAdmin && (
                                                                         <>
                                                                             <button
@@ -1972,6 +2044,93 @@ function ExpensesContent() {
                     </div>
                 )
             }
+            {/* Document Picker Modal */}
+            {showDocPicker && (
+                <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+                    <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
+                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <div>
+                                <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-900 flex items-center gap-3">
+                                    <ImageIcon className="h-6 w-6 text-[#FFB800]" />
+                                    Choisir un Document
+                                </h3>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sélectionnez une image à lier à {pickerTarget?.type === 'expense' ? 'la facture' : 'l\'acompte'}</p>
+                            </div>
+                            <button onClick={() => { setShowDocPicker(false); setPickerTarget(null); }} className="p-3 hover:bg-white rounded-2xl transition-colors shadow-sm">
+                                <X className="h-6 w-6 text-slate-300" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                            {uploadedDocs.filter(d => d.supplierId === activeTab).length === 0 ? (
+                                <div className="h-64 flex flex-col items-center justify-center text-slate-300 gap-4">
+                                    <Upload className="h-12 w-12 opacity-20" />
+                                    <p className="text-xs font-black uppercase tracking-widest">Aucun document importé pour ce fournisseur</p>
+                                    <button
+                                        onClick={() => { setShowDocPicker(false); setShowUploadModal(true); }}
+                                        className="text-[10px] font-black text-blue-500 hover:underline uppercase"
+                                    >
+                                        Importer maintenant
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                    {uploadedDocs
+                                        .filter(d => d.supplierId === activeTab)
+                                        .map((doc) => (
+                                            <div
+                                                key={doc.id}
+                                                className="group relative aspect-square rounded-2xl overflow-hidden border-2 border-slate-100 hover:border-[#FFB800] transition-all bg-slate-50 flex flex-col"
+                                            >
+                                                <div
+                                                    className="flex-1 cursor-pointer overflow-hidden relative"
+                                                    onClick={() => setViewingImage(doc.url)}
+                                                >
+                                                    {doc.fileName.toLowerCase().endsWith('.pdf') ? (
+                                                        <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-2">
+                                                            <FileText className="h-12 w-12 text-red-100" />
+                                                            <span className="text-[8px] font-bold text-slate-400 break-all text-center">{doc.fileName}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <img src={doc.url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={doc.fileName} />
+                                                    )}
+                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                        <Eye className="text-white drop-shadow-md h-8 w-8" />
+                                                    </div>
+                                                </div>
+
+                                                <div className="p-3 bg-white border-t border-slate-100 flex flex-col gap-2">
+                                                    <div className="flex justify-between items-start">
+                                                        <p className="text-[9px] font-black text-slate-800 uppercase truncate flex-1">{doc.fileName}</p>
+                                                    </div>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleSelectDocLink(doc.url);
+                                                        }}
+                                                        className="w-full bg-slate-900 text-white py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-[#FFB800] hover:text-slate-900 transition-all shadow-sm"
+                                                    >
+                                                        Lier ce document
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))
+                                    }
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end">
+                            <button
+                                onClick={() => { setShowDocPicker(false); setPickerTarget(null); }}
+                                className="px-8 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors"
+                            >
+                                Annuler
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     );
 }

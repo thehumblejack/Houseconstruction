@@ -79,10 +79,11 @@ export async function resendInvite(email: string) {
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ||
         (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
 
-    // Using cast to any to bypass strict type check for 'invite' which might be missing in some SDK versions
-    // but is valid for the API if the user is in invited state.
+    // Resend email
+    // 'invite' is for creating new invites. To resend an existing one or a confirmation email, Use 'signup'.
+    // Supabase documentation indicates 'signup' type is used for email confirmation resends.
     const { error } = await supabaseAdmin.auth.resend({
-        type: 'invite' as any,
+        type: 'signup',
         email: email,
         options: {
             emailRedirectTo: `${baseUrl}/auth/callback?next=/auth/set-password`

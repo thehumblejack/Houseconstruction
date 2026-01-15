@@ -10,7 +10,7 @@ export default function RejectedPage() {
 
     useEffect(() => {
         if (!loading && userProfile?.status === 'approved') {
-            router.replace('/');
+            router.replace('/expenses');
         }
     }, [loading, userProfile, router]);
 

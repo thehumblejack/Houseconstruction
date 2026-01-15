@@ -57,11 +57,11 @@ export default function Navbar() {
     if (pathname === '/' && (!user || !isApproved)) return null;
 
     const navItems = [
-        { name: 'CHANTIER', path: '/', icon: LayoutGrid },
         { name: 'DÉPENSES', path: '/expenses', icon: ReceiptText },
         { name: 'FOURNISSEURS', path: '/suppliers', icon: User },
         { name: 'ARTICLES', path: '/articles', icon: Package },
         { name: 'COMMANDES', path: '/orders', icon: ShoppingCart },
+        { name: 'CHANTIER', path: '/', icon: LayoutGrid },
     ];
 
     return (
@@ -215,9 +215,9 @@ export default function Navbar() {
 
                 <nav className="flex items-center justify-around bg-slate-900/95 backdrop-blur-2xl border border-white/10 p-2 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
                     {[
-                        { name: 'Chantier', path: '/', icon: LayoutGrid },
                         { name: 'Dépenses', path: '/expenses', icon: ReceiptText },
                         { name: 'Fourn.', path: '/suppliers', icon: User },
+                        { name: 'Chantier', path: '/', icon: LayoutGrid },
                     ].map((item) => {
                         const isActive = pathname === item.path;
                         const Icon = item.icon;

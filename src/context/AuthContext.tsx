@@ -197,7 +197,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (userProfile.status === 'rejected' && currentPath !== '/auth/rejected') {
             window.location.href = '/auth/rejected';
         } else if (userProfile.status === 'approved' && (currentPath === '/auth/pending' || currentPath === '/auth/rejected')) {
-            window.location.href = '/';
+            window.location.href = '/expenses';
         } else if (userProfile.status === 'pending' && currentPath !== '/auth/pending' && currentPath !== '/login') {
             window.location.href = '/auth/pending';
         }
@@ -230,8 +230,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 console.log('Auth: Redirecting to rejected page');
                 router.replace('/auth/rejected');
             } else if (userProfile.status === 'approved' && isAuthPage) {
-                console.log('Auth: Approved user on auth page, redirecting home');
-                router.replace('/');
+                console.log('Auth: Approved user on auth page, redirecting to expenses');
+                router.replace('/expenses');
             }
         } else if (user && !userProfile && !isAuthPage) {
             // Logged in but profile missing

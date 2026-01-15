@@ -52,7 +52,7 @@ export default function ArticlesPage() {
     const [articles, setArticles] = useState<ArticleRow[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [suppliersList, setSuppliersList] = useState<{ id: string, name: string }[]>([]);
-    const [viewMode, setViewMode] = useState<'inventory' | 'comparison' | 'matrix'>('matrix');
+    const [viewMode, setViewMode] = useState<'inventory' | 'matrix'>('matrix');
     const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
     const [columnOrder, setColumnOrder] = useState<string[]>([]);
     const [showColumnSettings, setShowColumnSettings] = useState(false);
@@ -370,31 +370,6 @@ export default function ArticlesPage() {
         return originalItems[0].designation;
     };
 
-    // Comparison Logic
-    const comparisonGroups = useMemo(() => {
-        const groups: Record<string, ArticleRow[]> = {};
-
-        filteredArticles.forEach(row => {
-            const normalizedName = normalizeArticleName(row.designation);
-            if (!groups[normalizedName]) {
-                groups[normalizedName] = [];
-            }
-            groups[normalizedName].push(row);
-        });
-
-        return Object.entries(groups)
-            .map(([name, items]) => {
-                const sortedItems = [...items].sort((a, b) => a.unitPrice - b.unitPrice);
-                return {
-                    name: normalizedNameLabel(name, items),
-                    items: sortedItems,
-                    bestPrice: sortedItems[0].unitPrice,
-                    bestSupplier: sortedItems[0].supplierName,
-                    priceSpread: sortedItems[sortedItems.length - 1].unitPrice - sortedItems[0].unitPrice
-                };
-            })
-            .sort((a, b) => b.items.length - a.items.length);
-    }, [filteredArticles]);
 
     // Matrix View Logic
     const matrixData = useMemo(() => {
@@ -484,9 +459,9 @@ export default function ArticlesPage() {
             <div className="bg-slate-900 rounded-[32px] p-6 md:p-8 text-white relative overflow-hidden shadow-xl">
                 <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#FFB800]/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/3"></div>
 
-                <div className="relative z-10 flex flex-col lg:flex-row justify-between items-center gap-6">
-                    <div className="space-y-2">
-                        <div className="flex items-center gap-2">
+                <div className="relative z-10 flex flex-col xl:flex-row justify-between items-center gap-6">
+                    <div className="space-y-2 w-full xl:w-auto text-center xl:text-left">
+                        <div className="flex items-center justify-center xl:justify-start gap-2">
                             <div className="p-2 bg-white/10 rounded-xl backdrop-blur-sm">
                                 <Package className="h-5 w-5 text-[#FFB800]" />
                             </div>
@@ -497,13 +472,13 @@ export default function ArticlesPage() {
                         </h1>
                     </div>
 
-                    <div className="w-full lg:w-auto flex flex-col gap-6">
+                    <div className="w-full xl:w-auto flex flex-col gap-4 md:gap-6">
                         {/* Tab Switcher */}
-                        <div className="bg-white/10 p-1.5 rounded-2xl backdrop-blur-md flex self-start lg:self-end">
+                        <div className="bg-white/10 p-1.5 rounded-2xl backdrop-blur-md flex flex-col md:flex-row w-full md:w-auto gap-1 md:gap-0">
                             <button
                                 onClick={() => setViewMode('inventory')}
                                 className={`
-                                    flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all
+                                    flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all w-full md:w-auto
                                     ${viewMode === 'inventory' ? 'bg-[#FFB800] text-slate-900 shadow-md' : 'text-white hover:bg-white/5'}
                                 `}
                             >
@@ -511,19 +486,9 @@ export default function ArticlesPage() {
                                 Inventaire
                             </button>
                             <button
-                                onClick={() => setViewMode('comparison')}
-                                className={`
-                                    flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all
-                                    ${viewMode === 'comparison' ? 'bg-[#FFB800] text-slate-900 shadow-lg' : 'text-white hover:bg-white/5'}
-                                `}
-                            >
-                                <ArrowRightLeft className="w-4 h-4" />
-                                Analyse
-                            </button>
-                            <button
                                 onClick={() => setViewMode('matrix')}
                                 className={`
-                                    flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all
+                                    flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all w-full md:w-auto
                                     ${viewMode === 'matrix' ? 'bg-[#FFB800] text-slate-900 shadow-lg' : 'text-white hover:bg-white/5'}
                                 `}
                             >
@@ -533,14 +498,14 @@ export default function ArticlesPage() {
                         </div>
 
                         {/* Search Bar */}
-                        <div className="relative w-full lg:w-[350px]">
+                        <div className="relative w-full xl:w-[350px]">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                             <input
                                 type="text"
                                 placeholder={viewMode === 'inventory' ? "Rechercher..." : "Comparer un matériau..."}
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-white text-slate-900 h-11 pl-11 pr-4 rounded-xl font-bold text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/50 transition-all shadow-md"
+                                className="w-full bg-white text-slate-900 h-12 pl-11 pr-4 rounded-xl font-bold text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/50 transition-all shadow-md"
                             />
                         </div>
                     </div>
@@ -548,85 +513,7 @@ export default function ArticlesPage() {
             </div>
 
             {/* Content Area */}
-            {viewMode === 'comparison' ? (
-                <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-8">
-                    <div className="flex items-center gap-4 px-2">
-                        <TrendingDown className="text-[#FFB800] w-6 h-6" />
-                        <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Meilleures Opportunités</h2>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                        {comparisonGroups.map((group, idx) => (
-                            <div key={idx} className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-md hover:shadow-xl transition-all group h-full flex flex-col relative overflow-hidden">
-                                {/* Decor */}
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-bl-[60px] -z-0 transition-colors group-hover:bg-[#FFB800]/10"></div>
-
-                                <div className="relative z-10 flex flex-col h-full">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div className="flex-1">
-                                            <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-slate-900 rounded-full mb-2">
-                                                <Package className="w-2.5 h-2.5 text-[#FFB800]" />
-                                                <span className="text-[8px] font-black text-white uppercase tracking-widest">{group.items.length} Achats</span>
-                                            </div>
-                                            <h3 className="text-base font-black text-slate-900 uppercase tracking-tight mb-1 group-hover:text-[#FFB800] transition-colors line-clamp-1" title={group.name}>
-                                                {group.name}
-                                            </h3>
-                                            <div className="flex items-center gap-1.5">
-                                                <span className="text-xl font-black text-emerald-600">{group.bestPrice.toFixed(3)}</span>
-                                                <div className="flex flex-col">
-                                                    <span className="text-[9px] font-black text-emerald-500 uppercase leading-none">DT</span>
-                                                    <span className="text-[7px] font-bold text-slate-400 uppercase tracking-widest">PRIX UNITÉ</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Meilleur</span>
-                                            <div className="flex items-center gap-1">
-                                                <Medal className="w-3.5 h-3.5 text-[#FFB800]" />
-                                                <span className="text-[10px] font-black text-slate-700 truncate max-w-[60px]">{group.bestSupplier}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex-1 space-y-2">
-                                        <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest px-1">Historique</span>
-                                        {group.items.slice(0, 5).map((item, i) => (
-                                            <div key={i} className={`flex justify-between items-center px-3 py-2 rounded-lg border ${i === 0 ? 'bg-[#FFB800]/5 border-[#FFB800] relative overflow-hidden' : 'bg-white border-slate-50'}`}>
-                                                {i === 0 && (
-                                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#FFB800]"></div>
-                                                )}
-                                                <div className="flex items-center gap-2">
-                                                    {i === 0 && <Medal className="w-3.5 h-3.5 text-[#FFB800] fill-[#FFB800]" />}
-                                                    <div>
-                                                        <div className="text-[10px] font-black text-slate-900 uppercase leading-none">{item.supplierName}</div>
-                                                        <div className="text-[7px] font-bold text-slate-400">{item.date}</div>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-end">
-                                                    <span className={`text-xs font-black tabular-nums ${i === 0 ? 'text-[#e5a500]' : 'text-slate-600'}`}>
-                                                        {item.unitPrice.toFixed(3)}
-                                                    </span>
-                                                    <span className="text-[6px] font-bold text-slate-300 uppercase tracking-tighter">UNITÉ</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-
-                    {comparisonGroups.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-32 text-center opacity-50">
-                            <div className="w-24 h-24 bg-slate-200 rounded-full flex items-center justify-center mb-6">
-                                <Search className="w-10 h-10 text-slate-400" />
-                            </div>
-                            <h3 className="text-xl font-black text-slate-900 uppercase">Aucun Résultat</h3>
-                            <p className="text-slate-500 font-medium">Essayez de rechercher un autre matériau.</p>
-                        </div>
-                    )}
-                </div>
-            ) : viewMode === 'matrix' ? (
+            {viewMode === 'matrix' ? (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-8">
                     <div className="flex items-center justify-between px-2">
                         <div className="space-y-4">
@@ -667,14 +554,14 @@ export default function ArticlesPage() {
                         <div className="relative">
                             <button
                                 onClick={() => setShowColumnSettings(!showColumnSettings)}
-                                className={`p-4 rounded-2xl transition-all shadow-xl border flex items-center gap-3 ${showColumnSettings ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-100 hover:border-[#FFB800]'}`}
+                                className={`p-3 md:p-4 rounded-2xl transition-all shadow-xl border flex items-center gap-2 md:gap-3 ${showColumnSettings ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-100 hover:border-[#FFB800]'}`}
                             >
                                 <LayoutGrid className="w-5 h-5" />
-                                <span className="text-[10px] font-black uppercase tracking-widest">Colonnes</span>
+                                <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Colonnes</span>
                             </button>
 
                             {showColumnSettings && (
-                                <div className="absolute top-full right-0 mt-4 w-72 bg-white rounded-[32px] shadow-2xl border border-slate-100 p-6 z-[120] animate-in zoom-in-95 duration-200">
+                                <div className="absolute top-full right-0 mt-4 w-64 md:w-72 bg-white rounded-[32px] shadow-2xl border border-slate-100 p-6 z-[120] animate-in zoom-in-95 duration-200">
                                     <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-4 px-2">Fournisseurs Affichés</h3>
                                     <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar">
                                         {matrixData.suppliers.map((s) => (
@@ -697,11 +584,11 @@ export default function ArticlesPage() {
                     </div>
 
                     <div className="bg-white rounded-[32px] border border-slate-100 shadow-xl overflow-hidden">
-                        <div className="overflow-x-auto">
+                        <div className="overflow-x-auto touch-pan-x pb-2">
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className="bg-slate-900">
-                                        <th className="sticky left-0 z-20 bg-slate-900 px-5 py-3.5 text-[9px] font-black text-[#FFB800] uppercase tracking-[0.2em] border-r border-white/5 min-w-[200px]">Article</th>
+                                        <th className="sticky left-0 z-20 bg-slate-900 px-3 md:px-5 py-3.5 text-[9px] font-black text-[#FFB800] uppercase tracking-[0.2em] border-r border-white/5 min-w-[140px] md:min-w-[200px] shadow-[4px_0_8px_rgb(0,0,0,0.2)]">Article</th>
                                         {columnOrder.filter(s => visibleColumns.includes(s) && matrixData.suppliers.includes(s)).map((s, idx) => (
                                             <th
                                                 key={s}
@@ -719,7 +606,7 @@ export default function ArticlesPage() {
                                                     newOrder.splice(targetIdx, 0, draggedSup);
                                                     setColumnOrder(newOrder);
                                                 }}
-                                                className="px-4 py-3.5 text-[9px] font-black text-white uppercase tracking-[0.2em] text-center border-r border-white/5 min-w-[140px] cursor-move hover:bg-slate-800 transition-colors"
+                                                className="px-3 md:px-4 py-3.5 text-[9px] font-black text-white uppercase tracking-[0.2em] text-center border-r border-white/5 min-w-[110px] md:min-w-[140px] cursor-move hover:bg-slate-800 transition-colors"
                                             >
                                                 <div className="flex items-center justify-center gap-1.5">
                                                     <List className="w-3 h-3 text-slate-500" />
@@ -732,8 +619,8 @@ export default function ArticlesPage() {
                                 <tbody className="divide-y divide-slate-100">
                                     {matrixData.rows.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase())).map((row) => (
                                         <tr key={row.name} className="hover:bg-slate-50 transition-colors group">
-                                            <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 transition-colors px-5 py-2.5 border-r border-slate-100">
-                                                <span className="text-xs font-black text-slate-900 uppercase tracking-tight">{row.name}</span>
+                                            <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 transition-colors px-3 md:px-5 py-2.5 border-r border-slate-100 shadow-[4px_0_12px_rgb(0,0,0,0.05)]">
+                                                <span className="text-[10px] md:text-xs font-black text-slate-900 uppercase tracking-tight line-clamp-2 md:line-clamp-1">{row.name}</span>
                                             </td>
                                             {columnOrder.filter(s => visibleColumns.includes(s) && matrixData.suppliers.includes(s)).map(sup => {
                                                 const entry = row.prices[sup];
@@ -744,18 +631,18 @@ export default function ArticlesPage() {
                                                 const isBest = price && price === Math.min(...visiblePrices);
 
                                                 return (
-                                                    <td key={sup} className="px-4 py-2.5 text-center border-r border-slate-50">
+                                                    <td key={sup} className="px-2 md:px-4 py-2.5 text-center border-r border-slate-50">
                                                         {price ? (
                                                             <div className={`inline-flex flex-col items-center p-1.5 rounded-xl w-full transition-all ${isBest ? 'bg-emerald-50 border border-emerald-100 shadow-sm' : ''}`}>
-                                                                <span className={`text-[11px] font-black tabular-nums ${isBest ? 'text-emerald-600' : 'text-slate-600'}`}>
+                                                                <span className={`text-[10px] md:text-[11px] font-black tabular-nums ${isBest ? 'text-emerald-600' : 'text-slate-600'}`}>
                                                                     {price.toFixed(3)}
                                                                 </span>
-                                                                <span className={`text-[7px] font-black uppercase mt-0.5 ${isBest ? 'text-emerald-400' : entry?.isRef ? 'text-blue-500' : 'text-slate-300'}`}>
+                                                                <span className={`text-[6px] md:text-[7px] font-black uppercase mt-0.5 ${isBest ? 'text-emerald-400' : entry?.isRef ? 'text-blue-500' : 'text-slate-300'}`}>
                                                                     {entry?.isRef ? 'CMD' : isBest ? 'MIN' : 'DER'}
                                                                 </span>
                                                             </div>
                                                         ) : (
-                                                            <span className="text-slate-200 font-bold text-[10px]">---</span>
+                                                            <span className="text-slate-200 font-bold text-[10px] md:text-[10px]">---</span>
                                                         )}
                                                     </td>
                                                 );
@@ -826,41 +713,43 @@ export default function ArticlesPage() {
                                 {isExpanded && (
                                     <div className="p-1.5 animate-in slide-in-from-top-2 duration-300">
                                         <div className="bg-white rounded-[16px] border border-slate-100 overflow-hidden">
-                                            <table className="w-full text-left border-collapse min-w-[700px]">
-                                                <thead className="bg-slate-50 border-b border-slate-100">
-                                                    <tr>
-                                                        <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-28">Date</th>
-                                                        <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Désignation</th>
-                                                        <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-20 text-center">Qté</th>
-                                                        <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-32 text-right">P.U</th>
-                                                        <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-32 text-right">Total</th>
-                                                        {isAdmin && <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-16 text-center"></th>}
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-50">
-                                                    {group.rows.map((row) => (
-                                                        <tr key={row.id} className="hover:bg-blue-50/20 transition-colors group">
-                                                            <td className="px-5 py-3">
-                                                                <div className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-[9px] font-bold text-slate-600">{row.date}</div>
-                                                            </td>
-                                                            <td className="px-5 py-3 text-xs font-black text-slate-800 uppercase line-clamp-1">{normalizeArticleName(row.designation)}</td>
-                                                            <td className="px-5 py-3 text-center">
-                                                                <span className="text-[10px] font-bold text-slate-600 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">{row.quantity}</span>
-                                                            </td>
-                                                            <td className="px-5 py-3 text-right font-bold text-slate-500 tabular-nums text-xs">{row.unitPrice.toFixed(3)}</td>
-                                                            <td className="px-5 py-3 text-right font-black text-slate-900 tabular-nums text-xs">{row.totalPrice.toFixed(3)}</td>
-                                                            {isAdmin && (
-                                                                <td className="px-5 py-3 text-center">
-                                                                    <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                                                                        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="p-1.5 hover:bg-blue-50 rounded-lg text-slate-300 hover:text-blue-600 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                                                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(row); }} className="p-1.5 hover:bg-red-50 rounded-lg text-slate-300 hover:text-red-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
-                                                                    </div>
-                                                                </td>
-                                                            )}
+                                            <div className="overflow-x-auto touch-pan-x pb-2">
+                                                <table className="w-full text-left border-collapse min-w-[700px] md:min-w-0">
+                                                    <thead className="bg-slate-50 border-b border-slate-100">
+                                                        <tr>
+                                                            <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-28">Date</th>
+                                                            <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Désignation</th>
+                                                            <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-20 text-center">Qté</th>
+                                                            <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-32 text-right">P.U</th>
+                                                            <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-32 text-right">Total</th>
+                                                            {isAdmin && <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-16 text-center"></th>}
                                                         </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-50">
+                                                        {group.rows.map((row) => (
+                                                            <tr key={row.id} className="hover:bg-blue-50/20 transition-colors group">
+                                                                <td className="px-5 py-3">
+                                                                    <div className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-[9px] font-bold text-slate-600">{row.date}</div>
+                                                                </td>
+                                                                <td className="px-5 py-3 text-xs font-black text-slate-800 uppercase line-clamp-1">{normalizeArticleName(row.designation)}</td>
+                                                                <td className="px-5 py-3 text-center">
+                                                                    <span className="text-[10px] font-bold text-slate-600 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">{row.quantity}</span>
+                                                                </td>
+                                                                <td className="px-5 py-3 text-right font-bold text-slate-500 tabular-nums text-xs">{row.unitPrice.toFixed(3)}</td>
+                                                                <td className="px-5 py-3 text-right font-black text-slate-900 tabular-nums text-xs">{row.totalPrice.toFixed(3)}</td>
+                                                                {isAdmin && (
+                                                                    <td className="px-5 py-3 text-center">
+                                                                        <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                                                            <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="p-1.5 hover:bg-blue-50 rounded-lg text-slate-300 hover:text-blue-600 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                                                                            <button onClick={(e) => { e.stopPropagation(); handleDelete(row); }} className="p-1.5 hover:bg-red-50 rounded-lg text-slate-300 hover:text-red-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                                                                        </div>
+                                                                    </td>
+                                                                )}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         </div>
                                     </div>
                                 )}

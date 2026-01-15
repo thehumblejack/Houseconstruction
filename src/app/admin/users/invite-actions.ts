@@ -24,7 +24,8 @@ export async function inviteUser(email: string, role: string) {
         (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
 
     const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-        redirectTo: `${baseUrl}/auth/callback?next=/auth/set-password`
+        redirectTo: `${baseUrl}/auth/callback?next=/auth/set-password`,
+        data: { invited: true }
     })
 
     if (inviteError) {
@@ -33,7 +34,7 @@ export async function inviteUser(email: string, role: string) {
     }
 
     if (data.user) {
-        // Update profile with the selected role and approve immediately
+        // Update profile with the selected role but keep status pending until they setup password
         // Using upsert to handle cases where trigger might have already created it or not
         const { error: profileError } = await supabaseAdmin
             .from('user_profiles')
@@ -41,8 +42,8 @@ export async function inviteUser(email: string, role: string) {
                 user_id: data.user.id,
                 email: email,
                 role: role,
-                status: 'approved',
-                approved_at: new Date().toISOString(),
+                status: 'pending',
+                approved_at: null,
                 // Use default full_name if not present or let it stay null until they update it
                 full_name: data.user.user_metadata?.full_name || email.split('@')[0]
             }, { onConflict: 'user_id' })

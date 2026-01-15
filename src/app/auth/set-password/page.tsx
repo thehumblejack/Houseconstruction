@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { Eye, EyeOff, Lock, CheckCircle2 } from 'lucide-react';
 
+import { confirmInvite } from '../actions';
+
 export default function SetPasswordPage() {
     const router = useRouter();
     const [password, setPassword] = useState('');
@@ -38,9 +40,14 @@ export default function SetPasswordPage() {
 
             if (updateError) throw updateError;
 
-            // Password updated successfully
-            // Maybe update profile full_name if needed? For now just redirect.
-            router.replace('/expenses'); // Or dashboard
+            // Confirm invite to set status to approved
+            const result = await confirmInvite();
+            if (result.error) {
+                console.error('Invite confirmation warning:', result.error);
+            }
+
+            router.replace('/expenses');
+
         } catch (err: any) {
             console.error('Error updating password:', err);
             setError(err.message || 'Erreur lors de la mise à jour du mot de passe');

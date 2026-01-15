@@ -198,7 +198,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             window.location.href = '/auth/rejected';
         } else if (userProfile.status === 'approved' && (currentPath === '/auth/pending' || currentPath === '/auth/rejected')) {
             window.location.href = '/';
-        } else if (userProfile.status === 'pending' && currentPath !== '/auth/pending' && currentPath !== '/login' && currentPath !== '/auth/set-password') {
+        } else if (userProfile.status === 'pending' && currentPath !== '/auth/pending' && currentPath !== '/login') {
             window.location.href = '/auth/pending';
         }
     }, [userProfile?.status]);
@@ -223,7 +223,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         } else if (userProfile) {
             // Logged in with profile
             console.log('Auth: User status:', userProfile.status);
-            if (userProfile.status === 'pending' && pathname !== '/auth/pending' && pathname !== '/auth/set-password') {
+            if (userProfile.status === 'pending' && pathname !== '/auth/pending') {
                 console.log('Auth: Redirecting to pending page');
                 router.replace('/auth/pending');
             } else if (userProfile.status === 'rejected' && pathname !== '/auth/rejected') {

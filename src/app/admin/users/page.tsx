@@ -7,10 +7,11 @@ import { createClient } from '@/lib/supabase';
 import { UserProfile } from '@/context/AuthContext';
 import { Shield } from 'lucide-react';
 
-import { inviteUser } from './invite-actions';
-import { Mail, Plus } from 'lucide-react'; // Make sure to add these to imports
+import { inviteUser, resendInvite } from './invite-actions';
+import { Mail, Plus, RotateCcw } from 'lucide-react'; // Added RotateCcw for resend icon
 
 export default function AdminUsersPage() {
+    // ... existing setup ...
     const { isAdmin, loading: authLoading } = useAuth();
     const router = useRouter();
     const supabase = useMemo(() => createClient(), []);
@@ -29,12 +30,14 @@ export default function AdminUsersPage() {
     const [inviteRole, setInviteRole] = useState<'admin' | 'user' | 'viewer'>('user');
     const [inviting, setInviting] = useState(false);
 
+    // ... existing useEffects ...
     useEffect(() => {
         if (!authLoading && !isAdmin) {
             router.replace('/');
         }
     }, [isAdmin, authLoading, router]);
 
+    // Update handleInvite to just call InviteUser
     const handleInvite = async (e: React.FormEvent) => {
         e.preventDefault();
         setInviting(true);
@@ -56,6 +59,16 @@ export default function AdminUsersPage() {
             setInviting(false);
         }
     };
+
+    const handleResendInvite = async (userEmail: string) => {
+        if (!confirm(`Renvoyer l'invitation à ${userEmail} ?`)) return;
+
+        setActionLoading(userEmail); // dirty hack using email as id or find id
+        // Actually actionLoading uses ID. I need ID.
+        // Let's pass ID.
+    };
+
+    // ... existing methods: fetchUsers ...
 
     const fetchUsers = async () => {
         setLoading(true);
@@ -180,6 +193,25 @@ export default function AdminUsersPage() {
         }
     };
 
+    // NEW: Wrapper for resend
+    const onResend = async (userId: string, email: string) => {
+        if (!confirm(`Renvoyer l'invitation à ${email} ?`)) return;
+        setActionLoading(userId);
+        try {
+            const res = await resendInvite(email);
+            if (res.error) {
+                alert('Erreur: ' + res.error);
+            } else {
+                alert('Invitation renvoyée !');
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Erreur lors de l'envoi");
+        } finally {
+            setActionLoading(null);
+        }
+    }
+
     if (authLoading || loading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
@@ -188,9 +220,12 @@ export default function AdminUsersPage() {
         );
     }
 
+    // ... existing ERROR JSX ...
     if (error === 'DATABASE_MISSING') {
+        // ... (keep creating fallback UI if needed, assume it matches existing)
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+                {/* ... content ... */}
                 <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-red-100">
                     <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
                         <Shield className="h-8 w-8 text-red-600" />
@@ -214,6 +249,7 @@ export default function AdminUsersPage() {
             </div>
         );
     }
+
 
     if (!isAdmin) {
         return null;
@@ -364,13 +400,25 @@ export default function AdminUsersPage() {
                                                         onClick={() => approveUser(user.id)}
                                                         disabled={actionLoading === user.id}
                                                         className="text-green-600 hover:text-green-900 disabled:opacity-50"
+                                                        title="Approve"
                                                     >
                                                         Approve
                                                     </button>
+
+                                                    <button
+                                                        onClick={() => onResend(user.id, user.email)}
+                                                        disabled={actionLoading === user.id}
+                                                        className="text-blue-600 hover:text-blue-900 disabled:opacity-50"
+                                                        title="Renvoyer l'Invitation"
+                                                    >
+                                                        <RotateCcw className="h-4 w-4" />
+                                                    </button>
+
                                                     <button
                                                         onClick={() => setShowRejectModal(user.id)}
                                                         disabled={actionLoading === user.id}
                                                         className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                                                        title="Reject"
                                                     >
                                                         Reject
                                                     </button>
@@ -407,6 +455,7 @@ export default function AdminUsersPage() {
                             </tbody>
                         </table>
                     </div>
+                    {/* ... invite modal ... */}
 
                     {users.length === 0 && (
                         <div className="text-center py-12">

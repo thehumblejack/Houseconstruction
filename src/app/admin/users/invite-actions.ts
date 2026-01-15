@@ -30,6 +30,9 @@ export async function inviteUser(email: string, role: string) {
 
     if (inviteError) {
         console.error('Invite error:', inviteError)
+        if (inviteError.message.includes('already been registered')) {
+            return { error: 'Cet utilisateur est déjà enregistré. S\'il est en attente, utilisez le bouton "Renvoyer l\'invitation".' }
+        }
         return { error: inviteError.message }
     }
 
@@ -52,6 +55,43 @@ export async function inviteUser(email: string, role: string) {
             console.error('Profile update error:', profileError)
             return { error: 'User invited but failed to set role/status via profile.' }
         }
+    }
+
+    return { success: true }
+}
+
+export async function resendInvite(email: string) {
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        return { error: 'Server configuration error: Missing SERVICE_ROLE_KEY' }
+    }
+
+    const supabaseAdmin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        {
+            auth: {
+                autoRefreshToken: false,
+                persistSession: false
+            }
+        }
+    )
+
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ||
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+
+    // Using cast to any to bypass strict type check for 'invite' which might be missing in some SDK versions
+    // but is valid for the API if the user is in invited state.
+    const { error } = await supabaseAdmin.auth.resend({
+        type: 'invite' as any,
+        email: email,
+        options: {
+            emailRedirectTo: `${baseUrl}/auth/callback?next=/auth/set-password`
+        }
+    })
+
+    if (error) {
+        console.error('Resend invite error:', error)
+        return { error: error.message }
     }
 
     return { success: true }

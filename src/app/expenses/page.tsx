@@ -142,6 +142,18 @@ function ExpensesContent() {
     });
     const [editingDepositId, setEditingDepositId] = useState<string | null>(null);
     const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'price', direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+
+    // Expense Add State
+    const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+    const [newExpenseData, setNewExpenseData] = useState({
+        item: '',
+        price: '',
+        date: new Date().toISOString().split('T')[0],
+        status: 'pending' as PaymentStatus,
+        quantity: '1'
+    });
+    const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
 
     const toggleRow = (id: string) => {
@@ -948,6 +960,81 @@ function ExpensesContent() {
         setShowAddDepositModal(true);
     };
 
+    const closeExpenseModal = () => {
+        setShowAddExpenseModal(false);
+        setEditingExpenseId(null);
+        setNewExpenseData({
+            item: '',
+            price: '',
+            date: new Date().toISOString().split('T')[0],
+            status: 'pending',
+            quantity: '1'
+        });
+    };
+
+    const handleSaveExpense = async () => {
+        const price = parseFloat(newExpenseData.price);
+        if (isNaN(price)) {
+            alert('Veuillez entrer un montant valide');
+            return;
+        }
+        if (!newExpenseData.item) {
+            alert('Veuillez entrer une désignation');
+            return;
+        }
+
+        try {
+            // Format date from YYYY-MM-DD to DD/MM/YYYY if needed, 
+            // but the table seems to expect DD/MM/YYYY strings based on previous code.
+            // Let's check how dates are stored.
+            const dateObj = new Date(newExpenseData.date);
+            const formattedDate = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth() + 1).toString().padStart(2, '0')}/${dateObj.getFullYear()}`;
+
+            if (editingExpenseId) {
+                const { error } = await supabase.from('expenses').update({
+                    item: newExpenseData.item,
+                    price: price,
+                    date: formattedDate,
+                    status: newExpenseData.status,
+                    quantity: newExpenseData.quantity
+                }).eq('id', editingExpenseId);
+                if (error) throw error;
+            } else {
+                const { error } = await supabase.from('expenses').insert({
+                    supplier_id: activeTab,
+                    item: newExpenseData.item,
+                    price: price,
+                    date: formattedDate,
+                    status: newExpenseData.status,
+                    quantity: newExpenseData.quantity
+                });
+                if (error) throw error;
+            }
+
+            closeExpenseModal();
+            fetchData();
+        } catch (error) {
+            console.error('Error saving expense:', error);
+            alert("Erreur lors de l'enregistrement");
+        }
+    };
+
+    const handleEditExpense = (expense: Expense) => {
+        // Convert DD/MM/YYYY to YYYY-MM-DD for input[type=date]
+        const [d, m, y] = expense.date.split('/');
+        const isoDate = `${y}-${m}-${d}`;
+
+        setNewExpenseData({
+            item: expense.item,
+            price: expense.price.toString(),
+            date: isoDate,
+            status: expense.status,
+            quantity: expense.quantity || '1'
+        });
+        setEditingExpenseId(expense.id);
+        setShowAddExpenseModal(true);
+    };
+
     const closeDepositModal = () => {
         setShowAddDepositModal(false);
         setEditingDepositId(null);
@@ -1258,6 +1345,84 @@ function ExpensesContent() {
                             <button onClick={handleSaveDeposit} className="text-xs font-bold px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-lg shadow-emerald-200 transition-all flex items-center gap-2">
                                 <CheckCircle2 className="h-4 w-4" />
                                 {editingDepositId ? 'Enregistrer' : 'Confirmer'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Add Expense Modal */}
+            {showAddExpenseModal && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+                    <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+                        <h3 className="text-lg font-black mb-4 text-slate-900 uppercase tracking-tight">
+                            {editingExpenseId ? 'Modifier Facture/Bon' : 'Nouvelle Facture/Bon'}
+                        </h3>
+
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Désignation (Num Facture/Bon)</label>
+                                <input
+                                    type="text"
+                                    className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold uppercase"
+                                    placeholder="Ex: Facture 123..."
+                                    value={newExpenseData.item}
+                                    onChange={(e) => setNewExpenseData({ ...newExpenseData, item: e.target.value })}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Montant (DT)</label>
+                                <input
+                                    type="number"
+                                    step="0.001"
+                                    className="w-full border border-slate-200 p-3 rounded-xl text-lg font-black text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="0.000"
+                                    value={newExpenseData.price}
+                                    onChange={(e) => setNewExpenseData({ ...newExpenseData, price: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Date</label>
+                                    <input
+                                        type="date"
+                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
+                                        value={newExpenseData.date}
+                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, date: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Quantité</label>
+                                    <input
+                                        type="text"
+                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
+                                        placeholder="Ex: 1"
+                                        value={newExpenseData.quantity}
+                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, quantity: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">État du Paiement</label>
+                                <select
+                                    value={newExpenseData.status}
+                                    onChange={(e) => setNewExpenseData({ ...newExpenseData, status: e.target.value as PaymentStatus })}
+                                    className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold bg-white"
+                                >
+                                    <option value="pending">ATTENTE</option>
+                                    <option value="paid">PAYÉ</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 mt-6">
+                            <button onClick={closeExpenseModal} className="text-xs font-bold px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Annuler</button>
+                            <button onClick={handleSaveExpense} className="text-xs font-bold px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-200 transition-all flex items-center gap-2">
+                                <CheckCircle2 className="h-4 w-4" />
+                                {editingExpenseId ? 'Enregistrer' : 'Confirmer'}
                             </button>
                         </div>
                     </div>
@@ -1655,10 +1820,21 @@ function ExpensesContent() {
 
                     {/* --- SECTION: FACTURES / BONS --- */}
                     <div className="space-y-4 mb-12">
-                        <div className="flex items-center gap-3 px-1">
-                            <div className="w-1.5 h-6 bg-blue-500 rounded-full"></div>
-                            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Factures & Bons</h2>
-                            <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{currentSupplier.expenses.length} documents</span>
+                        <div className="flex items-center justify-between px-1">
+                            <div className="flex items-center gap-3">
+                                <div className="w-1.5 h-6 bg-blue-500 rounded-full"></div>
+                                <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Factures & Bons</h2>
+                                <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{currentSupplier.expenses.length} documents</span>
+                            </div>
+                            {isAdmin && (
+                                <button
+                                    onClick={() => setShowAddExpenseModal(true)}
+                                    className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-blue-100"
+                                >
+                                    <Plus className="h-3.5 w-3.5" />
+                                    Ajouter
+                                </button>
+                            )}
                         </div>
 
                         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1768,6 +1944,12 @@ function ExpensesContent() {
                                                                         title="Lier un document"
                                                                     >
                                                                         <ImageIcon className="h-3.5 w-3.5" />
+                                                                    </button>
+                                                                )}
+
+                                                                {isAdmin && (
+                                                                    <button onClick={() => handleEditExpense(e)} className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors" title="Modifier">
+                                                                        <Pencil className="h-3.5 w-3.5" />
                                                                     </button>
                                                                 )}
 

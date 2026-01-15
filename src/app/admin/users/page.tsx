@@ -7,6 +7,9 @@ import { createClient } from '@/lib/supabase';
 import { UserProfile } from '@/context/AuthContext';
 import { Shield } from 'lucide-react';
 
+import { inviteUser } from './invite-actions';
+import { Mail, Plus } from 'lucide-react'; // Make sure to add these to imports
+
 export default function AdminUsersPage() {
     const { isAdmin, loading: authLoading } = useAuth();
     const router = useRouter();
@@ -20,11 +23,39 @@ export default function AdminUsersPage() {
     const [rejectionReason, setRejectionReason] = useState('');
     const [showRejectModal, setShowRejectModal] = useState<string | null>(null);
 
+    // Invite State
+    const [showInviteModal, setShowInviteModal] = useState(false);
+    const [inviteEmail, setInviteEmail] = useState('');
+    const [inviteRole, setInviteRole] = useState<'admin' | 'user' | 'viewer'>('user');
+    const [inviting, setInviting] = useState(false);
+
     useEffect(() => {
         if (!authLoading && !isAdmin) {
             router.replace('/');
         }
     }, [isAdmin, authLoading, router]);
+
+    const handleInvite = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setInviting(true);
+        try {
+            const result = await inviteUser(inviteEmail, inviteRole);
+            if (result.error) {
+                alert('Erreur: ' + result.error);
+            } else {
+                alert('Invitation envoyée avec succès !');
+                setShowInviteModal(false);
+                setInviteEmail('');
+                setInviteRole('user');
+                await fetchUsers(); // Refresh list
+            }
+        } catch (err) {
+            console.error('Invite error:', err);
+            alert("Une erreur inattendue s'est produite.");
+        } finally {
+            setInviting(false);
+        }
+    };
 
     const fetchUsers = async () => {
         setLoading(true);
@@ -194,9 +225,18 @@ export default function AdminUsersPage() {
         <div className="min-h-screen bg-gray-50 p-6">
             <div className="max-w-7xl mx-auto">
                 {/* Header */}
-                <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-gray-900 mb-2">User Management</h1>
-                    <p className="text-gray-600">Manage user access requests and permissions</p>
+                <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h1 className="text-3xl font-bold text-gray-900 mb-2">User Management</h1>
+                        <p className="text-gray-600">Manage user access requests and permissions</p>
+                    </div>
+                    <button
+                        onClick={() => setShowInviteModal(true)}
+                        className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center gap-2"
+                    >
+                        <Mail className="h-5 w-5" />
+                        Inviter un Utilisateur
+                    </button>
                 </div>
 
                 {/* Stats */}
@@ -393,6 +433,71 @@ export default function AdminUsersPage() {
                     )}
                 </div>
             </div>
+
+            {/* Invite Modal */}
+            {showInviteModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl">
+                        <h3 className="text-2xl font-black text-slate-900 mb-2">
+                            Inviter un Utilisateur
+                        </h3>
+                        <p className="text-sm text-slate-500 mb-6">
+                            L'utilisateur recevra un email avec un lien pour configurer son mot de passe.
+                        </p>
+
+                        <form onSubmit={handleInvite} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-black uppercase text-slate-400 mb-1">Email</label>
+                                <input
+                                    type="email"
+                                    value={inviteEmail}
+                                    onChange={(e) => setInviteEmail(e.target.value)}
+                                    required
+                                    placeholder="utilisateur@example.com"
+                                    className="w-full border border-slate-200 rounded-xl px-4 py-3 text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-black uppercase text-slate-400 mb-1">Rôle</label>
+                                <select
+                                    value={inviteRole}
+                                    onChange={(e) => setInviteRole(e.target.value as any)}
+                                    className="w-full border border-slate-200 rounded-xl px-4 py-3 text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                                >
+                                    <option value="user">User</option>
+                                    <option value="viewer">Viewer</option>
+                                    <option value="admin">Admin</option>
+                                </select>
+                            </div>
+
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowInviteModal(false)}
+                                    className="flex-1 px-4 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={inviting}
+                                    className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 flex items-center justify-center gap-2"
+                                >
+                                    {inviting ? (
+                                        <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <>
+                                            <span>Envoyer</span>
+                                            <Mail className="h-4 w-4" />
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {/* Reject Modal */}
             {showRejectModal && (

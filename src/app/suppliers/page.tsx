@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { createClient } from '@/lib/supabase';
-import { Search, Loader2, User, Phone, MapPin, Package, TrendingUp, TrendingDown, Plus, Pencil, Trash2, ArrowRight, ChevronRight, Hash, FileText, X } from 'lucide-react';
+import { Search, Loader2, User, Phone, MapPin, Package, TrendingUp, TrendingDown, Plus, Pencil, Trash2, ArrowRight, ChevronRight, Hash, FileText, X, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import Link from 'next/link';
 
@@ -16,8 +16,9 @@ interface SupplierStats {
     totalPaid: number;
     remaining: number;
     articleCount: number;
-    lastArticle?: string;
+    bestPriceCount: number;
     notes?: string;
+    isSelected: boolean;
 }
 
 export default function SuppliersPage() {
@@ -30,11 +31,12 @@ export default function SuppliersPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
     const [notesValue, setNotesValue] = useState('');
+    const [viewMode, setViewMode] = useState<'list' | 'compact'>('compact');
 
     const supabase = useMemo(() => createClient(), []);
 
-    const fetchData = async () => {
-        console.log('Suppliers: Fetching data started...');
+    const fetchData = useCallback(async () => {
+        setLoading(true);
         try {
             const [sups, exps, deps, its] = await Promise.all([
                 supabase.from('suppliers').select('*'),
@@ -43,33 +45,38 @@ export default function SuppliersPage() {
                 supabase.from('invoice_items').select('*')
             ]);
 
-            if (sups.error) console.error('Suppliers: Error fetching suppliers:', sups.error);
-            if (exps.error) console.error('Suppliers: Error fetching expenses:', exps.error);
-            if (deps.error) console.error('Suppliers: Error fetching deposits:', deps.error);
-            if (its.error) console.error('Suppliers: Error fetching invoice_items:', its.error);
-
             setSuppliers(sups.data || []);
             setExpenses(exps.data || []);
             setDeposits(deps.data || []);
             setItems(its.data || []);
-
-            console.log('Suppliers: Data received:', {
-                suppliers: sups.data?.length ?? 0,
-                expenses: exps.data?.length ?? 0
-            });
         } catch (error) {
-            console.error('Suppliers: Critical error fetching data:', error);
+            console.error('Error fetching data:', error);
         } finally {
-            console.log('Suppliers: Fetching complete.');
             setLoading(false);
         }
-    };
+    }, [supabase]);
 
     useEffect(() => {
         fetchData();
-    }, [supabase]);
+    }, [supabase, fetchData]);
 
     const stats = useMemo(() => {
+        // Find best prices for items
+        const itemPrices: Record<string, { price: number, supplierId: string }> = {};
+        items.forEach(item => {
+            const designation = item.designation?.toLowerCase().trim();
+            if (!designation) return;
+            const price = item.unit_price || 0;
+            if (price <= 0) return;
+
+            const parentExpense = expenses.find(e => e.id === item.expense_id);
+            if (!parentExpense) return;
+
+            if (!itemPrices[designation] || price < itemPrices[designation].price) {
+                itemPrices[designation] = { price, supplierId: parentExpense.supplier_id };
+            }
+        });
+
         return suppliers.map(s => {
             const supplierExpenses = expenses.filter(e => e.supplier_id === s.id);
             const supplierDeposits = deposits.filter(d => d.supplier_id === s.id);
@@ -80,7 +87,6 @@ export default function SuppliersPage() {
 
             const totalInvoiceAmount = supplierExpenses.reduce((sum, e) => sum + e.price, 0);
 
-            // Financial logic matching expenses page
             const hasDeposits = supplierDeposits.length > 0;
             let computedPaid = 0;
             if (hasDeposits) {
@@ -89,24 +95,28 @@ export default function SuppliersPage() {
                 computedPaid = supplierExpenses.filter(e => e.status === 'paid').reduce((sum, e) => sum + e.price, 0);
             }
 
-            const lastItem = supplierItems.sort((a, b) => {
-                const dA = expenses.find(e => e.id === a.expense_id)?.date || '';
-                const dB = expenses.find(e => e.id === b.expense_id)?.date || '';
-                return dB.localeCompare(dA);
-            })[0];
+            // Calculate best price count
+            let bestPriceCount = 0;
+            const uniqueSupplierItems = Array.from(new Set(supplierItems.map(i => i.designation?.toLowerCase().trim())));
+            uniqueSupplierItems.forEach(designation => {
+                if (designation && itemPrices[designation]?.supplierId === s.id) {
+                    bestPriceCount++;
+                }
+            });
 
             return {
                 id: s.id,
                 name: s.name,
                 color: s.color || 'bg-slate-500',
-                address: s.address || 'Tunisie',
+                address: s.address || '-',
                 tel: s.tel || '-',
                 totalCost: totalInvoiceAmount,
                 totalPaid: computedPaid,
                 remaining: computedPaid - totalInvoiceAmount,
-                articleCount: supplierItems.length + (supplierExpenses.some(e => (!e.items || e.items.length === 0)) ? 1 : 0), // rough estimate
-                lastArticle: lastItem?.designation || (supplierExpenses[0]?.item),
-                notes: s.notes
+                articleCount: supplierItems.length,
+                bestPriceCount,
+                notes: s.notes,
+                isSelected: totalInvoiceAmount > 0 || (s.id === 'beton' || s.id === 'fer') // Mock selection logic for now
             };
         }).sort((a, b) => b.totalCost - a.totalCost);
     }, [suppliers, expenses, deposits, items]);
@@ -118,179 +128,174 @@ export default function SuppliersPage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50">
-                <Loader2 className="h-10 w-10 text-slate-900 animate-spin" />
+            <div className="min-h-screen flex items-center justify-center bg-slate-50/50 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="h-12 w-12 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin"></div>
+                    <p className="text-slate-500 font-black uppercase text-[10px] tracking-widest animate-pulse">Chargement...</p>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="max-w-7xl mx-auto p-4 space-y-6 pb-20 font-jakarta">
-            {/* Header Content */}
-            <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-6">
-                <div>
-                    <h1 className="text-3xl font-black uppercase tracking-tighter flex items-center gap-3 text-slate-900">
-                        <div className="bg-slate-900 text-white p-2 rounded-2xl">
-                            <User className="h-7 w-7" />
-                        </div>
-                        Gestion Fournisseurs
-                    </h1>
-                    <p className="text-slate-400 text-xs font-bold uppercase mt-2 tracking-widest pl-1">Annuaire et Situation Financière</p>
+        <div className="max-w-7xl mx-auto p-4 space-y-4 pb-20 font-jakarta">
+            {/* Minimal Header */}
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-4">
+                    <div className="bg-slate-900 text-white p-3 rounded-2xl shadow-lg shadow-slate-200">
+                        <User className="h-6 w-6" />
+                    </div>
+                    <div>
+                        <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight leading-none">Fournisseurs</h1>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest">Base de données & Comparaison</p>
+                    </div>
                 </div>
 
-                <div className="flex gap-3 w-full md:w-auto">
-                    <div className="relative flex-1 md:w-80 group">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300 group-focus-within:text-slate-900 transition-colors" />
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    <div className="relative flex-1 md:w-80">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input
                             type="text"
-                            placeholder="RECHERCHER UN FOURNISSEUR..."
+                            placeholder="RECHERCHER..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full bg-slate-50 border-slate-100 border-2 rounded-2xl py-4 pl-12 pr-4 text-sm font-black text-slate-900 placeholder:text-slate-300 focus:ring-4 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all uppercase"
+                            className="w-full bg-slate-50 border-slate-100 border rounded-2xl py-3 pl-10 pr-4 text-xs font-black text-slate-900 placeholder:text-slate-300 focus:ring-4 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all uppercase"
                         />
                     </div>
                     {isAdmin && (
-                        <Link href="/expenses" className="bg-slate-900 hover:bg-slate-800 text-white p-4 rounded-2xl shadow-xl shadow-slate-200 transition-all flex items-center justify-center group">
-                            <Plus className="h-6 w-6 group-hover:rotate-90 transition-transform" />
+                        <Link href="/expenses" className="bg-slate-900 hover:bg-slate-800 text-white p-3 rounded-2xl shadow-lg transition-all">
+                            <Plus className="h-5 w-5" />
                         </Link>
                     )}
                 </div>
             </div>
 
-            {/* Stats Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-slate-900 text-white p-6 rounded-[2rem] shadow-xl">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-3 bg-white/10 rounded-2xl">
-                            <TrendingUp className="h-6 w-6 text-emerald-400" />
-                        </div>
-                        <span className="text-[10px] font-black uppercase text-white/40 tracking-widest">Total Engagé</span>
-                    </div>
-                    <p className="text-3xl font-black tabular-nums">{stats.reduce((sum, s) => sum + s.totalCost, 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-white/50">DT</span></p>
-                    <p className="text-[10px] font-bold text-white/30 uppercase mt-1 tracking-tighter">Cumul de toutes les factures</p>
+            {/* Quick Stats Banner - Very Compact */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="bg-slate-900 text-white p-4 rounded-2xl">
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Engagé Global</p>
+                    <p className="text-lg font-black">{stats.reduce((sum, s) => sum + s.totalCost, 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] opacity-40">DT</span></p>
                 </div>
-
-                <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm transition-all hover:shadow-md">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-3 bg-emerald-50 rounded-2xl">
-                            <TrendingDown className="h-6 w-6 text-emerald-600" />
-                        </div>
-                        <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Total Payé</span>
-                    </div>
-                    <p className="text-3xl font-black text-slate-900 tabular-nums">{stats.reduce((sum, s) => sum + s.totalPaid, 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-slate-400 font-bold">DT</span></p>
-                    <p className="text-[10px] font-bold text-emerald-600 uppercase mt-1 tracking-tighter italic">Paiements & Acomptes effectués</p>
+                <div className="bg-white border border-slate-200 p-4 rounded-2xl">
+                    <p className="text-[8px] font-black text-emerald-500 uppercase tracking-widest mb-1">Total Payé</p>
+                    <p className="text-lg font-black text-slate-900">{stats.reduce((sum, s) => sum + s.totalPaid, 0).toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
                 </div>
-
-                <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm transition-all hover:shadow-md">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-3 bg-red-50 rounded-2xl">
-                            <TrendingUp className="h-6 w-6 text-red-600" />
-                        </div>
-                        <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Dette Totale</span>
-                    </div>
-                    <p className="text-3xl font-black text-red-600 tabular-nums">{Math.abs(stats.reduce((sum, s) => sum + (s.remaining < 0 ? s.remaining : 0), 0)).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-red-400 font-bold">DT</span></p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-tighter">Solde restant à régler</p>
+                <div className="bg-white border border-slate-200 p-4 rounded-2xl">
+                    <p className="text-[8px] font-black text-red-500 uppercase tracking-widest mb-1">Dette Totale</p>
+                    <p className="text-lg font-black text-red-600">
+                        {Math.abs(stats.reduce((sum, s) => sum + (s.remaining < 0 ? s.remaining : 0), 0)).toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                    </p>
+                </div>
+                <div className="bg-blue-600 text-white p-4 rounded-2xl">
+                    <p className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1">Fournisseurs Actifs</p>
+                    <p className="text-lg font-black">{stats.filter(s => s.isSelected).length} / {stats.length}</p>
                 </div>
             </div>
 
-            {/* Suppliers Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredSuppliers.map(s => (
-                    <div key={s.id} className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm hover:shadow-xl transition-all group border-b-4 border-b-slate-900/5">
-                        <div className="flex items-start justify-between mb-6">
-                            <div className="flex items-center gap-4">
-                                <div className={`w-14 h-14 rounded-3xl ${s.color} flex items-center justify-center text-white text-xl font-black shadow-lg shadow-${s.color.split('-')[1]}-200/50 group-hover:scale-110 transition-transform`}>
-                                    {s.name.charAt(0).toUpperCase()}
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight leading-4 group-hover:text-blue-600 transition-colors">{s.name}</h3>
-                                    <div className="flex items-center gap-1 mt-1">
-                                        <Hash className="h-3 w-3 text-slate-300" />
-                                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{s.id}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <Link href={`/expenses?tab=${s.id}`} className="bg-slate-50 opacity-0 group-hover:opacity-100 p-3 rounded-2xl hover:bg-slate-900 hover:text-white transition-all">
-                                <ChevronRight className="h-5 w-5" />
-                            </Link>
-                        </div>
+            {/* Compact Table View */}
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="bg-slate-50/50 border-b border-slate-100">
+                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest w-12 text-center">In</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Fournisseur</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Catégorie</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Rating Prix</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Dépensé</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Solde</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {filteredSuppliers.map(s => {
+                                const category = {
+                                    beton: 'BÉTON / BPE',
+                                    fer: 'MATÉRIAUX / FER',
+                                    ahmed: 'MATÉRIAUX / DIVERS',
+                                    ali: 'MAIN D\'OEUVRE',
+                                    default: 'GÉNÉRAL'
+                                }[s.id as string] || 'GÉNÉRAL';
 
-                        <div className="space-y-6">
-                            <div className="flex justify-between items-end border-b border-slate-50 pb-4">
-                                <div>
-                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Dépensé</p>
-                                    <p className="text-xl font-black text-slate-900 tabular-nums">{s.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Solde</p>
-                                    <p className={`text-xl font-black tabular-nums ${s.remaining < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                        {s.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="flex items-center gap-2">
-                                    <div className="p-2 bg-slate-50 rounded-lg">
-                                        <Phone className="h-3 w-3 text-slate-400" />
-                                    </div>
-                                    <p className="text-[10px] font-bold text-slate-600 uppercase truncate">{s.tel}</p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="p-2 bg-slate-50 rounded-lg">
-                                        <MapPin className="h-3 w-3 text-slate-400" />
-                                    </div>
-                                    <p className="text-[10px] font-bold text-slate-600 uppercase truncate">{s.address}</p>
-                                </div>
-                            </div>
-
-                            <div className="bg-slate-50 rounded-2xl p-4">
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-2">
-                                        <Package className="h-3 w-3 text-blue-500" />
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dernier Article</span>
-                                    </div>
-                                    <span className="text-[10px] font-black text-blue-600 uppercase">{s.articleCount} total</span>
-                                </div>
-                                <p className="text-xs font-black text-slate-800 uppercase line-clamp-1">{s.lastArticle || 'Aucun document'}</p>
-                            </div>
-
-                            <Link
-                                href={`/expenses?tab=${s.id}`}
-                                className="w-full bg-slate-100 hover:bg-slate-900 hover:text-white py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
-                            >
-                                Voir Situation
-                                <ArrowRight className="h-3 w-3" />
-                            </Link>
-
-                            {/* Notes Section */}
-                            {isAdmin && (
-                                <div className="pt-4 border-t border-slate-50">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <FileText className="h-3 w-3 text-slate-400" />
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Notes / Observations</span>
-                                        </div>
-                                        <button
-                                            onClick={() => {
-                                                setEditingNotesId(s.id);
-                                                setNotesValue(s.notes || '');
-                                            }}
-                                            className="p-1 hover:bg-slate-100 rounded transition-colors"
-                                        >
-                                            <Pencil className="h-3 w-3 text-slate-400" />
-                                        </button>
-                                    </div>
-                                    <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100/50">
-                                        <p className="text-[11px] font-medium text-slate-600 leading-relaxed italic">
-                                            {s.notes || "Aucune note pour ce fournisseur..."}
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                ))}
+                                return (
+                                    <tr key={s.id} className={`hover:bg-slate-50/50 transition-colors group ${!s.isSelected ? 'opacity-60' : ''}`}>
+                                        <td className="px-6 py-4 text-center">
+                                            <div className={`w-5 h-5 rounded-md border-2 mx-auto flex items-center justify-center transition-all ${s.isSelected ? 'bg-slate-900 border-slate-900 text-white' : 'border-slate-200'}`}>
+                                                {s.isSelected && <CheckCircle2 className="h-3 w-3" />}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-10 h-10 rounded-xl ${s.color} flex items-center justify-center text-white text-xs font-black shadow-sm group-hover:scale-110 transition-transform`}>
+                                                    {s.name.charAt(0).toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-black text-slate-900 uppercase tracking-tight">{s.name}</p>
+                                                    <div className="flex items-center gap-2 mt-0.5 text-[10px] font-bold text-slate-400 uppercase">
+                                                        <span>{s.id}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="text-[9px] font-black text-slate-400 border border-slate-100 px-2 py-1 rounded bg-slate-50 whitespace-nowrap">{category}</span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center justify-center gap-1">
+                                                {[1, 2, 3].map((star) => (
+                                                    <div
+                                                        key={star}
+                                                        className={`w-4 h-1.5 rounded-full transition-all ${s.bestPriceCount >= (star * 2) ? 'bg-emerald-500' : 'bg-slate-100'}`}
+                                                        title={s.bestPriceCount > 0 ? `${s.bestPriceCount} articles au meilleur prix` : 'Pas d\'articles comparés'}
+                                                    />
+                                                ))}
+                                                {s.bestPriceCount > 0 && (
+                                                    <span className="ml-2 text-[10px] font-black text-emerald-600 bg-emerald-50 px-1.5 rounded uppercase">TOP</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <p className="text-[13px] font-black text-slate-900 tabular-nums">
+                                                {s.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                            </p>
+                                            <p className="text-[10px] font-bold text-slate-300 uppercase">{s.articleCount} arts.</p>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <span className={`text-[13px] font-black tabular-nums px-2 py-1 rounded-lg ${s.remaining < 0
+                                                ? 'text-red-600 bg-red-50'
+                                                : s.remaining > 0 ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 bg-slate-50'
+                                                }`}>
+                                                {s.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex items-center justify-end gap-1">
+                                                <Link
+                                                    href={`/expenses?tab=${s.id}`}
+                                                    className="p-2 hover:bg-slate-900 hover:text-white text-slate-400 rounded-xl transition-all"
+                                                    title="Voir Détails"
+                                                >
+                                                    <ChevronRight className="h-4 w-4" />
+                                                </Link>
+                                                {isAdmin && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingNotesId(s.id);
+                                                            setNotesValue(s.notes || '');
+                                                        }}
+                                                        className="p-2 hover:bg-slate-100 text-slate-400 rounded-xl transition-all"
+                                                    >
+                                                        <FileText className="h-4 w-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             {/* Notes Editing Modal */}

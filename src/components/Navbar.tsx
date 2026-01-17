@@ -70,34 +70,30 @@ export default function Navbar() {
 
     return (
         <>
-            {/* Desktop Navbar - Modern Floating Island */}
-            {/* We use 'sticky' so it occupies space in the flow (preventing overlap) but sticks to top when scrolling */}
-            <div className="hidden md:flex sticky top-6 z-50 justify-center w-full font-jakarta pointer-events-none mb-8">
-                <nav className="flex items-center gap-1.5 p-1.5 bg-slate-900/95 backdrop-blur-2xl border border-white/10 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] pointer-events-auto transform transition-all hover:scale-[1.01] hover:shadow-[0_20px_40px_rgb(0,0,0,0.2)]">
+            {/* Desktop Navbar - Fixed & Compact */}
+            <div className="hidden md:flex fixed top-4 left-0 right-0 z-[100] justify-center w-full font-jakarta pointer-events-none">
+                <nav className="flex items-center gap-1.5 p-1.5 bg-slate-900/90 backdrop-blur-md border border-white/10 rounded-full shadow-2xl pointer-events-auto transition-transform">
 
-                    {/* Logo Section */}
-                    <Link href="/chantier" className="flex items-center gap-2 pl-4 pr-6 border-r border-white/10 mr-1 group cursor-pointer">
-                        <div className="bg-[#FFB800] p-1.5 rounded-lg transition-transform group-hover:rotate-12">
+                    {/* Logo Section - Compact */}
+                    <Link href="/chantier" className="flex items-center gap-2 pl-4 pr-5 border-r border-white/10 mr-1 group cursor-pointer hover:bg-white/5 rounded-l-full py-2 transition-colors">
+                        <div className="bg-[#FFB800] p-1.5 rounded-md transition-transform group-hover:rotate-12">
                             <Building2 className="h-4 w-4 text-slate-900" />
                         </div>
-                        <span className="font-bold tracking-[-0.05em] text-lg text-white uppercase flex items-center">
-                            House<span className="text-[#FFB800]">Expert</span>
+                        <span className="font-black tracking-tighter text-sm text-white uppercase">
+                            HE
                         </span>
                     </Link>
 
-                    {/* Project Selector */}
-                    <div className="relative border-r border-white/10 pr-2 mr-2">
+                    {/* Project Selector - Compact */}
+                    <div className="relative border-r border-white/10 pr-2 mr-1">
                         <button
                             onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
-                            className="flex items-center gap-3 px-4 py-2 hover:bg-white/5 rounded-full transition-all group"
+                            className="flex items-center gap-2 px-4 py-2 hover:bg-white/5 rounded-full transition-all group"
                         >
-                            <div className="flex flex-col items-start">
-                                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Projet Actuel</span>
-                                <span className="text-xs font-black text-white uppercase tracking-tight truncate max-w-[1200px]">
-                                    {currentProject?.name || 'Sélectionner...'}
-                                </span>
-                            </div>
-                            <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${isProjectMenuOpen ? 'rotate-180' : ''}`} />
+                            <span className="text-xs font-bold text-slate-300 uppercase tracking-tight truncate max-w-[150px]">
+                                {currentProject?.name || 'Projet...'}
+                            </span>
+                            <ChevronDown className={`h-3.5 w-3.5 text-slate-500 transition-transform ${isProjectMenuOpen ? 'rotate-180' : ''}`} />
                         </button>
 
                         <AnimatePresence>
@@ -108,10 +104,9 @@ export default function Navbar() {
                                         initial={{ opacity: 0, y: 10, scale: 0.95 }}
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                        className="absolute top-full left-0 mt-3 w-64 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[60]"
+                                        className="absolute top-full left-0 mt-2 w-64 bg-slate-900 border border-white/10 rounded-2xl shadow-xl overflow-hidden z-[60]"
                                     >
                                         <div className="p-2 space-y-1">
-                                            <p className="px-3 py-2 text-[8px] font-black text-slate-500 uppercase tracking-widest">Mes Chantiers</p>
                                             {projects.map((p) => (
                                                 <div key={p.id} className="relative group/item">
                                                     <button
@@ -121,13 +116,13 @@ export default function Navbar() {
                                                         }}
                                                         className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between group transition-all ${currentProject?.id === p.id ? 'bg-[#FFB800] text-black' : 'text-slate-300 hover:bg-white/5'}`}
                                                     >
-                                                        <span className="text-xs font-bold uppercase truncate pr-8">{p.name}</span>
+                                                        <span className="text-xs font-black uppercase truncate pr-8">{p.name}</span>
                                                         {currentProject?.id === p.id && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
                                                     </button>
                                                     <button
                                                         onClick={async (e) => {
                                                             e.stopPropagation();
-                                                            if (confirm(`Êtes-vous sûr de vouloir supprimer le projet "${p.name}" ? Tous les frais, fournisseurs et documents associés seront définitivement supprimés.`)) {
+                                                            if (confirm(`Supprimer "${p.name}" ?`)) {
                                                                 await deleteProject(p.id);
                                                             }
                                                         }}
@@ -139,13 +134,13 @@ export default function Navbar() {
                                             ))}
                                             <button
                                                 onClick={async () => {
-                                                    const name = prompt('Nom du nouveau projet:');
+                                                    const name = prompt('Nom du projet:');
                                                     if (name) {
                                                         await createProject(name, '');
                                                         setIsProjectMenuOpen(false);
                                                     }
                                                 }}
-                                                className="w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 text-[#FFB800] hover:bg-[#FFB800]/5 border-t border-white/5 mt-1 transition-all"
+                                                className="w-full text-left px-4 py-3 rounded-xl flex items-center gap-2 text-[#FFB800] hover:bg-[#FFB800]/5 border-t border-white/5 mt-1 transition-all"
                                             >
                                                 <Plus className="h-4 w-4" />
                                                 <span className="text-xs font-black uppercase tracking-widest">Nouveau Projet</span>
@@ -157,8 +152,8 @@ export default function Navbar() {
                         </AnimatePresence>
                     </div>
 
-                    {/* Navigation Pills */}
-                    <div className="flex items-center bg-white/5 rounded-full p-1 border border-white/5">
+                    {/* Navigation Pills - Simpler & Compact */}
+                    <div className="flex items-center">
                         {navItems.map((item) => {
                             const isActive = pathname === item.path;
                             const Icon = item.icon;
@@ -167,18 +162,15 @@ export default function Navbar() {
                                     key={item.path}
                                     href={item.path}
                                     className={`
-                                        relative flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold transition-all duration-300 ease-out
+                                        relative flex items-center gap-1.5 px-4 py-2 rounded-full text-[11px] font-black transition-all duration-200
                                         ${isActive
-                                            ? 'text-white bg-slate-800 shadow-lg ring-1 ring-white/10'
+                                            ? 'text-black bg-[#FFB800] shadow-sm'
                                             : 'text-slate-400 hover:text-white hover:bg-white/5'
                                         }
                                     `}
                                 >
-                                    {isActive && (
-                                        <span className="absolute inset-0 bg-[#FFB800]/10 rounded-full opacity-50" />
-                                    )}
-                                    <Icon className={`h-4 w-4 relative z-10 ${isActive ? 'text-[#FFB800]' : ''}`} />
-                                    <span className="relative z-10 tracking-wide">{item.name}</span>
+                                    <Icon className={`h-4 w-4 ${isActive ? 'text-black' : ''}`} />
+                                    <span className="uppercase tracking-tight">{item.name}</span>
                                 </Link>
                             );
                         })}
@@ -375,6 +367,8 @@ export default function Navbar() {
                     </button>
                 </nav>
             </div>
+            {/* Spacer for Fixed Navbar */}
+            <div className="hidden md:block h-24 w-full" />
         </>
     );
 }

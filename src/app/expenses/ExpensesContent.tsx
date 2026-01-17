@@ -1882,45 +1882,30 @@ function ExpensesContentMain() {
                         </div>
                     )}
 
-                    {/* Supplier Notes Display */}
+                    {/* Notes Section */}
                     {isAdmin && (
-                        <div className="bg-amber-50/50 border border-amber-100 p-4 rounded-xl flex items-start gap-4">
-                            <div className="bg-amber-100 p-2 rounded-lg">
-                                <FileText className="h-4 w-4 text-amber-600" />
+                        <div className="bg-amber-50/50 border border-amber-100 p-3 rounded-xl flex items-start gap-3 min-h-[70px] mb-6">
+                            <div className="bg-amber-100 p-1.5 rounded-lg shrink-0">
+                                <FileText className="h-3.5 w-3.5 text-amber-600" />
                             </div>
-                            <div className="flex-1">
+                            <div className="flex-1 min-w-0">
                                 <div className="flex justify-between items-center mb-1">
-                                    <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Notes du Chantier</span>
+                                    <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Notes du Chantier</span>
                                     <button
                                         onClick={() => {
                                             setNoteEditorType('supplier');
                                             setTempNoteValue(currentSupplier?.notes || '');
                                             setShowNoteModal(true);
                                         }}
-                                        className="text-[9px] font-black text-amber-600 hover:underline uppercase"
+                                        className="text-[8px] font-black text-amber-600 hover:underline uppercase shrink-0 ml-2"
                                     >
                                         Éditer
                                     </button>
                                 </div>
-                                <p className="text-xs font-medium text-slate-600 leading-relaxed italic">
-                                    {currentSupplier?.notes || "Aucune consigne particulière pour ce fournisseur."}
+                                <p className="text-[11px] font-medium text-slate-600 leading-relaxed italic max-h-[60px] overflow-y-auto scrollbar-thin scrollbar-thumb-amber-200 scrollbar-track-transparent pr-1">
+                                    {currentSupplier?.notes || "Aucune consigne particulière."}
                                 </p>
                             </div>
-                        </div>
-                    )}
-
-
-
-                    {/* Quick Document Upload Button */}
-                    {isAdmin && (
-                        <div className="flex justify-center mb-6">
-                            <button
-                                onClick={() => setShowUploadModal(true)}
-                                className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-black uppercase tracking-wide transition-all flex items-center gap-3 shadow-lg hover:shadow-xl text-sm"
-                            >
-                                <Upload className="h-5 w-5" />
-                                Importer un Document
-                            </button>
                         </div>
                     )}
 
@@ -2071,20 +2056,33 @@ function ExpensesContentMain() {
                                         {uploadedDocs.filter(doc => doc.supplierId === activeTab).length} document{uploadedDocs.filter(doc => doc.supplierId === activeTab).length > 1 ? 's' : ''}
                                     </span>
                                 </div>
-                                <button
-                                    onClick={async (e) => {
-                                        e.stopPropagation();
-                                        if (confirm('Supprimer tous les documents importés pour ce fournisseur ?')) {
-                                            const docsToDelete = uploadedDocs.filter(doc => doc.supplierId === activeTab);
-                                            for (const doc of docsToDelete) {
-                                                await handleDeleteUploadedDoc(doc.id);
+                                <div className="flex items-center gap-4">
+                                    <button
+                                        onClick={async (e) => {
+                                            e.stopPropagation();
+                                            if (confirm('Supprimer tous les documents importés pour ce fournisseur ?')) {
+                                                const docsToDelete = uploadedDocs.filter(doc => doc.supplierId === activeTab);
+                                                for (const doc of docsToDelete) {
+                                                    await handleDeleteUploadedDoc(doc.id);
+                                                }
                                             }
-                                        }
-                                    }}
-                                    className="text-[10px] font-bold text-red-500 hover:text-red-600 uppercase hover:underline"
-                                >
-                                    Tout supprimer
-                                </button>
+                                        }}
+                                        className="text-[10px] font-bold text-red-500 hover:text-red-600 uppercase hover:underline"
+                                    >
+                                        Tout supprimer
+                                    </button>
+                                    <div className="w-px h-4 bg-slate-200" />
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowUploadModal(true);
+                                        }}
+                                        className="flex items-center gap-2 text-[10px] font-black text-slate-900 uppercase hover:text-blue-600 transition-colors"
+                                    >
+                                        <Plus className="h-3.5 w-3.5" />
+                                        Importer
+                                    </button>
+                                </div>
                             </div>
 
                             {showUploadedDocs && (
@@ -2575,195 +2573,201 @@ function ExpensesContentMain() {
                 )
             }
             {/* Document Picker Modal */}
-            {showDocPicker && (
-                <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
-                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                            <div>
-                                <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-900 flex items-center gap-3">
-                                    <ImageIcon className="h-6 w-6 text-[#FFB800]" />
-                                    Choisir un Document
-                                </h3>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sélectionnez une image à lier à {pickerTarget?.type === 'expense' ? 'la facture' : 'l\'acompte'}</p>
-                            </div>
-                            <button onClick={() => { setShowDocPicker(false); setPickerTarget(null); }} className="p-3 hover:bg-white rounded-2xl transition-colors shadow-sm">
-                                <X className="h-6 w-6 text-slate-300" />
-                            </button>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                            {uploadedDocs.filter(d => d.supplierId === activeTab).length === 0 ? (
-                                <div className="h-64 flex flex-col items-center justify-center text-slate-300 gap-4">
-                                    <Upload className="h-12 w-12 opacity-20" />
-                                    <p className="text-xs font-black uppercase tracking-widest">Aucun document importé pour ce fournisseur</p>
-                                    <button
-                                        onClick={() => { setShowDocPicker(false); setShowUploadModal(true); }}
-                                        className="text-[10px] font-black text-blue-500 hover:underline uppercase"
-                                    >
-                                        Importer maintenant
-                                    </button>
+            {
+                showDocPicker && (
+                    <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+                        <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
+                            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                <div>
+                                    <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-900 flex items-center gap-3">
+                                        <ImageIcon className="h-6 w-6 text-[#FFB800]" />
+                                        Choisir un Document
+                                    </h3>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sélectionnez une image à lier à {pickerTarget?.type === 'expense' ? 'la facture' : 'l\'acompte'}</p>
                                 </div>
-                            ) : (
-                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                    {uploadedDocs
-                                        .filter(d => d.supplierId === activeTab)
-                                        .map((doc) => (
-                                            <div
-                                                key={doc.id}
-                                                className="group relative aspect-square rounded-2xl overflow-hidden border-2 border-slate-100 hover:border-[#FFB800] transition-all bg-slate-50 flex flex-col"
-                                            >
+                                <button onClick={() => { setShowDocPicker(false); setPickerTarget(null); }} className="p-3 hover:bg-white rounded-2xl transition-colors shadow-sm">
+                                    <X className="h-6 w-6 text-slate-300" />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                                {uploadedDocs.filter(d => d.supplierId === activeTab).length === 0 ? (
+                                    <div className="h-64 flex flex-col items-center justify-center text-slate-300 gap-4">
+                                        <Upload className="h-12 w-12 opacity-20" />
+                                        <p className="text-xs font-black uppercase tracking-widest">Aucun document importé pour ce fournisseur</p>
+                                        <button
+                                            onClick={() => { setShowDocPicker(false); setShowUploadModal(true); }}
+                                            className="text-[10px] font-black text-blue-500 hover:underline uppercase"
+                                        >
+                                            Importer maintenant
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                        {uploadedDocs
+                                            .filter(d => d.supplierId === activeTab)
+                                            .map((doc) => (
                                                 <div
-                                                    className="flex-1 cursor-pointer overflow-hidden relative"
-                                                    onClick={() => setViewingImage(doc.url)}
+                                                    key={doc.id}
+                                                    className="group relative aspect-square rounded-2xl overflow-hidden border-2 border-slate-100 hover:border-[#FFB800] transition-all bg-slate-50 flex flex-col"
                                                 >
-                                                    {doc.fileName.toLowerCase().endsWith('.pdf') ? (
-                                                        <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-2">
-                                                            <FileText className="h-12 w-12 text-red-100" />
-                                                            <span className="text-[8px] font-bold text-slate-400 break-all text-center">{doc.fileName}</span>
-                                                        </div>
-                                                    ) : (
-                                                        <img src={doc.url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={doc.fileName} />
-                                                    )}
-                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                                        <Eye className="text-white drop-shadow-md h-8 w-8" />
-                                                    </div>
-                                                </div>
-
-                                                <div className="p-3 bg-white border-t border-slate-100 flex flex-col gap-2">
-                                                    <div className="flex justify-between items-start">
-                                                        <p className="text-[9px] font-black text-slate-800 uppercase truncate flex-1">{doc.fileName}</p>
-                                                    </div>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleSelectDocLink(doc.url);
-                                                        }}
-                                                        className="w-full bg-slate-900 text-white py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-[#FFB800] hover:text-slate-900 transition-all shadow-sm"
+                                                    <div
+                                                        className="flex-1 cursor-pointer overflow-hidden relative"
+                                                        onClick={() => setViewingImage(doc.url)}
                                                     >
-                                                        Lier ce document
-                                                    </button>
+                                                        {doc.fileName.toLowerCase().endsWith('.pdf') ? (
+                                                            <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-2">
+                                                                <FileText className="h-12 w-12 text-red-100" />
+                                                                <span className="text-[8px] font-bold text-slate-400 break-all text-center">{doc.fileName}</span>
+                                                            </div>
+                                                        ) : (
+                                                            <img src={doc.url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={doc.fileName} />
+                                                        )}
+                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                            <Eye className="text-white drop-shadow-md h-8 w-8" />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="p-3 bg-white border-t border-slate-100 flex flex-col gap-2">
+                                                        <div className="flex justify-between items-start">
+                                                            <p className="text-[9px] font-black text-slate-800 uppercase truncate flex-1">{doc.fileName}</p>
+                                                        </div>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleSelectDocLink(doc.url);
+                                                            }}
+                                                            className="w-full bg-slate-900 text-white py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-[#FFB800] hover:text-slate-900 transition-all shadow-sm"
+                                                        >
+                                                            Lier ce document
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))
-                                    }
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end">
-                            <button
-                                onClick={() => { setShowDocPicker(false); setPickerTarget(null); }}
-                                className="px-8 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors"
-                            >
-                                Annuler
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Delete Confirmation Modal */}
-            {showDeleteConfirmModal && supplierToDelete && (
-                <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                    <div className="bg-white rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-                        <div className="bg-red-600 p-8 text-white relative">
-                            <button
-                                onClick={() => setShowDeleteConfirmModal(false)}
-                                className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-full transition-colors"
-                            >
-                                <X className="h-5 w-5" />
-                            </button>
-                            <div className="h-16 w-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6">
-                                <AlertCircle className="h-8 w-8 text-white" />
+                                            ))
+                                        }
+                                    </div>
+                                )}
                             </div>
-                            <h2 className="text-2xl font-black uppercase tracking-tighter leading-tight">Retirer du projet ?</h2>
-                            <p className="mt-2 text-red-100 text-sm font-medium">
-                                Vous allez retirer <span className="font-black underline">{supplierToDelete.name}</span> de ce projet.
-                                Toutes ses dépenses et acomptes dans ce chantier seront supprimés.
-                            </p>
-                            <p className="mt-4 text-[10px] font-black uppercase tracking-widest text-red-200 opacity-80">
-                                Le fournisseur restera disponible dans la liste globale.
-                            </p>
-                        </div>
 
-                        <div className="p-8 space-y-6">
-                            <p className="text-center text-slate-500 font-medium text-sm">
-                                Êtes-vous sûr de vouloir retirer ce fournisseur ? Les données locales à ce projet seront perdues.
-                            </p>
-
-                            <div className="flex gap-4">
+                            <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end">
                                 <button
-                                    onClick={() => setShowDeleteConfirmModal(false)}
-                                    className="flex-1 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors bg-slate-50 rounded-2xl"
+                                    onClick={() => { setShowDocPicker(false); setPickerTarget(null); }}
+                                    className="px-8 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors"
                                 >
                                     Annuler
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Delete Confirmation Modal */}
+            {
+                showDeleteConfirmModal && supplierToDelete && (
+                    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+                        <div className="bg-white rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+                            <div className="bg-red-600 p-8 text-white relative">
                                 <button
-                                    onClick={handleRemoveSupplierFromProject}
-                                    disabled={isDeleting}
-                                    className="flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all bg-red-600 text-white shadow-xl shadow-red-200 hover:bg-red-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                                    onClick={() => setShowDeleteConfirmModal(false)}
+                                    className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-full transition-colors"
                                 >
-                                    {isDeleting ? 'Retrait...' : 'Confirmer'}
+                                    <X className="h-5 w-5" />
+                                </button>
+                                <div className="h-16 w-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6">
+                                    <AlertCircle className="h-8 w-8 text-white" />
+                                </div>
+                                <h2 className="text-2xl font-black uppercase tracking-tighter leading-tight">Retirer du projet ?</h2>
+                                <p className="mt-2 text-red-100 text-sm font-medium">
+                                    Vous allez retirer <span className="font-black underline">{supplierToDelete.name}</span> de ce projet.
+                                    Toutes ses dépenses et acomptes dans ce chantier seront supprimés.
+                                </p>
+                                <p className="mt-4 text-[10px] font-black uppercase tracking-widest text-red-200 opacity-80">
+                                    Le fournisseur restera disponible dans la liste globale.
+                                </p>
+                            </div>
+
+                            <div className="p-8 space-y-6">
+                                <p className="text-center text-slate-500 font-medium text-sm">
+                                    Êtes-vous sûr de vouloir retirer ce fournisseur ? Les données locales à ce projet seront perdues.
+                                </p>
+
+                                <div className="flex gap-4">
+                                    <button
+                                        onClick={() => setShowDeleteConfirmModal(false)}
+                                        className="flex-1 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors bg-slate-50 rounded-2xl"
+                                    >
+                                        Annuler
+                                    </button>
+                                    <button
+                                        onClick={handleRemoveSupplierFromProject}
+                                        disabled={isDeleting}
+                                        className="flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all bg-red-600 text-white shadow-xl shadow-red-200 hover:bg-red-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                                    >
+                                        {isDeleting ? 'Retrait...' : 'Confirmer'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Trash / Archive Modal */}
+            {
+                showTrashModal && (
+                    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowTrashModal(false)}>
+                        <div className="bg-white rounded-[2rem] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                            <div className="bg-slate-900 p-8 text-white flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-xl font-black uppercase tracking-tighter">Fournisseurs Archivés</h2>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase">Restaurer un fournisseur et ses données</p>
+                                </div>
+                                <X className="h-6 w-6 cursor-pointer hover:text-red-400 transition-colors" onClick={() => setShowTrashModal(false)} />
+                            </div>
+
+                            <div className="p-6 max-h-[60vh] overflow-y-auto no-scrollbar space-y-3">
+                                {archivedSuppliers.length === 0 ? (
+                                    <div className="text-center py-12">
+                                        <Clock className="h-12 w-12 text-slate-100 mx-auto mb-4" />
+                                        <p className="text-slate-400 font-bold uppercase text-xs">La corbeille est vide</p>
+                                    </div>
+                                ) : (
+                                    archivedSuppliers.map((s: any) => (
+                                        <div key={s.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-blue-200 transition-all">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-10 h-10 rounded-xl ${s.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
+                                                    {s.name.charAt(0).toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-black text-slate-900 uppercase tracking-tight">{s.name}</p>
+                                                    <p className="text-[10px] text-slate-400 font-bold uppercase">ID: {s.id}</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => handleRestoreSupplierToProject(s.id)}
+                                                className="px-4 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center gap-2"
+                                            >
+                                                <Clock className="h-3 w-3" />
+                                                Restaurer
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end">
+                                <button
+                                    onClick={() => setShowTrashModal(false)}
+                                    className="px-8 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors"
+                                >
+                                    Fermer
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
-
-            {/* Trash / Archive Modal */}
-            {showTrashModal && (
-                <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowTrashModal(false)}>
-                    <div className="bg-white rounded-[2rem] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                        <div className="bg-slate-900 p-8 text-white flex justify-between items-center">
-                            <div>
-                                <h2 className="text-xl font-black uppercase tracking-tighter">Fournisseurs Archivés</h2>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase">Restaurer un fournisseur et ses données</p>
-                            </div>
-                            <X className="h-6 w-6 cursor-pointer hover:text-red-400 transition-colors" onClick={() => setShowTrashModal(false)} />
-                        </div>
-
-                        <div className="p-6 max-h-[60vh] overflow-y-auto no-scrollbar space-y-3">
-                            {archivedSuppliers.length === 0 ? (
-                                <div className="text-center py-12">
-                                    <Clock className="h-12 w-12 text-slate-100 mx-auto mb-4" />
-                                    <p className="text-slate-400 font-bold uppercase text-xs">La corbeille est vide</p>
-                                </div>
-                            ) : (
-                                archivedSuppliers.map((s: any) => (
-                                    <div key={s.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-blue-200 transition-all">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-10 h-10 rounded-xl ${s.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
-                                                {s.name.charAt(0).toUpperCase()}
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-black text-slate-900 uppercase tracking-tight">{s.name}</p>
-                                                <p className="text-[10px] text-slate-400 font-bold uppercase">ID: {s.id}</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => handleRestoreSupplierToProject(s.id)}
-                                            className="px-4 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center gap-2"
-                                        >
-                                            <Clock className="h-3 w-3" />
-                                            Restaurer
-                                        </button>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-
-                        <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end">
-                            <button
-                                onClick={() => setShowTrashModal(false)}
-                                className="px-8 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors"
-                            >
-                                Fermer
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+                )
+            }
         </div >
     );
 }

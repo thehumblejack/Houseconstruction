@@ -14,6 +14,7 @@ export const metadata: Metadata = {
 };
 
 import { AuthProvider } from '@/context/AuthContext';
+import { ProjectProvider } from '@/context/ProjectContext';
 import Navbar from '@/components/Navbar';
 
 export default function RootLayout({
@@ -26,8 +27,10 @@ export default function RootLayout({
             <body className={`${jakarta.className} bg-slate-50 relative`} suppressHydrationWarning={true}>
                 <div className="grain" />
                 <AuthProvider>
-                    <Navbar />
-                    <main className="min-h-screen">{children}</main>
+                    <ProjectProvider>
+                        <Navbar />
+                        <main className="min-h-screen">{children}</main>
+                    </ProjectProvider>
                 </AuthProvider>
             </body>
         </html>

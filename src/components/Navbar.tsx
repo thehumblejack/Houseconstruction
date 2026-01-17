@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { LayoutGrid, Package, LogOut, ReceiptText, Building2, ShoppingCart, User, Shield } from 'lucide-react';
+import { useProject } from '@/context/ProjectContext';
+import { LayoutGrid, Package, LogOut, ReceiptText, Building2, ShoppingCart, User, Shield, ChevronDown, Plus } from 'lucide-react';
 import GlobalSearch from './GlobalSearch';
 import { useEffect, useState, useMemo } from 'react';
 import { createClient } from '@/lib/supabase';
@@ -12,8 +13,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 export default function Navbar() {
     const pathname = usePathname();
     const { signOut, isAdmin, user, isApproved } = useAuth();
+    const { projects, currentProject, setCurrentProject, createProject } = useProject();
     const [pendingCount, setPendingCount] = useState(0);
     const [isMoreOpen, setIsMoreOpen] = useState(false);
+    const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
     const supabase = useMemo(() => createClient(), []);
 
     useEffect(() => {
@@ -79,6 +82,66 @@ export default function Navbar() {
                         <span className="font-bold tracking-[-0.05em] text-lg text-white uppercase flex items-center">
                             House<span className="text-[#FFB800]">Expert</span>
                         </span>
+                    </div>
+
+                    {/* Project Selector */}
+                    <div className="relative border-r border-white/10 pr-2 mr-2">
+                        <button
+                            onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
+                            className="flex items-center gap-3 px-4 py-2 hover:bg-white/5 rounded-full transition-all group"
+                        >
+                            <div className="flex flex-col items-start">
+                                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Projet Actuel</span>
+                                <span className="text-xs font-black text-white uppercase tracking-tight truncate max-w-[120px]">
+                                    {currentProject?.name || 'Sélectionner...'}
+                                </span>
+                            </div>
+                            <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${isProjectMenuOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        <AnimatePresence>
+                            {isProjectMenuOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-[-1]" onClick={() => setIsProjectMenuOpen(false)} />
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                        className="absolute top-full left-0 mt-3 w-64 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[60]"
+                                    >
+                                        <div className="p-2 space-y-1">
+                                            <p className="px-3 py-2 text-[8px] font-black text-slate-500 uppercase tracking-widest">Mes Chantiers</p>
+                                            {projects.map((p) => (
+                                                <button
+                                                    key={p.id}
+                                                    onClick={() => {
+                                                        setCurrentProject(p);
+                                                        setIsProjectMenuOpen(false);
+                                                    }}
+                                                    className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between group transition-all ${currentProject?.id === p.id ? 'bg-[#FFB800] text-black' : 'text-slate-300 hover:bg-white/5'}`}
+                                                >
+                                                    <span className="text-xs font-bold uppercase truncate pr-4">{p.name}</span>
+                                                    {currentProject?.id === p.id && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                                                </button>
+                                            ))}
+                                            <button
+                                                onClick={async () => {
+                                                    const name = prompt('Nom du nouveau projet:');
+                                                    if (name) {
+                                                        await createProject(name, '');
+                                                        setIsProjectMenuOpen(false);
+                                                    }
+                                                }}
+                                                className="w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 text-[#FFB800] hover:bg-[#FFB800]/5 border-t border-white/5 mt-1 transition-all"
+                                            >
+                                                <Plus className="h-4 w-4" />
+                                                <span className="text-xs font-black uppercase tracking-widest">Nouveau Projet</span>
+                                            </button>
+                                        </div>
+                                    </motion.div>
+                                </>
+                            )}
+                        </AnimatePresence>
                     </div>
 
                     {/* Navigation Pills */}

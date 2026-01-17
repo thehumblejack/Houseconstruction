@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useProject } from '@/context/ProjectContext';
 import {
     Plus, Receipt, FileText, Trash2, TrendingUp, DollarSign,
     Upload, X, CheckCircle2, Clock, Eye, AlertCircle, Download, FileDown, ChevronDown,
-    ArrowUpDown, ArrowUp, ArrowDown, ArrowRight, Search, Pencil, Image as ImageIcon
+    ArrowUpDown, ArrowUp, ArrowDown, ArrowRight, Search, Pencil, Image as ImageIcon, Package
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -124,6 +125,7 @@ const ImageViewer = ({ src, onClose }: { src: string, onClose: () => void }) => 
 
 function ExpensesContent() {
     const { isAdmin, user } = useAuth();
+    const { currentProject } = useProject();
     const [activeTab, setActiveTab] = useState<SupplierType>('beton');
     const [viewingImage, setViewingImage] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -208,14 +210,18 @@ function ExpensesContent() {
     }, [searchParams, loading, suppliers, activeTab]);
 
     const fetchData = useCallback(async () => {
+        if (!currentProject) {
+            setLoading(false);
+            return;
+        }
         console.log('Expenses: Fetching data started...');
         try {
             const [suppliersRes, expensesRes, depositsRes, settingsRes, uploadedDocsRes] = await Promise.all([
-                supabase.from('suppliers').select('*'),
-                supabase.from('expenses').select('*, items:invoice_items(*)'),
-                supabase.from('deposits').select('*'),
-                supabase.from('project_settings').select('*'),
-                supabase.from('uploaded_documents').select('*').order('uploaded_at', { ascending: false })
+                supabase.from('suppliers').select('*').eq('project_id', currentProject.id),
+                supabase.from('expenses').select('*, items:invoice_items(*)').eq('project_id', currentProject.id),
+                supabase.from('deposits').select('*').eq('project_id', currentProject.id),
+                supabase.from('project_settings').select('*').eq('project_id', currentProject.id),
+                supabase.from('uploaded_documents').select('*').eq('project_id', currentProject.id).order('uploaded_at', { ascending: false })
             ]);
 
             if (suppliersRes.error) console.error('Expenses: Suppliers fetch error:', suppliersRes.error);
@@ -343,6 +349,12 @@ function ExpensesContent() {
                 });
 
                 setSuppliers(newSuppliers as Record<SupplierType, SupplierData>);
+
+                // If activeTab is no longer valid, switch to the first available supplier
+                const supplierIds = Object.keys(newSuppliers);
+                if (supplierIds.length > 0 && !newSuppliers[activeTab]) {
+                    setActiveTab(supplierIds[0] as SupplierType);
+                }
             } else {
                 console.warn('Expenses: Missing required data (suppliers or expenses)');
                 setSuppliers({});
@@ -353,7 +365,7 @@ function ExpensesContent() {
             console.log('Expenses: Fetching data complete.');
             setLoading(false);
         }
-    }, [supabase]);
+    }, [supabase, currentProject]);
 
     useEffect(() => {
         fetchData();
@@ -485,6 +497,8 @@ function ExpensesContent() {
     };
 
     const handleManualSubmit = async () => {
+        const project = currentProject;
+        if (!project) return;
         if (manualForm.files.length === 0) {
             alert('Veuillez sélectionner au moins un fichier.');
             return;
@@ -523,6 +537,7 @@ function ExpensesContent() {
 
             // Insert Expense
             const { error: insertError } = await supabase.from('expenses').insert({
+                project_id: project.id,
                 supplier_id: activeTab,
                 date: new Date().toLocaleDateString('fr-FR'),
                 item: 'Deprecated',
@@ -554,6 +569,8 @@ function ExpensesContent() {
     };
 
     const handleManualSubmitNew = async () => {
+        const project = currentProject;
+        if (!project) return;
         if (manualForm.files.length === 0) {
             alert('Veuillez sélectionner au moins un fichier.');
             return;
@@ -608,6 +625,7 @@ function ExpensesContent() {
                     const { data: insertedDoc, error: insertError } = await supabase
                         .from('uploaded_documents')
                         .insert({
+                            project_id: project.id,
                             supplier_id: activeTab,
                             file_url: publicUrl,
                             file_name: cleanFileName,
@@ -816,7 +834,18 @@ function ExpensesContent() {
                 const { error } = await supabase.from('suppliers').update({ notes: tempNoteValue }).eq('id', activeTab);
                 if (error) throw error;
             } else {
-                const { error } = await supabase.from('project_settings').update({ value: tempNoteValue }).eq('key', 'general_note');
+                const project = currentProject;
+                if (!project) return;
+
+                // Upsert to handle projects that don't have a general_note yet
+                const { error } = await supabase.from('project_settings')
+                    .upsert({
+                        project_id: project.id,
+                        key: 'general_note',
+                        value: tempNoteValue
+                    }, {
+                        onConflict: 'project_id,key'
+                    });
                 if (error) throw error;
             }
             fetchData();
@@ -829,11 +858,14 @@ function ExpensesContent() {
 
 
     const handleAddSupplier = async () => {
+        const project = currentProject;
+        if (!project) return;
         if (!newSupplierName) return;
         const id = newSupplierName.toLowerCase().replace(/\s+/g, '_');
 
         try {
             const { error } = await supabase.from('suppliers').insert({
+                project_id: project.id,
                 id,
                 name: newSupplierName,
                 color: newSupplierColor
@@ -863,6 +895,8 @@ function ExpensesContent() {
     };
 
     const handleAddDeposit = async () => {
+        const project = currentProject;
+        if (!project) return;
         const amount = parseFloat(newDepositData.amount);
         if (isNaN(amount) || amount <= 0) {
             alert('Veuillez entrer un montant valide');
@@ -871,6 +905,7 @@ function ExpensesContent() {
 
         try {
             const { error } = await supabase.from('deposits').insert({
+                project_id: project.id,
                 supplier_id: activeTab,
                 amount: amount,
                 date: newDepositData.date, // Format YYYY-MM-DD expected by Postgres date or string
@@ -898,6 +933,8 @@ function ExpensesContent() {
     };
 
     const handleSaveDeposit = async () => {
+        const project = currentProject;
+        if (!project) return;
         const amount = parseFloat(newDepositData.amount);
         if (isNaN(amount) || amount <= 0) {
             alert('Veuillez entrer un montant valide');
@@ -919,6 +956,7 @@ function ExpensesContent() {
             } else {
                 // INSERT new
                 const { error } = await supabase.from('deposits').insert({
+                    project_id: project.id,
                     supplier_id: activeTab,
                     amount: amount,
                     date: newDepositData.date,
@@ -975,6 +1013,8 @@ function ExpensesContent() {
     };
 
     const handleSaveExpense = async () => {
+        const project = currentProject;
+        if (!project) return;
         const price = parseFloat(newExpenseData.price);
         if (isNaN(price)) {
             alert('Veuillez entrer un montant valide');
@@ -1003,6 +1043,7 @@ function ExpensesContent() {
                 if (error) throw error;
             } else {
                 const { error } = await supabase.from('expenses').insert({
+                    project_id: project.id,
                     supplier_id: activeTab,
                     item: newExpenseData.item,
                     price: price,
@@ -1543,33 +1584,41 @@ function ExpensesContent() {
                 </div>
 
                 <div className="flex-1 space-y-4">
-                    {/* Header Supplier */}
-                    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between gap-4">
-                        <div>
-                            <div className="flex items-center gap-2 mb-1">
-                                <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">{currentSupplier.name}</h1>
-                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-black text-white ${currentSupplier.color}`}>
-                                    {currentSupplier.id.toUpperCase()}
-                                </span>
-                            </div>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase truncate max-w-xs">{currentSupplier.address || 'Tunisie'}</p>
+                    {!currentSupplier ? (
+                        <div className="bg-white rounded-xl p-8 border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center">
+                            <Package className="h-12 w-12 text-slate-200 mb-4" />
+                            <h2 className="text-lg font-black text-slate-900 uppercase">Aucun fournisseur trouvé</h2>
+                            <p className="text-xs text-slate-500 font-medium max-w-xs mt-2">
+                                Ajoutez votre premier fournisseur pour commencer à suivre vos dépenses et acomptes.
+                            </p>
                         </div>
-                        <div className="flex gap-2">
-
-                            <div className="bg-slate-100 border border-slate-200 px-4 py-2 rounded-xl text-right">
-                                <p className="text-[8px] font-black text-slate-500 uppercase">Total Montant</p>
-                                <p className="text-sm font-black text-slate-900">{activeStat.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                    ) : (
+                        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between gap-4">
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">{currentSupplier.name}</h1>
+                                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-black text-white ${currentSupplier.color}`}>
+                                        {currentSupplier.id.toUpperCase()}
+                                    </span>
+                                </div>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase truncate max-w-xs">{currentSupplier.address || 'Tunisie'}</p>
                             </div>
-                            <div className="bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-xl text-right">
-                                <p className="text-[8px] font-black text-emerald-600 uppercase">Payé</p>
-                                <p className="text-sm font-black text-emerald-800">{activeStat.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
-                            </div>
-                            <div className={`${activeStat.remaining < 0 ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'} border px-4 py-2 rounded-xl text-right`}>
-                                <p className={`text-[8px] font-black ${activeStat.remaining < 0 ? 'text-red-500' : 'text-blue-500'} uppercase`}>Solde</p>
-                                <p className={`text-sm font-black ${activeStat.remaining < 0 ? 'text-red-800' : 'text-blue-800'}`}>{activeStat.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                            <div className="flex gap-2">
+                                <div className="bg-slate-100 border border-slate-200 px-4 py-2 rounded-xl text-right">
+                                    <p className="text-[8px] font-black text-slate-500 uppercase">Total Montant</p>
+                                    <p className="text-sm font-black text-slate-900">{activeStat.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                </div>
+                                <div className="bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-xl text-right">
+                                    <p className="text-[8px] font-black text-emerald-600 uppercase">Payé</p>
+                                    <p className="text-sm font-black text-emerald-800">{activeStat.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                </div>
+                                <div className={`${activeStat.remaining < 0 ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'} border px-4 py-2 rounded-xl text-right`}>
+                                    <p className={`text-[8px] font-black ${activeStat.remaining < 0 ? 'text-red-500' : 'text-blue-500'} uppercase`}>Solde</p>
+                                    <p className={`text-sm font-black ${activeStat.remaining < 0 ? 'text-red-800' : 'text-blue-800'}`}>{activeStat.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Supplier Notes Display */}
                     {isAdmin && (
@@ -1583,7 +1632,7 @@ function ExpensesContent() {
                                     <button
                                         onClick={() => {
                                             setNoteEditorType('supplier');
-                                            setTempNoteValue(currentSupplier.notes || '');
+                                            setTempNoteValue(currentSupplier?.notes || '');
                                             setShowNoteModal(true);
                                         }}
                                         className="text-[9px] font-black text-amber-600 hover:underline uppercase"
@@ -1592,7 +1641,7 @@ function ExpensesContent() {
                                     </button>
                                 </div>
                                 <p className="text-xs font-medium text-slate-600 leading-relaxed italic">
-                                    {currentSupplier.notes || "Aucune consigne particulière pour ce fournisseur."}
+                                    {currentSupplier?.notes || "Aucune consigne particulière pour ce fournisseur."}
                                 </p>
                             </div>
                         </div>
@@ -1829,7 +1878,7 @@ function ExpensesContent() {
                                 <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${showExpensesSection ? 'rotate-0' : '-rotate-90'}`} />
                                 <div className="w-1.5 h-6 bg-blue-500 rounded-full"></div>
                                 <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Factures & Bons</h2>
-                                <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{currentSupplier.expenses.length} documents</span>
+                                <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{currentSupplier?.expenses?.length || 0} documents</span>
                             </div>
                             {isAdmin && (
                                 <button
@@ -2063,7 +2112,7 @@ function ExpensesContent() {
 
                     {/* Fiche de Dépôts / Acomptes */}
                     {
-                        currentSupplier.deposits && (
+                        currentSupplier?.deposits && (
                             <div className="space-y-4 mb-20">
                                 <div
                                     className="flex items-center justify-between px-1 cursor-pointer group"
@@ -2073,7 +2122,7 @@ function ExpensesContent() {
                                         <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${showDepositsSection ? 'rotate-0' : '-rotate-90'}`} />
                                         <div className="w-1.5 h-6 bg-emerald-500 rounded-full"></div>
                                         <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Historique Acomptes</h2>
-                                        <span className="text-[10px] font-bold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-100">{currentSupplier.deposits.length} paiements</span>
+                                        <span className="text-[10px] font-bold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-100">{currentSupplier?.deposits?.length || 0} paiements</span>
                                     </div>
                                     {isAdmin && (
                                         <button
@@ -2131,14 +2180,14 @@ function ExpensesContent() {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-50">
-                                                    {currentSupplier.deposits.length === 0 ? (
+                                                    {currentSupplier?.deposits?.length === 0 ? (
                                                         <tr>
                                                             <td colSpan={4} className="px-6 py-12 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
                                                                 Aucun acompte enregistré
                                                             </td>
                                                         </tr>
                                                     ) : (
-                                                        currentSupplier.deposits.map((d, index) => (
+                                                        currentSupplier?.deposits?.map((d, index) => (
                                                             <tr key={d.id} className="hover:bg-slate-50/50 transition-colors group">
                                                                 <td className="px-4 py-4 text-center text-[10px] font-bold text-slate-300">
                                                                     {index + 1}
@@ -2227,7 +2276,7 @@ function ExpensesContent() {
                             <div className="flex justify-between items-center mb-6">
                                 <div>
                                     <h3 className="text-xl font-black uppercase tracking-tighter text-slate-900">
-                                        {noteEditorType === 'supplier' ? `Notes: ${currentSupplier.name}` : 'Note Générale du Projet'}
+                                        {noteEditorType === 'supplier' ? `Notes: ${currentSupplier?.name || ''}` : 'Note Générale du Projet'}
                                     </h3>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Observations et consignes</p>
                                 </div>

@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { ShoppingCart, Plus, Calendar, Package, Truck, CheckCircle2, XCircle, ChevronDown, ChevronUp, Trash2, Save, User, Search, Store, Pencil } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useProject } from '@/context/ProjectContext';
 
 // --- Interfaces ---
 
@@ -63,6 +64,7 @@ const BEN_HDEYA_PRICES: Record<string, number> = {
 
 export default function OrdersPage() {
     const { isAdmin } = useAuth();
+    const { currentProject } = useProject();
     const supabase = useMemo(() => createClient(), []);
 
     // Main Data
@@ -101,10 +103,14 @@ export default function OrdersPage() {
     // --- Fetching ---
 
     const fetchData = async () => {
+        if (!currentProject) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
             // 1. Fetch Suppliers
-            const { data: supData } = await supabase.from('suppliers').select('*');
+            const { data: supData } = await supabase.from('suppliers').select('*').eq('project_id', currentProject.id);
             const supMap: Record<string, any> = {};
             (supData || []).forEach((s: any) => supMap[s.id] = s);
             setSuppliers(supData || []);
@@ -113,6 +119,7 @@ export default function OrdersPage() {
             const { data: orderData, error } = await supabase
                 .from('orders')
                 .select('*, items:order_items(*)')
+                .eq('project_id', currentProject.id)
                 .order('created_at', { ascending: false });
 
             if (error && error.code !== 'PGRST116') console.error("Order fetch error", error);
@@ -130,7 +137,7 @@ export default function OrdersPage() {
             setOrders(enrichedOrders);
 
             // 3. Fetch Catalog (Articles History) for Autocomplete
-            const { data: expensesData } = await supabase.from('expenses').select('*, items:invoice_items(*)');
+            const { data: expensesData } = await supabase.from('expenses').select('*, items:invoice_items(*)').eq('project_id', currentProject.id);
 
             const rawCatalog: CatalogItem[] = [];
             expensesData?.forEach((e: any) => {
@@ -160,7 +167,6 @@ export default function OrdersPage() {
             // Sort by most recent
             // rawCatalog.sort((a, b) => ...); 
             setCatalog(rawCatalog);
-
         } catch (err) {
             console.error(err);
         } finally {
@@ -170,12 +176,18 @@ export default function OrdersPage() {
 
     useEffect(() => {
         fetchData();
+        if (!currentProject) return;
         const subscription = supabase
             .channel('orders_channel_v2') // Changed channel name to avoid conflict
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchData)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'orders',
+                filter: `project_id=eq.${currentProject.id}`
+            }, fetchData)
             .subscribe();
         return () => { subscription.unsubscribe(); };
-    }, []);
+    }, [currentProject]);
 
     // Click outside handler for autocomplete
     useEffect(() => {
@@ -282,6 +294,7 @@ export default function OrdersPage() {
     };
 
     const handleSaveOrder = async () => {
+        if (!currentProject) return;
         if (!newOrder.supplierId) {
             alert('Veuillez sélectionner un fournisseur');
             return;
@@ -312,8 +325,8 @@ export default function OrdersPage() {
             } else {
                 // Create Order
                 const { data: orderData, error: orderError } = await supabase
-                    .from('orders')
-                    .insert({
+                    .from('orders').insert({
+                        project_id: currentProject.id,
                         supplier_id: newOrder.supplierId,
                         date: formattedDate,
                         notes: newOrder.notes,
@@ -330,6 +343,7 @@ export default function OrdersPage() {
                 const itemsToInsert = newItems
                     .filter(i => i.article_name.trim() !== '')
                     .map(i => ({
+                        project_id: currentProject.id,
                         order_id: orderId,
                         article_name: i.article_name,
                         quantity: i.quantity,
@@ -400,6 +414,8 @@ export default function OrdersPage() {
     };
 
     const handleUpdateStatus = async (orderId: string, newStatus: string) => {
+        const project = currentProject;
+        if (!project) return;
         if (newStatus === 'delivered') {
             const order = orders.find(o => o.id === orderId);
             if (!order) return;
@@ -410,6 +426,7 @@ export default function OrdersPage() {
 
             try {
                 const { data: expenseData, error: expError } = await supabase.from('expenses').insert({
+                    project_id: project.id,
                     supplier_id: order.supplier_id,
                     date: new Date().toLocaleDateString('fr-FR'),
                     item: `Commande du ${order.date}`,
@@ -422,6 +439,7 @@ export default function OrdersPage() {
 
                 if (order.items && order.items.length > 0) {
                     const invoiceItems = order.items.map(i => ({
+                        project_id: project.id,
                         expense_id: expenseData.id,
                         designation: i.article_name,
                         quantity: i.quantity,
@@ -715,7 +733,7 @@ export default function OrdersPage() {
                                                     <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-slate-100 z-[110] max-h-60 overflow-y-auto w-[150%] md:w-[120%] transform -translate-x-0">
                                                         {searchResults.map((res, sIdx) => (
                                                             <button
-                                                                key={`${res.id}-${sIdx}`}
+                                                                key={`${res.id} - ${sIdx}`}
                                                                 onClick={() => handleSelectCatalogItem(idx, res)}
                                                                 className="w-full text-left p-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex justify-between items-center group"
                                                             >

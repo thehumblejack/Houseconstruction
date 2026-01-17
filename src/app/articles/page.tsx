@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useProject } from '@/context/ProjectContext';
 import {
     Plus, X, Search, Pencil, Save, Loader2, Package,
     LayoutGrid, List, TrendingDown, Medal, ArrowRightLeft,
@@ -48,6 +49,7 @@ interface ArticleRow {
 
 export default function ArticlesPage() {
     const { isAdmin } = useAuth();
+    const { currentProject } = useProject();
     const [loading, setLoading] = useState(true);
     const [articles, setArticles] = useState<ArticleRow[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -80,9 +82,14 @@ export default function ArticlesPage() {
     const supabase = useMemo(() => createClient(), []);
 
     const fetchArticles = async () => {
+        if (!currentProject) {
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
         try {
             // Fetch suppliers
-            const { data: suppliersData } = await supabase.from('suppliers').select('*');
+            const { data: suppliersData } = await supabase.from('suppliers').select('*').eq('project_id', currentProject.id);
             const suppliersMap: Record<string, { name: string, color: string }> = {};
             const sList: { id: string, name: string }[] = [];
 
@@ -108,7 +115,7 @@ export default function ArticlesPage() {
             };
 
             // Fetch expenses
-            const { data: expensesData } = await supabase.from('expenses').select('*, items:invoice_items(*)');
+            const { data: expensesData } = await supabase.from('expenses').select('*, items:invoice_items(*)').eq('project_id', currentProject.id);
             const rows: ArticleRow[] = [];
 
             expensesData?.forEach((e: any) => {
@@ -210,7 +217,7 @@ export default function ArticlesPage() {
 
     useEffect(() => {
         fetchArticles();
-    }, [supabase]);
+    }, [supabase, currentProject]);
 
     const handleDelete = async (row: ArticleRow) => {
         if (!confirm('Supprimer cet article ?')) return;
@@ -225,6 +232,8 @@ export default function ArticlesPage() {
     };
 
     const handleSave = async () => {
+        const project = currentProject;
+        if (!project) return;
         try {
             if (editingItem) {
                 if (editingItem.sourceTable === 'expenses') {
@@ -245,6 +254,7 @@ export default function ArticlesPage() {
                 }
             } else {
                 const { error } = await supabase.from('expenses').insert({
+                    project_id: project.id,
                     supplier_id: formData.supplierId || 'beton',
                     date: formData.date,
                     item: formData.designation,

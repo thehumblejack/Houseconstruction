@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Search, Loader2, User, Phone, MapPin, Package, TrendingUp, TrendingDown, Plus, Pencil, Trash2, ArrowRight, ChevronRight, Hash, FileText, X, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useProject } from '@/context/ProjectContext';
 import Link from 'next/link';
 
 interface SupplierStats {
@@ -23,6 +24,7 @@ interface SupplierStats {
 
 export default function SuppliersPage() {
     const { isAdmin } = useAuth();
+    const { currentProject } = useProject();
     const [loading, setLoading] = useState(true);
     const [suppliers, setSuppliers] = useState<any[]>([]);
     const [expenses, setExpenses] = useState<any[]>([]);
@@ -36,13 +38,17 @@ export default function SuppliersPage() {
     const supabase = useMemo(() => createClient(), []);
 
     const fetchData = useCallback(async () => {
+        if (!currentProject) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
             const [sups, exps, deps, its] = await Promise.all([
-                supabase.from('suppliers').select('*'),
-                supabase.from('expenses').select('*'),
-                supabase.from('deposits').select('*'),
-                supabase.from('invoice_items').select('*')
+                supabase.from('suppliers').select('*').eq('project_id', currentProject.id),
+                supabase.from('expenses').select('*').eq('project_id', currentProject.id),
+                supabase.from('deposits').select('*').eq('project_id', currentProject.id),
+                supabase.from('invoice_items').select('*') // Filtered later by parent expense
             ]);
 
             setSuppliers(sups.data || []);
@@ -54,7 +60,7 @@ export default function SuppliersPage() {
         } finally {
             setLoading(false);
         }
-    }, [supabase]);
+    }, [supabase, currentProject]);
 
     useEffect(() => {
         fetchData();

@@ -234,6 +234,39 @@ export default function Navbar() {
                                 className="absolute bottom-[calc(100%+12px)] right-0 left-0 bg-slate-900/95 backdrop-blur-2xl border border-white/10 rounded-2xl overflow-hidden shadow-2xl"
                             >
                                 <div className="p-2 space-y-1">
+                                    {/* Mobile Project Selector */}
+                                    <div className="px-5 py-4 border-b border-white/5 mb-2">
+                                        <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-3">Changer de Projet</p>
+                                        <div className="flex flex-col gap-2">
+                                            {projects.map((p) => (
+                                                <button
+                                                    key={p.id}
+                                                    onClick={() => {
+                                                        setCurrentProject(p);
+                                                        setIsMoreOpen(false);
+                                                    }}
+                                                    className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between transition-all ${currentProject?.id === p.id ? 'bg-[#FFB800] text-black' : 'bg-white/5 text-slate-300'}`}
+                                                >
+                                                    <span className="text-xs font-bold uppercase truncate pr-4">{p.name}</span>
+                                                    {currentProject?.id === p.id && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                                                </button>
+                                            ))}
+                                            <button
+                                                onClick={async () => {
+                                                    const name = prompt('Nom du nouveau projet:');
+                                                    if (name) {
+                                                        await createProject(name, '');
+                                                        setIsMoreOpen(false);
+                                                    }
+                                                }}
+                                                className="w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 text-[#FFB800] border border-[#FFB800]/20 bg-[#FFB800]/5 mt-1"
+                                            >
+                                                <Plus className="h-4 w-4" />
+                                                <span className="text-xs font-black uppercase tracking-widest">Nouveau Projet</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
                                     {[
                                         { name: 'ARTICLES', path: '/articles', icon: Package },
                                         { name: 'COMMANDES', path: '/orders', icon: ShoppingCart },
@@ -292,12 +325,13 @@ export default function Navbar() {
                                 className={`
                                     flex flex-col items-center justify-center flex-1 h-14 rounded-xl transition-all duration-300 gap-1
                                     ${isActive ? 'text-[#FFB800]' : 'text-slate-500'}
+                                    ${item.name === 'Fourn.' ? 'scale-110' : ''}
                                 `}
                             >
                                 <div className={`p-2 rounded-lg transition-colors ${isActive ? 'bg-[#FFB800]/10' : ''}`}>
-                                    <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
+                                    <Icon className={`${item.name === 'Fourn.' ? 'h-6 w-6' : 'h-5 w-5'}`} strokeWidth={isActive ? 3 : 2} />
                                 </div>
-                                <span className={`text-[8px] font-black uppercase tracking-widest ${isActive ? 'opacity-100' : 'opacity-40'}`}>
+                                <span className={`text-[8px] font-black uppercase tracking-widest ${isActive ? 'opacity-100' : 'opacity-40'} ${item.name === 'Fourn.' ? 'text-[9px]' : ''}`}>
                                     {item.name}
                                 </span>
                             </Link>

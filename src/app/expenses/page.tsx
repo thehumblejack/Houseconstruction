@@ -1529,35 +1529,34 @@ function ExpensesContent() {
                             )}
                         </div>
                         {(Object.values(suppliers) as SupplierData[]).map((sup) => (
-                            <div key={sup.id} className="relative group">
-                                <button
-                                    onClick={() => setActiveTab(sup.id as any)}
-                                    className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between transition-all ${activeTab === sup.id
-                                        ? 'bg-slate-900 text-white'
-                                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-                                        }`}
-                                >
-                                    <span className="text-xs font-bold whitespace-nowrap truncate">{sup.name}</span>
-                                </button>
+                            <div
+                                key={sup.id}
+                                className={`
+                                        group w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg transition-all cursor-pointer
+                                        ${activeTab === sup.id ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}
+                                    `}
+                                onClick={() => setActiveTab(sup.id as any)}
+                            >
+                                <span className="text-xs font-bold whitespace-nowrap truncate flex-1">{sup.name}</span>
                                 {isAdmin && (
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             handleDeleteSupplier(sup.id, sup.name);
                                         }}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                        className="p-1.5 rounded-full text-slate-300 hover:text-white hover:bg-red-500 transition-all flex-shrink-0"
                                         title="Supprimer"
                                     >
-                                        <Trash2 className="h-3 w-3" />
+                                        <Trash2 className="h-3.5 w-3.5" />
                                     </button>
                                 )}
                             </div>
                         ))}
                     </div>
 
-                    {/* General Note Sidebar Section */}
+                    {/* General Note Sidebar Section (Desktop) */}
                     {isAdmin && (
-                        <div className="mt-4 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden group">
+                        <div className="mt-4 hidden md:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden group">
                             <div className="bg-slate-50 px-4 py-2 border-b border-slate-100 flex justify-between items-center">
                                 <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
                                     <FileText className="h-3 w-3" />
@@ -1574,7 +1573,7 @@ function ExpensesContent() {
                                     <Pencil className="h-2.5 w-2.5 text-slate-400" />
                                 </button>
                             </div>
-                            <div className="p-4">
+                            <div className="p-4 max-h-[250px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
                                 <p className="text-[11px] font-medium text-slate-500 italic leading-relaxed whitespace-pre-wrap">
                                     {generalNote || "Aucune note générale pour le moment..."}
                                 </p>
@@ -1616,6 +1615,33 @@ function ExpensesContent() {
                                     <p className={`text-[8px] font-black ${activeStat.remaining < 0 ? 'text-red-500' : 'text-blue-500'} uppercase`}>Solde</p>
                                     <p className={`text-sm font-black ${activeStat.remaining < 0 ? 'text-red-800' : 'text-blue-800'}`}>{activeStat.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* General Note (Mobile Only - below supplier header) */}
+                    {isAdmin && (
+                        <div className="md:hidden bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden group">
+                            <div className="bg-slate-50 px-4 py-2 border-b border-slate-100 flex justify-between items-center">
+                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
+                                    <FileText className="h-3 w-3" />
+                                    NOTE GÉNÉRALE
+                                </span>
+                                <button
+                                    onClick={() => {
+                                        setNoteEditorType('general');
+                                        setTempNoteValue(generalNote);
+                                        setShowNoteModal(true);
+                                    }}
+                                    className="p-1 hover:bg-slate-200 rounded transition-colors"
+                                >
+                                    <Pencil className="h-2.5 w-2.5 text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="p-4 max-h-[150px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
+                                <p className="text-[11px] font-medium text-slate-500 italic leading-relaxed whitespace-pre-wrap">
+                                    {generalNote || "Aucune note générale pour le moment..."}
+                                </p>
                             </div>
                         </div>
                     )}

@@ -81,6 +81,24 @@ export default function ArticlesContent() {
 
     const supabase = useMemo(() => createClient(), []);
 
+    // Close column settings when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (showColumnSettings && !target.closest('.column-settings-container')) {
+                setShowColumnSettings(false);
+            }
+        };
+
+        if (showColumnSettings) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showColumnSettings]);
+
     const fetchArticles = async () => {
         if (!currentProject) {
             setLoading(false);
@@ -561,7 +579,7 @@ export default function ArticlesContent() {
                             </div>
                         </div>
 
-                        <div className="relative">
+                        <div className="relative column-settings-container">
                             <button
                                 onClick={() => setShowColumnSettings(!showColumnSettings)}
                                 className={`p-3 md:p-4 rounded-2xl transition-all shadow-xl border flex items-center gap-2 md:gap-3 ${showColumnSettings ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-100 hover:border-[#FFB800]'}`}

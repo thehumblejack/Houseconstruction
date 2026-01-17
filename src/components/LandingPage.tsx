@@ -79,7 +79,7 @@ export default function LandingPage() {
                         href={user ? (isApproved ? '/chantier' : '/auth/pending') : '/login'}
                         className="bg-white text-black px-6 py-2 rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-[#FFB800] transition-all"
                     >
-                        {user ? 'Chantier' : 'Accès Client'}
+                        {user ? 'Tableau de Bord' : 'Accès Client'}
                     </Link>
                 </div>
             </nav>
@@ -123,10 +123,17 @@ export default function LandingPage() {
                         </div>
 
                         <motion.div variants={fadeInUp} className="flex flex-wrap gap-4 pt-4">
-                            <Link href="/login" className="bg-[#FFB800] text-black px-8 py-4 rounded-xl font-black uppercase tracking-widest hover:bg-white transition-all flex items-center gap-3 group text-[10px]">
-                                Commencer un projet
-                                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                            </Link>
+                            {user ? (
+                                <Link href="/chantier" className="bg-[#FFB800] text-black px-8 py-4 rounded-xl font-black uppercase tracking-widest hover:bg-white transition-all flex items-center gap-3 group text-[10px]">
+                                    Retour au Tableau de Bord
+                                    <HardHat className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+                                </Link>
+                            ) : (
+                                <Link href="/login" className="bg-[#FFB800] text-black px-8 py-4 rounded-xl font-black uppercase tracking-widest hover:bg-white transition-all flex items-center gap-3 group text-[10px]">
+                                    Commencer un projet
+                                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                </Link>
+                            )}
                             <a href="#projets" className="bg-white/5 border border-white/10 text-white px-8 py-4 rounded-xl font-black uppercase tracking-widest hover:bg-white/10 transition-all text-[10px]">
                                 Nos réalisations
                             </a>

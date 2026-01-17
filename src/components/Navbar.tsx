@@ -4,8 +4,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
-import { LayoutGrid, Package, LogOut, ReceiptText, Building2, ShoppingCart, User, Shield, ChevronDown, Plus, Trash2 } from 'lucide-react';
+
+import { LayoutGrid, Package, LogOut, ReceiptText, Building2, ShoppingCart, User, Shield, ChevronDown, Plus, Trash2, Settings, Bell, CreditCard, Users } from 'lucide-react';
 import GlobalSearch from './GlobalSearch';
+import ProjectSettingsModal from './ProjectSettingsModal';
 import { useEffect, useState, useMemo } from 'react';
 import { createClient } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -17,6 +19,8 @@ export default function Navbar() {
     const [pendingCount, setPendingCount] = useState(0);
     const [isMoreOpen, setIsMoreOpen] = useState(false);
     const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
+    const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+    const [showProjectSettings, setShowProjectSettings] = useState(false);
     const supabase = useMemo(() => createClient(), []);
 
     useEffect(() => {
@@ -75,7 +79,7 @@ export default function Navbar() {
                 <nav className="flex items-center gap-1.5 p-1.5 bg-slate-900/90 backdrop-blur-md border border-white/10 rounded-full shadow-2xl pointer-events-auto transition-transform">
 
                     {/* Logo Section - Compact */}
-                    <Link href="/chantier" className="flex items-center gap-2 pl-4 pr-5 border-r border-white/10 mr-1 group cursor-pointer hover:bg-white/5 rounded-l-full py-2 transition-colors">
+                    <Link href="/" className="flex items-center gap-2 pl-4 pr-5 border-r border-white/10 mr-1 group cursor-pointer hover:bg-white/5 rounded-l-full py-2 transition-colors">
                         <div className="bg-[#FFB800] p-1.5 rounded-md transition-transform group-hover:rotate-12">
                             <Building2 className="h-4 w-4 text-slate-900" />
                         </div>
@@ -208,13 +212,100 @@ export default function Navbar() {
                     {/* Actions */}
                     <div className="w-px h-6 bg-white/10 mx-2" />
 
-                    <button
-                        onClick={() => signOut()}
-                        className="group flex items-center gap-2 px-4 py-2 rounded-full text-slate-400 hover:text-white hover:bg-red-500/10 transition-all font-jakarta"
-                    >
-                        <LogOut className="h-4 w-4 group-hover:text-red-400 transition-colors" />
-                        <span className="text-[10px] font-bold uppercase tracking-wider group-hover:text-red-400 transition-colors">Sortir</span>
-                    </button>
+                    {/* Profile & Settings Dropdown */}
+                    <div className="relative ml-2">
+                        <button
+                            onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                            className="flex items-center gap-3 pl-1 pr-4 py-1.5 rounded-full hover:bg-white/5 transition-all group"
+                        >
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FFB800] to-amber-600 p-[2px]">
+                                <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center overflow-hidden">
+                                    {/* Placeholder for user image if available, else initials */}
+                                    <span className="text-xs font-black text-[#FFB800]">
+                                        {user?.email?.substring(0, 2).toUpperCase()}
+                                    </span>
+                                </div>
+                            </div>
+                            <ChevronDown className={`h-3 w-3 text-slate-500 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        <AnimatePresence>
+                            {isProfileMenuOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-[-1]" onClick={() => setIsProfileMenuOpen(false)} />
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                        className="absolute top-full right-0 mt-2 w-72 bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden z-[60]"
+                                    >
+                                        {/* User Info Header */}
+                                        <div className="p-5 border-b border-white/5 bg-white/5">
+                                            <div className="flex items-center gap-4 mb-3">
+                                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#FFB800] to-amber-600 p-[2px] shadow-lg shadow-amber-500/20">
+                                                    <div className="w-full h-full rounded-2xl bg-slate-900 flex items-center justify-center text-white font-black text-sm">
+                                                        {user?.email?.substring(0, 2).toUpperCase()}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-bold text-white leading-tight mb-1 line-clamp-1">{isAdmin ? 'Administrateur' : user?.email?.split('@')[0]}</p>
+                                                    <p className="text-[10px] text-slate-400 font-medium truncate max-w-[140px]">{user?.email}</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Subscription Status */}
+                                            <div className="flex items-center gap-2 bg-[#FFB800]/10 border border-[#FFB800]/20 rounded-xl p-2.5">
+                                                <div className="p-1.5 bg-[#FFB800] rounded-lg">
+                                                    <CreditCard className="h-3.5 w-3.5 text-slate-900" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[9px] font-black text-[#FFB800] uppercase tracking-widest leading-none mb-0.5">Abonnement Actif</p>
+                                                    <p className="text-[10px] font-bold text-white leading-none">Plan Premium</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Menu Items */}
+                                        <div className="p-2 space-y-1">
+                                            {currentProject && (
+                                                <button
+                                                    onClick={() => {
+                                                        setIsProfileMenuOpen(false);
+                                                        setShowProjectSettings(true);
+                                                    }}
+                                                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-300 hover:text-white hover:bg-white/5 transition-all text-xs font-bold bg-transparent border-none outline-none focus:outline-none"
+                                                >
+                                                    <Users className="h-4 w-4" />
+                                                    Gérer l'équipe
+                                                </button>
+                                            )}
+                                            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-300 hover:text-white hover:bg-white/5 transition-all text-xs font-bold bg-transparent border-none outline-none focus:outline-none">
+                                                <Settings className="h-4 w-4" />
+                                                Paramètres
+                                            </button>
+                                            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-300 hover:text-white hover:bg-white/5 transition-all text-xs font-bold bg-transparent border-none outline-none focus:outline-none">
+                                                <div className="relative">
+                                                    <Bell className="h-4 w-4" />
+                                                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-900"></span>
+                                                </div>
+                                                Notifications
+                                            </button>
+
+                                            <div className="h-px bg-white/5 my-1 mx-2" />
+
+                                            <button
+                                                onClick={() => signOut()}
+                                                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 transition-all text-xs font-bold bg-transparent border-none outline-none focus:outline-none"
+                                            >
+                                                <LogOut className="h-4 w-4" />
+                                                Se déconnecter
+                                            </button>
+                                        </div>
+                                    </motion.div>
+                                </>
+                            )}
+                        </AnimatePresence>
+                    </div>
                 </nav>
             </div>
 
@@ -369,6 +460,10 @@ export default function Navbar() {
             </div>
             {/* Spacer for Fixed Navbar */}
             <div className="hidden md:block h-24 w-full" />
+
+            {showProjectSettings && (
+                <ProjectSettingsModal onClose={() => setShowProjectSettings(false)} />
+            )}
         </>
     );
 }

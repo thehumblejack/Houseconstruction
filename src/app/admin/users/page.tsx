@@ -1,14 +1,18 @@
 'use client';
 
+import { useProject } from '@/context/ProjectContext';
+import ProjectSettingsModal from '@/components/ProjectSettingsModal';
 import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { UserProfile } from '@/context/AuthContext';
 import { Shield } from 'lucide-react';
+import { UserPlus } from 'lucide-react';
 
 export default function AdminUsersPage() {
     const { isAdmin, loading: authLoading } = useAuth();
+    const { currentProject } = useProject();
     const router = useRouter();
     const supabase = useMemo(() => createClient(), []);
 
@@ -19,6 +23,7 @@ export default function AdminUsersPage() {
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [rejectionReason, setRejectionReason] = useState('');
     const [showRejectModal, setShowRejectModal] = useState<string | null>(null);
+    const [showInviteModal, setShowInviteModal] = useState(false);
 
     useEffect(() => {
         if (!authLoading && !isAdmin) {
@@ -194,9 +199,20 @@ export default function AdminUsersPage() {
         <div className="min-h-screen bg-gray-50 p-6">
             <div className="max-w-7xl mx-auto">
                 {/* Header */}
-                <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-gray-900 mb-2">User Management</h1>
-                    <p className="text-gray-600">Manage user access requests and permissions</p>
+                <div className="mb-8 flex justify-between items-start">
+                    <div>
+                        <h1 className="text-3xl font-bold text-gray-900 mb-2">User Management</h1>
+                        <p className="text-gray-600">Manage user access requests and permissions</p>
+                    </div>
+                    {currentProject && (
+                        <button
+                            onClick={() => setShowInviteModal(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                        >
+                            <UserPlus className="h-4 w-4" />
+                            Inviter au Projet <br />({currentProject.name})
+                        </button>
+                    )}
                 </div>
 
                 {/* Stats */}
@@ -431,6 +447,10 @@ export default function AdminUsersPage() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {showInviteModal && (
+                <ProjectSettingsModal onClose={() => setShowInviteModal(false)} />
             )}
         </div>
     );

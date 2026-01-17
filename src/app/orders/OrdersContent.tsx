@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
-import { ShoppingCart, Plus, Calendar, Package, Truck, CheckCircle2, XCircle, ChevronDown, ChevronUp, Trash2, Save, User, Search, Store, Pencil } from 'lucide-react';
+import { ShoppingCart, Plus, Calendar, Package, Truck, CheckCircle2, XCircle, ChevronDown, ChevronUp, Trash2, Save, User, Search, Store, Pencil, Eye } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
 
@@ -63,20 +63,23 @@ const BEN_HDEYA_PRICES: Record<string, number> = {
 // --- Component ---
 
 export default function OrdersContent() {
-    const { isAdmin } = useAuth();
     const { currentProject } = useProject();
     const supabase = useMemo(() => createClient(), []);
 
     // Main Data
     const [orders, setOrders] = useState<Order[]>([]);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const { userProfile, isAdmin: authIsAdmin } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
     const [suppliers, setSuppliers] = useState<any[]>([]);
     const [catalog, setCatalog] = useState<CatalogItem[]>([]); // For Autocomplete
-    const [loading, setLoading] = useState(true);
 
     // UI State
     const [isAdding, setIsAdding] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+    const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
     const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
 
     // Form State
@@ -109,8 +112,8 @@ export default function OrdersContent() {
         }
         setLoading(true);
         try {
-            // 1. Fetch Suppliers
-            const { data: supData } = await supabase.from('suppliers').select('*').order('name');
+            // 1. Fetch Suppliers - Exclude deleted
+            const { data: supData } = await supabase.from('suppliers').select('*').is('deleted_at', null).order('name');
             const supMap: Record<string, any> = {};
             (supData || []).forEach((s: any) => supMap[s.id] = s);
             setSuppliers(supData || []);
@@ -188,6 +191,10 @@ export default function OrdersContent() {
             .subscribe();
         return () => { subscription.unsubscribe(); };
     }, [currentProject]);
+
+    useEffect(() => {
+        setIsAdmin(authIsAdmin);
+    }, [authIsAdmin]);
 
     // Click outside handler for autocomplete
     useEffect(() => {
@@ -491,8 +498,13 @@ export default function OrdersContent() {
 
 
 
-    const pendingOrders = orders.filter(o => o.status === 'pending');
-    const deliveredOrders = orders.filter(o => o.status === 'delivered');
+    const filteredOrders = orders.filter(o =>
+        o.supplier_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        o.items?.some(i => i.article_name?.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+
+    const pendingOrders = filteredOrders.filter(o => o.status === 'pending');
+    const deliveredOrders = filteredOrders.filter(o => o.status === 'delivered');
 
     // Total Estimate
     const totalEstimate = newItems.reduce((sum, i) => sum + (i.totalPrice || 0), 0);
@@ -508,8 +520,18 @@ export default function OrdersContent() {
                     </h1>
                     <p className="text-slate-500 font-bold text-sm">Suivi des approvisionnements chantier</p>
                 </div>
-                <div className="flex flex-wrap gap-2 items-center">
-                    {isAdmin && selectedOrders.length > 0 && (
+                <div className="flex flex-wrap gap-2 items-center w-full md:w-auto">
+                    <div className="relative flex-1 md:w-64">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Rechercher une commande..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full bg-white border-slate-200 border rounded-2xl py-3 pl-10 pr-4 text-xs font-black text-slate-900 placeholder:text-slate-300 focus:ring-4 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all uppercase"
+                        />
+                    </div>
+                    {authIsAdmin && selectedOrders.length > 0 && (
                         <button
                             onClick={handleDeleteSelected}
                             className="bg-red-50 hover:bg-red-100 text-red-600 px-4 py-3 rounded-2xl flex items-center gap-2 font-bold text-sm transition-all"
@@ -543,7 +565,7 @@ export default function OrdersContent() {
                             <div className={`absolute top-0 left-0 w-1 h-full ${order.supplier_color}`} />
                             <div className="flex justify-between items-start w-full">
                                 <div className="flex items-start gap-4">
-                                    {isAdmin && (
+                                    {authIsAdmin && (
                                         <input
                                             type="checkbox"
                                             checked={selectedOrders.includes(order.id)}
@@ -562,7 +584,7 @@ export default function OrdersContent() {
                                     </div>
                                 </div>
 
-                                {isAdmin && (
+                                {authIsAdmin && (
                                     <button
                                         onClick={() => openEdit(order)}
                                         className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"
@@ -590,10 +612,12 @@ export default function OrdersContent() {
                                 ))}
                             </div>
                             <div className="flex gap-2 mt-4">
-                                <button onClick={() => handleUpdateStatus(order.id, 'delivered')} className="flex-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 py-2 rounded-xl text-xs font-black uppercase flex items-center justify-center gap-1 transition-colors">
-                                    <CheckCircle2 className="h-3 w-3" />
-                                    Reçu Confirmé
-                                </button>
+                                {userProfile?.role !== 'viewer' && (
+                                    <button onClick={() => handleUpdateStatus(order.id, 'delivered')} className="flex-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 py-2 rounded-xl text-xs font-black uppercase flex items-center justify-center gap-1 transition-colors">
+                                        <CheckCircle2 className="h-3 w-3" />
+                                        Reçu Confirmé
+                                    </button>
+                                )}
                             </div>
                         </div>
                     ))}
@@ -634,7 +658,7 @@ export default function OrdersContent() {
                                     deliveredOrders.map(order => (
                                         <tr key={order.id} className="hover:bg-slate-50/50 transition-colors group">
                                             <td className="px-6 py-4 text-center">
-                                                {isAdmin && (
+                                                {authIsAdmin && (
                                                     <input
                                                         type="checkbox"
                                                         checked={selectedOrders.includes(order.id)}
@@ -652,7 +676,14 @@ export default function OrdersContent() {
                                             <td className="px-6 py-4 text-xs text-slate-500 max-w-md truncate font-medium">
                                                 {(order.items || []).map(i => i.article_name).join(', ')}
                                             </td>
-                                            <td className="px-6 py-4 text-right">
+                                            <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
+                                                <button
+                                                    onClick={() => setViewingOrder(order)}
+                                                    className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"
+                                                    title="Voir les détails"
+                                                >
+                                                    <Eye className="h-4 w-4" />
+                                                </button>
                                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">
                                                     <CheckCircle2 className="h-3 w-3" /> LIVRÉ
                                                 </span>
@@ -668,21 +699,21 @@ export default function OrdersContent() {
 
             {/* ADD MODAL with Enhanced Search */}
             {isAdding && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className="bg-white w-full max-w-2xl rounded-3xl p-6 md:p-8 shadow-2xl max-h-[90vh] overflow-visible" ref={wrapperRef}>
-                        <div className="flex justify-between items-center mb-6">
-                            <div className="flex items-center gap-3">
-                                <div className={`p-3 rounded-2xl ${isEditing ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
-                                    {isEditing ? <Pencil className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
-                                </div>
-                                <h2 className="text-xl font-black uppercase text-slate-900 tracking-tight">
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={closeModal}>
+                    <div className="bg-white rounded-[40px] w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                        {/* Fixed Header */}
+                        <div className="bg-slate-900 p-6 text-white flex justify-between items-center shrink-0">
+                            <div>
+                                <h2 className="text-2xl font-black uppercase tracking-tight">
                                     {isEditing ? 'Modifier la Commande' : 'Nouvelle Commande'}
                                 </h2>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase">Ajouter des articles au panier</p>
                             </div>
-                            <button onClick={closeModal}><XCircle className="h-8 w-8 text-slate-300 hover:text-red-500 transition-colors" /></button>
+                            <XCircle className="h-8 w-8 cursor-pointer hover:text-red-400 transition-colors" onClick={closeModal} />
                         </div>
 
-                        <div className="space-y-6">
+                        {/* Scrollable Content */}
+                        <div className="p-8 overflow-y-auto custom-scrollbar space-y-8 flex-1">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
                                     <label className="text-[10px] font-black uppercase text-slate-400">Fournisseur</label>
@@ -789,25 +820,58 @@ export default function OrdersContent() {
                                     ))}
                                 </div>
                             </div>
+                        </div>
 
-                            {/* Estimated Total Footer */}
-                            <div className="flex justify-between items-center bg-slate-900 text-white p-5 rounded-2xl shadow-xl">
-                                <div>
-                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total Estimatif</p>
-                                    <p className="text-[10px] text-slate-500">Hors frais de livraison</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-2xl font-black">{totalEstimate.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-slate-400">DT</span></p>
-                                </div>
+                        {/* Fixed Footer */}
+                        <div className="p-8 bg-slate-50 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
+                            <div className="text-center md:text-left">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Estimé</p>
+                                <p className="text-2xl font-black text-slate-900">{totalEstimate.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-400">DT</span></p>
                             </div>
-
                             <button
                                 onClick={handleSaveOrder}
-                                className={`w-full py-4 rounded-xl font-black uppercase tracking-widest hover:scale-[1.01] transition-all flex justify-center items-center gap-2 shadow-xl ${isEditing ? 'bg-amber-500 hover:bg-amber-400 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
+                                disabled={!newOrder.supplierId || newItems.every(i => !i.article_name)}
+                                className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-3"
                             >
-                                <Save className="h-5 w-5" />
-                                {isEditing ? 'Mettre à jour' : 'Valider la Commande'}
+                                <Truck className="h-5 w-5" />
+                                Confirmer la Commande
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* View Order Modal */}
+            {viewingOrder && (
+                <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setViewingOrder(null)}>
+                    <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+                        <div className={`p-4 text-white flex justify-between items-center shrink-0 ${viewingOrder.supplier_color}`}>
+                            <div>
+                                <h2 className="text-lg font-black uppercase tracking-tight">{viewingOrder.supplier_name}</h2>
+                                <p className="text-[9px] font-bold uppercase opacity-80">Commande du {viewingOrder.date}</p>
+                            </div>
+                            <XCircle className="h-6 w-6 cursor-pointer hover:opacity-70 transition-colors" onClick={() => setViewingOrder(null)} />
+                        </div>
+                        <div className="p-6 overflow-y-auto custom-scrollbar">
+                            <div className="space-y-4">
+                                {(viewingOrder.items || []).map((item, idx) => (
+                                    <div key={idx} className="flex justify-between items-center border-b border-slate-50 pb-3">
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-900 uppercase">{item.article_name}</p>
+                                            <p className="text-[10px] font-medium text-slate-400">{item.quantity} {item.unit} × {item.unitPrice?.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT</p>
+                                        </div>
+                                        <p className="text-sm font-black text-slate-900">
+                                            {((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
+                            <span className="text-xs font-bold text-slate-500 uppercase">Total Commande</span>
+                            <span className="text-xl font-black text-slate-900">
+                                {(viewingOrder.items || []).reduce((sum, i) => sum + ((i.quantity || 0) * (i.unitPrice || 0)), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-slate-400">DT</span>
+                            </span>
                         </div>
                     </div>
                 </div>

@@ -10,19 +10,33 @@ import { motion, AnimatePresence } from 'framer-motion';
 export default function LoginContent() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
+    const router = useRouter();
+    const supabase = useMemo(() => createClient(), []);
+
+    // Initial mode from query params
+    const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const m = params.get('mode');
+            if (m === 'signup' || m === 'forgot' || m === 'signin') return m;
+        }
+        return 'signin';
+    });
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
-    const router = useRouter();
-    const supabase = useMemo(() => createClient(), []);
 
     const handleAuth = useCallback(async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError(null);
         setMessage(null);
+
+        // Get returnUrl from search params
+        const params = new URLSearchParams(window.location.search);
+        const returnUrl = params.get('returnUrl') || '/expenses';
 
         try {
             if (mode === 'signin') {
@@ -31,13 +45,13 @@ export default function LoginContent() {
                     password,
                 });
                 if (error) throw error;
-                router.push('/expenses');
+                router.push(returnUrl);
             } else if (mode === 'signup') {
                 const { error } = await supabase.auth.signUp({
                     email,
                     password,
                     options: {
-                        emailRedirectTo: `${location.origin}/auth/callback`,
+                        emailRedirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(returnUrl)}`,
                     },
                 });
                 if (error) throw error;

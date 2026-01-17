@@ -150,7 +150,7 @@ export default function ChantierContent() {
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col font-jakarta pb-20 md:pb-0">
             {/* Top Navigation Bar - Compact Labels */}
-            <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl border-b border-slate-200/60 shadow-sm">
+            <div className="sticky top-0 md:top-[80px] z-[45] bg-white/95 backdrop-blur-xl border-b border-slate-200/60 shadow-sm">
                 <div className="max-w-[1600px] mx-auto overflow-x-auto no-scrollbar scroll-smooth p-3 md:p-4">
                     <div className="flex items-center gap-2 md:gap-3 min-w-max px-2">
                         {steps.map((step: ConstructionStep) => (

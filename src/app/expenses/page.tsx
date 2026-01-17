@@ -161,6 +161,8 @@ function ExpensesContent() {
     };
 
     const [showUploadedDocs, setShowUploadedDocs] = useState(true);
+    const [showExpensesSection, setShowExpensesSection] = useState(true);
+    const [showDepositsSection, setShowDepositsSection] = useState(true);
 
     const [suppliers, setSuppliers] = useState<Record<string, SupplierData>>({});
     const [showGlobalAddModal, setShowGlobalAddModal] = useState(false);
@@ -1818,17 +1820,23 @@ function ExpensesContent() {
                         </div>
                     )}
 
-                    {/* --- SECTION: FACTURES / BONS --- */}
                     <div className="space-y-4 mb-12">
-                        <div className="flex items-center justify-between px-1">
+                        <div
+                            className="flex items-center justify-between px-1 cursor-pointer group"
+                            onClick={() => setShowExpensesSection(!showExpensesSection)}
+                        >
                             <div className="flex items-center gap-3">
+                                <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${showExpensesSection ? 'rotate-0' : '-rotate-90'}`} />
                                 <div className="w-1.5 h-6 bg-blue-500 rounded-full"></div>
                                 <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Factures & Bons</h2>
                                 <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{currentSupplier.expenses.length} documents</span>
                             </div>
                             {isAdmin && (
                                 <button
-                                    onClick={() => setShowAddExpenseModal(true)}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowAddExpenseModal(true);
+                                    }}
                                     className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-blue-100"
                                 >
                                     <Plus className="h-3.5 w-3.5" />
@@ -1837,346 +1845,375 @@ function ExpensesContent() {
                             )}
                         </div>
 
-                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                            <div className="overflow-x-auto overflow-y-hidden">
-                                <table className="w-full text-left border-collapse min-w-[500px]">
-                                    <thead className="bg-slate-50/80 backdrop-blur-sm sticky top-0 z-10 border-b border-slate-100 text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center">
-                                        <tr>
-                                            <th className="px-4 py-3 text-left w-8">#</th>
-                                            <th className="px-4 py-3 text-left w-10"></th>
-                                            <th className="px-4 py-3 text-left w-24">État</th>
-                                            <th
-                                                className="px-4 py-3 text-left cursor-pointer hover:bg-slate-100/50 transition-colors select-none group"
-                                                onClick={() => handleSort('date')}
-                                            >
-                                                <div className="flex items-center gap-1 group-hover:text-blue-600 transition-colors">
-                                                    Date / Désignation
-                                                    {sortConfig?.key === 'date' ? (
-                                                        sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-500" /> : <ArrowDown className="w-3 h-3 text-blue-500" />
-                                                    ) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100" />}
-                                                </div>
-                                            </th>
-                                            <th
-                                                className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100/50 transition-colors select-none group"
-                                                onClick={() => handleSort('price')}
-                                            >
-                                                <div className="flex items-center justify-end gap-1 group-hover:text-blue-600 transition-colors">
-                                                    Montant
-                                                    {sortConfig?.key === 'price' ? (
-                                                        sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-500" /> : <ArrowDown className="w-3 h-3 text-blue-500" />
-                                                    ) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100" />}
-                                                </div>
-                                            </th>
-                                            <th className="px-4 py-3 text-right w-32">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {sortedExpenses.map((e, index) => {
-                                            const isExpanded = expandedRows[e.id];
-                                            return (
-                                                <React.Fragment key={e.id}>
-                                                    <tr
-                                                        id={e.id}
-                                                        className={`
+                        {showExpensesSection && (
+                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
+                                <div className="overflow-x-auto overflow-y-hidden">
+                                    <table className="w-full text-left border-collapse min-w-[500px]">
+                                        <thead className="bg-slate-50/80 backdrop-blur-sm sticky top-0 z-10 border-b border-slate-100 text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left w-8">#</th>
+                                                <th className="px-4 py-3 text-left w-10"></th>
+                                                <th className="px-4 py-3 text-left w-24">État</th>
+                                                <th
+                                                    className="px-4 py-3 text-left cursor-pointer hover:bg-slate-100/50 transition-colors select-none group"
+                                                    onClick={() => handleSort('date')}
+                                                >
+                                                    <div className="flex items-center gap-1 group-hover:text-blue-600 transition-colors">
+                                                        Date / Désignation
+                                                        {sortConfig?.key === 'date' ? (
+                                                            sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-500" /> : <ArrowDown className="w-3 h-3 text-blue-500" />
+                                                        ) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100" />}
+                                                    </div>
+                                                </th>
+                                                <th
+                                                    className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100/50 transition-colors select-none group"
+                                                    onClick={() => handleSort('price')}
+                                                >
+                                                    <div className="flex items-center justify-end gap-1 group-hover:text-blue-600 transition-colors">
+                                                        Montant
+                                                        {sortConfig?.key === 'price' ? (
+                                                            sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-500" /> : <ArrowDown className="w-3 h-3 text-blue-500" />
+                                                        ) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100" />}
+                                                    </div>
+                                                </th>
+                                                <th className="px-4 py-3 text-right w-32">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-50">
+                                            {sortedExpenses.map((e, index) => {
+                                                const isExpanded = expandedRows[e.id];
+                                                return (
+                                                    <React.Fragment key={e.id}>
+                                                        <tr
+                                                            id={e.id}
+                                                            className={`
                                                         group transition-all duration-200 cursor-pointer
                                                         ${isExpanded ? 'bg-blue-50/40' : 'hover:bg-slate-50/50'}
                                                     `}
-                                                        onClick={() => toggleRow(e.id)}
-                                                    >
-                                                        <td className="px-2 py-4 text-center text-[10px] font-bold text-slate-300">
-                                                            {index + 1}
-                                                        </td>
-                                                        <td className="px-4 py-4 text-center">
-                                                            <ChevronDown className={`h-4 w-4 text-slate-300 transition-transform duration-300 ${isExpanded ? 'rotate-180 text-blue-500' : ''}`} />
-                                                        </td>
-                                                        <td className="px-4 py-4" onClick={(ev) => ev.stopPropagation()}>
-                                                            <div className="relative w-fit">
-                                                                <select
-                                                                    value={e.status}
-                                                                    onChange={(ev) => updateStatus(e.id, ev.target.value as PaymentStatus)}
-                                                                    className={`
+                                                            onClick={() => toggleRow(e.id)}
+                                                        >
+                                                            <td className="px-2 py-4 text-center text-[10px] font-bold text-slate-300">
+                                                                {index + 1}
+                                                            </td>
+                                                            <td className="px-4 py-4 text-center">
+                                                                <ChevronDown className={`h-4 w-4 text-slate-300 transition-transform duration-300 ${isExpanded ? 'rotate-180 text-blue-500' : ''}`} />
+                                                            </td>
+                                                            <td className="px-4 py-4" onClick={(ev) => ev.stopPropagation()}>
+                                                                <div className="relative w-fit">
+                                                                    <select
+                                                                        value={e.status}
+                                                                        onChange={(ev) => updateStatus(e.id, ev.target.value as PaymentStatus)}
+                                                                        className={`
                                                                     appearance-none cursor-pointer
                                                                     pl-3 pr-8 py-1 rounded-full text-[9px] font-bold border transition-all shadow-sm
                                                                     focus:outline-none focus:ring-2 focus:ring-offset-1
                                                                     ${e.status === 'paid'
-                                                                            ? 'bg-emerald-50 text-emerald-600 border-emerald-100 focus:ring-emerald-200'
-                                                                            : 'bg-amber-50 text-amber-600 border-amber-100 focus:ring-amber-200'}
+                                                                                ? 'bg-emerald-50 text-emerald-600 border-emerald-100 focus:ring-emerald-200'
+                                                                                : 'bg-amber-50 text-amber-600 border-amber-100 focus:ring-amber-200'}
                                                                 `}
-                                                                >
-                                                                    <option value="paid">PAYÉ</option>
-                                                                    <option value="pending">ATTENTE</option>
-                                                                </select>
-                                                                <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none ${e.status === 'paid' ? 'text-emerald-500' : 'text-amber-500'}`} />
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-4">
-                                                            <div className="flex flex-col">
-                                                                <span className="text-[11px] font-bold text-slate-400 font-mono tracking-tight">{e.date}</span>
-                                                                <span className={`text-xs font-black uppercase transition-colors ${isExpanded ? 'text-blue-600' : 'text-slate-800'}`}>
-                                                                    {e.item}
-                                                                </span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-4 text-right">
-                                                            <div className="flex flex-col items-end">
-                                                                <span className="text-sm font-black text-slate-900 tabular-nums tracking-tight">
-                                                                    {e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-400 font-bold ml-0.5">DT</span>
-                                                                </span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-4 text-right">
-                                                            <div className="flex items-center justify-end gap-1 opacity-40 group-hover:opacity-100 transition-all duration-300" onClick={(ev) => ev.stopPropagation()}>
-                                                                {/* Eye Icon: Only active if image exists */}
-                                                                <button
-                                                                    onClick={() => e.invoiceImage && setViewingImage(e.invoiceImage)}
-                                                                    disabled={!e.invoiceImage}
-                                                                    className={`p-1.5 rounded-lg transition-colors ${e.invoiceImage ? 'hover:bg-blue-50 text-blue-500 cursor-pointer' : 'text-slate-200 cursor-not-allowed'}`}
-                                                                    title={e.invoiceImage ? 'Voir le document' : 'Aucun document lié'}
-                                                                >
-                                                                    <Eye className="h-3.5 w-3.5" />
-                                                                </button>
-
-                                                                {/* Image Icon: Always present for admin to link */}
-                                                                {isAdmin && (
-                                                                    <button
-                                                                        onClick={() => handleOpenDocPicker('expense', e.id)}
-                                                                        className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"
-                                                                        title="Lier un document"
                                                                     >
-                                                                        <ImageIcon className="h-3.5 w-3.5" />
+                                                                        <option value="paid">PAYÉ</option>
+                                                                        <option value="pending">ATTENTE</option>
+                                                                    </select>
+                                                                    <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none ${e.status === 'paid' ? 'text-emerald-500' : 'text-amber-500'}`} />
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-4">
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-[11px] font-bold text-slate-400 font-mono tracking-tight">{e.date}</span>
+                                                                    <span className={`text-xs font-black uppercase transition-colors ${isExpanded ? 'text-blue-600' : 'text-slate-800'}`}>
+                                                                        {e.item}
+                                                                    </span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-4 text-right">
+                                                                <div className="flex flex-col items-end">
+                                                                    <span className="text-sm font-black text-slate-900 tabular-nums tracking-tight">
+                                                                        {e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-400 font-bold ml-0.5">DT</span>
+                                                                    </span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-4 text-right">
+                                                                <div className="flex items-center justify-end gap-1 opacity-40 group-hover:opacity-100 transition-all duration-300" onClick={(ev) => ev.stopPropagation()}>
+                                                                    {/* Eye Icon: Only active if image exists */}
+                                                                    <button
+                                                                        onClick={() => e.invoiceImage && setViewingImage(e.invoiceImage)}
+                                                                        disabled={!e.invoiceImage}
+                                                                        className={`p-1.5 rounded-lg transition-colors ${e.invoiceImage ? 'hover:bg-blue-50 text-blue-500 cursor-pointer' : 'text-slate-200 cursor-not-allowed'}`}
+                                                                        title={e.invoiceImage ? 'Voir le document' : 'Aucun document lié'}
+                                                                    >
+                                                                        <Eye className="h-3.5 w-3.5" />
                                                                     </button>
-                                                                )}
 
-                                                                {isAdmin && (
-                                                                    <button onClick={() => handleEditExpense(e)} className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors" title="Modifier">
-                                                                        <Pencil className="h-3.5 w-3.5" />
-                                                                    </button>
-                                                                )}
-
-                                                                {isAdmin && (
-                                                                    <button onClick={() => handleDelete(e.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
-                                                                        <Trash2 className="h-3.5 w-3.5" />
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-
-                                                    {/* Détails Accordion */}
-                                                    {isExpanded && (
-                                                        <tr>
-                                                            <td colSpan={5} className="px-4 pb-6 pt-0 bg-blue-50/40">
-                                                                <div className="bg-white border-2 border-blue-100 rounded-2xl overflow-hidden shadow-sm animate-in slide-in-from-top-2 duration-300">
-                                                                    {/* Shared Metadata Header */}
-                                                                    {(e.client || e.lieuLivraison || e.toupie || e.chaufeur || e.pompe || e.heure) && (
-                                                                        <div className="p-4 bg-slate-50 border-b border-slate-100 grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                                                            {e.client && (
-                                                                                <div className="space-y-0.5">
-                                                                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Chantier / Client</p>
-                                                                                    <p className="text-[11px] font-black text-slate-900 uppercase">{e.client} {e.codeClient && `(${e.codeClient})`}</p>
-                                                                                </div>
-                                                                            )}
-                                                                            {e.lieuLivraison && (
-                                                                                <div className="space-y-0.5">
-                                                                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Lieu Livraison</p>
-                                                                                    <p className="text-[11px] font-black text-slate-900 uppercase">{e.lieuLivraison}</p>
-                                                                                </div>
-                                                                            )}
-                                                                            {e.toupie && (
-                                                                                <div className="space-y-0.5">
-                                                                                    <p className="text-[8px] font-black text-blue-400 uppercase tracking-tighter">Toupie / Camion</p>
-                                                                                    <p className="text-[11px] font-black text-blue-900 uppercase">{e.toupie} {e.chaufeur && `(${e.chaufeur})`}</p>
-                                                                                </div>
-                                                                            )}
-                                                                            {(e.pompe || e.pompiste) && (
-                                                                                <div className="space-y-0.5">
-                                                                                    <p className="text-[8px] font-black text-emerald-400 uppercase tracking-tighter">Pompe / Pompiste</p>
-                                                                                    <p className="text-[11px] font-black text-emerald-900">{e.pompe || '-'} / {e.pompiste || '-'}</p>
-                                                                                </div>
-                                                                            )}
-                                                                            {(e.heure || e.adjuvant) && (
-                                                                                <div className="space-y-0.5">
-                                                                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Heure / Adjuvant</p>
-                                                                                    <p className="text-[11px] font-black text-slate-600 font-mono">{e.heure || '-'} | {e.adjuvant || '-'}</p>
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
+                                                                    {/* Image Icon: Always present for admin to link */}
+                                                                    {isAdmin && (
+                                                                        <button
+                                                                            onClick={() => handleOpenDocPicker('expense', e.id)}
+                                                                            className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"
+                                                                            title="Lier un document"
+                                                                        >
+                                                                            <ImageIcon className="h-3.5 w-3.5" />
+                                                                        </button>
                                                                     )}
 
-                                                                    {/* Line Items Table */}
-                                                                    {e.items && e.items.length > 0 && (
-                                                                        <div className="overflow-x-auto">
-                                                                            <table className="w-full text-left border-collapse">
-                                                                                <thead className="bg-slate-50 border-b border-slate-100 text-[8px] font-black text-slate-400 uppercase tracking-widest">
-                                                                                    <tr>
-                                                                                        <th className="px-4 py-2 w-8">#</th>
-                                                                                        <th className="px-4 py-2">Désignation</th>
-                                                                                        <th className="px-4 py-2 text-center">Qté</th>
-                                                                                        <th className="px-4 py-2 text-right">Prix Unité</th>
-                                                                                        {e.items?.some(i => i.remise) && <th className="px-4 py-2 text-center text-red-400">Remise</th>}
-                                                                                        <th className="px-4 py-2 text-right">Total TTC</th>
-                                                                                    </tr>
-                                                                                </thead>
-                                                                                <tbody className="divide-y divide-slate-50">
-                                                                                    {e.items?.map((item, idx) => (
-                                                                                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                                                                                            <td className="px-4 py-2 text-[9px] font-bold text-slate-300">
-                                                                                                {idx + 1}
-                                                                                            </td>
-                                                                                            <td className="px-4 py-2 font-bold text-slate-700 text-[10px]">{item.designation}</td>
-                                                                                            <td className="px-4 py-2 text-center font-black text-slate-900 text-[10px]">{item.quantity}</td>
-                                                                                            <td className="px-4 py-2 text-right text-slate-500 font-mono text-[10px]">{(item.unitPriceHT || item.unitPrice).toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                                                                                            {e.items?.some(i => i.remise) && (
-                                                                                                <td className="px-4 py-2 text-center text-red-500 font-black text-[10px]">
-                                                                                                    {item.remise ? `${item.remise}%` : '-'}
-                                                                                                </td>
-                                                                                            )}
-                                                                                            <td className="px-4 py-2 text-right font-black text-blue-900 text-[10px]">{item.totalTTC.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                                                                                        </tr>
-                                                                                    ))}
-                                                                                </tbody>
-                                                                            </table>
-                                                                        </div>
+                                                                    {isAdmin && (
+                                                                        <button onClick={() => handleEditExpense(e)} className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors" title="Modifier">
+                                                                            <Pencil className="h-3.5 w-3.5" />
+                                                                        </button>
+                                                                    )}
+
+                                                                    {isAdmin && (
+                                                                        <button onClick={() => handleDelete(e.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
+                                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                                        </button>
                                                                     )}
                                                                 </div>
                                                             </td>
                                                         </tr>
-                                                    )}
-                                                </React.Fragment>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+
+                                                        {/* Détails Accordion */}
+                                                        {isExpanded && (
+                                                            <tr>
+                                                                <td colSpan={5} className="px-4 pb-6 pt-0 bg-blue-50/40">
+                                                                    <div className="bg-white border-2 border-blue-100 rounded-2xl overflow-hidden shadow-sm animate-in slide-in-from-top-2 duration-300">
+                                                                        {/* Shared Metadata Header */}
+                                                                        {(e.client || e.lieuLivraison || e.toupie || e.chaufeur || e.pompe || e.heure) && (
+                                                                            <div className="p-4 bg-slate-50 border-b border-slate-100 grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                                                                {e.client && (
+                                                                                    <div className="space-y-0.5">
+                                                                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Chantier / Client</p>
+                                                                                        <p className="text-[11px] font-black text-slate-900 uppercase">{e.client} {e.codeClient && `(${e.codeClient})`}</p>
+                                                                                    </div>
+                                                                                )}
+                                                                                {e.lieuLivraison && (
+                                                                                    <div className="space-y-0.5">
+                                                                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Lieu Livraison</p>
+                                                                                        <p className="text-[11px] font-black text-slate-900 uppercase">{e.lieuLivraison}</p>
+                                                                                    </div>
+                                                                                )}
+                                                                                {e.toupie && (
+                                                                                    <div className="space-y-0.5">
+                                                                                        <p className="text-[8px] font-black text-blue-400 uppercase tracking-tighter">Toupie / Camion</p>
+                                                                                        <p className="text-[11px] font-black text-blue-900 uppercase">{e.toupie} {e.chaufeur && `(${e.chaufeur})`}</p>
+                                                                                    </div>
+                                                                                )}
+                                                                                {(e.pompe || e.pompiste) && (
+                                                                                    <div className="space-y-0.5">
+                                                                                        <p className="text-[8px] font-black text-emerald-400 uppercase tracking-tighter">Pompe / Pompiste</p>
+                                                                                        <p className="text-[11px] font-black text-emerald-900">{e.pompe || '-'} / {e.pompiste || '-'}</p>
+                                                                                    </div>
+                                                                                )}
+                                                                                {(e.heure || e.adjuvant) && (
+                                                                                    <div className="space-y-0.5">
+                                                                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Heure / Adjuvant</p>
+                                                                                        <p className="text-[11px] font-black text-slate-600 font-mono">{e.heure || '-'} | {e.adjuvant || '-'}</p>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Line Items Table */}
+                                                                        {e.items && e.items.length > 0 && (
+                                                                            <div className="overflow-x-auto">
+                                                                                <table className="w-full text-left border-collapse">
+                                                                                    <thead className="bg-slate-50 border-b border-slate-100 text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                                                                                        <tr>
+                                                                                            <th className="px-4 py-2 w-8">#</th>
+                                                                                            <th className="px-4 py-2">Désignation</th>
+                                                                                            <th className="px-4 py-2 text-center">Qté</th>
+                                                                                            <th className="px-4 py-2 text-right">Prix Unité</th>
+                                                                                            {e.items?.some(i => i.remise) && <th className="px-4 py-2 text-center text-red-400">Remise</th>}
+                                                                                            <th className="px-4 py-2 text-right">Total TTC</th>
+                                                                                        </tr>
+                                                                                    </thead>
+                                                                                    <tbody className="divide-y divide-slate-50">
+                                                                                        {e.items?.map((item, idx) => (
+                                                                                            <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                                                                                <td className="px-4 py-2 text-[9px] font-bold text-slate-300">
+                                                                                                    {idx + 1}
+                                                                                                </td>
+                                                                                                <td className="px-4 py-2 font-bold text-slate-700 text-[10px]">{item.designation}</td>
+                                                                                                <td className="px-4 py-2 text-center font-black text-slate-900 text-[10px]">{item.quantity}</td>
+                                                                                                <td className="px-4 py-2 text-right text-slate-500 font-mono text-[10px]">{(item.unitPriceHT || item.unitPrice).toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                                                                                                {e.items?.some(i => i.remise) && (
+                                                                                                    <td className="px-4 py-2 text-center text-red-500 font-black text-[10px]">
+                                                                                                        {item.remise ? `${item.remise}%` : '-'}
+                                                                                                    </td>
+                                                                                                )}
+                                                                                                <td className="px-4 py-2 text-right font-black text-blue-900 text-[10px]">{item.totalTTC.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                                                                                            </tr>
+                                                                                        ))}
+                                                                                    </tbody>
+                                                                                </table>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </React.Fragment>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
 
                     {/* Fiche de Dépôts / Acomptes */}
                     {
                         currentSupplier.deposits && (
                             <div className="space-y-4 mb-20">
-                                <div className="flex items-center gap-3 px-1">
-                                    <div className="w-1.5 h-6 bg-emerald-500 rounded-full"></div>
-                                    <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Historique Acomptes</h2>
-                                    <span className="text-[10px] font-bold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-100">{currentSupplier.deposits.length} paiements</span>
+                                <div
+                                    className="flex items-center justify-between px-1 cursor-pointer group"
+                                    onClick={() => setShowDepositsSection(!showDepositsSection)}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${showDepositsSection ? 'rotate-0' : '-rotate-90'}`} />
+                                        <div className="w-1.5 h-6 bg-emerald-500 rounded-full"></div>
+                                        <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Historique Acomptes</h2>
+                                        <span className="text-[10px] font-bold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-100">{currentSupplier.deposits.length} paiements</span>
+                                    </div>
+                                    {isAdmin && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingDepositId(null);
+                                                setNewDepositData({
+                                                    amount: '',
+                                                    date: new Date().toISOString().split('T')[0],
+                                                    payer: '',
+                                                    commercial: '',
+                                                    ref: ''
+                                                });
+                                                setShowAddDepositModal(true);
+                                            }}
+                                            className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase hover:bg-emerald-500 transition-all flex items-center gap-1 shadow-lg shadow-emerald-500/10"
+                                        >
+                                            <Plus className="h-3 w-3" /> Nouveau
+                                        </button>
+                                    )}
                                 </div>
 
-                                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                                    <div className="p-4 bg-emerald-50/20 border-b border-emerald-100/50 flex items-center justify-between">
-                                        <span className="text-[10px] font-black text-emerald-600 uppercase tracking-wider">Paiements Validés</span>
-                                        {isAdmin && (
-                                            <button
-                                                onClick={() => {
-                                                    setEditingDepositId(null);
-                                                    setNewDepositData({
-                                                        amount: '',
-                                                        date: new Date().toISOString().split('T')[0],
-                                                        payer: '',
-                                                        commercial: '',
-                                                        ref: ''
-                                                    });
-                                                    setShowAddDepositModal(true);
-                                                }}
-                                                className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase hover:bg-emerald-500 transition-all flex items-center gap-1 shadow-lg shadow-emerald-500/10"
-                                            >
-                                                <Plus className="h-3 w-3" /> Nouveau
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left border-collapse min-w-[500px]">
-                                            <thead className="bg-slate-50/50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                                                <tr>
-                                                    <th className="px-4 py-4 text-center w-8">#</th>
-                                                    <th className="px-6 py-4 w-32">Date</th>
-                                                    <th className="px-6 py-4">Référence / Payeur</th>
-                                                    <th className="px-6 py-4 text-right">Montant</th>
-                                                    <th className="px-6 py-4 text-right w-32">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-50">
-                                                {currentSupplier.deposits.length === 0 ? (
+                                {showDepositsSection && (
+                                    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <div className="p-4 bg-emerald-50/20 border-b border-emerald-100/50 flex items-center justify-between">
+                                            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-wider">Paiements Validés</span>
+                                            {isAdmin && (
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingDepositId(null);
+                                                        setNewDepositData({
+                                                            amount: '',
+                                                            date: new Date().toISOString().split('T')[0],
+                                                            payer: '',
+                                                            commercial: '',
+                                                            ref: ''
+                                                        });
+                                                        setShowAddDepositModal(true);
+                                                    }}
+                                                    className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase hover:bg-emerald-500 transition-all flex items-center gap-1 shadow-lg shadow-emerald-500/10"
+                                                >
+                                                    <Plus className="h-3 w-3" /> Nouveau
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left border-collapse min-w-[500px]">
+                                                <thead className="bg-slate-50/50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                                                     <tr>
-                                                        <td colSpan={4} className="px-6 py-12 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
-                                                            Aucun acompte enregistré
-                                                        </td>
+                                                        <th className="px-4 py-4 text-center w-8">#</th>
+                                                        <th className="px-6 py-4 w-32">Date</th>
+                                                        <th className="px-6 py-4">Référence / Payeur</th>
+                                                        <th className="px-6 py-4 text-right">Montant</th>
+                                                        <th className="px-6 py-4 text-right w-32">Actions</th>
                                                     </tr>
-                                                ) : (
-                                                    currentSupplier.deposits.map((d, index) => (
-                                                        <tr key={d.id} className="hover:bg-slate-50/50 transition-colors group">
-                                                            <td className="px-4 py-4 text-center text-[10px] font-bold text-slate-300">
-                                                                {index + 1}
-                                                            </td>
-                                                            <td className="px-6 py-4 text-xs font-bold text-slate-400 font-mono">
-                                                                {d.date}
-                                                            </td>
-                                                            <td className="px-6 py-4">
-                                                                <div className="flex flex-col">
-                                                                    {d.ref ? (
-                                                                        <span className="text-xs font-bold text-slate-700">{d.ref}</span>
-                                                                    ) : <span className="text-xs font-bold text-slate-300 italic">Sans réf.</span>}
-                                                                    {(d.payer || d.commercial) && (
-                                                                        <span className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
-                                                                            {d.payer} {d.commercial && `• ${d.commercial}`}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-6 py-4 text-right">
-                                                                <span className="text-sm font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
-                                                                    {d.amount.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px]">DT</span>
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-6 py-4 text-right">
-                                                                <div className="flex items-center justify-end gap-1 opacity-20 group-hover:opacity-100 transition-all">
-                                                                    {/* Eye Icon: Only active if image exists */}
-                                                                    <button
-                                                                        onClick={() => (d.receiptImage || d.id === 'd_cap_1') && setViewingImage(d.receiptImage || 'https://via.placeholder.com/800x1000?text=Recu+476+3900DT')}
-                                                                        disabled={!d.receiptImage && d.id !== 'd_cap_1'}
-                                                                        className={`p-1.5 rounded-lg transition-colors ${(d.receiptImage || d.id === 'd_cap_1') ? 'hover:bg-blue-50 text-blue-500 cursor-pointer' : 'text-slate-200 cursor-not-allowed'}`}
-                                                                        title={(d.receiptImage || d.id === 'd_cap_1') ? 'Voir reçu' : 'Aucun reçu lié'}
-                                                                    >
-                                                                        <Eye className="h-4 w-4" />
-                                                                    </button>
-
-                                                                    {/* Image Icon: Always present for admin to link */}
-                                                                    {isAdmin && (
-                                                                        <button
-                                                                            onClick={() => handleOpenDocPicker('deposit', d.id)}
-                                                                            className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"
-                                                                            title="Lier un reçu"
-                                                                        >
-                                                                            <ImageIcon className="h-4 w-4" />
-                                                                        </button>
-                                                                    )}
-
-                                                                    {isAdmin && (
-                                                                        <>
-                                                                            <button
-                                                                                onClick={() => handleEditDeposit(d)}
-                                                                                className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"
-                                                                                title="Modifier"
-                                                                            >
-                                                                                <FileText className="h-4 w-4" />
-                                                                            </button>
-                                                                            <button
-                                                                                onClick={() => handleDeleteDeposit(d.id)}
-                                                                                className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
-                                                                                title="Supprimer"
-                                                                            >
-                                                                                <Trash2 className="h-4 w-4" />
-                                                                            </button>
-                                                                        </>
-                                                                    )}
-                                                                </div>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-50">
+                                                    {currentSupplier.deposits.length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan={4} className="px-6 py-12 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
+                                                                Aucun acompte enregistré
                                                             </td>
                                                         </tr>
-                                                    ))
-                                                )}
-                                            </tbody>
-                                        </table>
+                                                    ) : (
+                                                        currentSupplier.deposits.map((d, index) => (
+                                                            <tr key={d.id} className="hover:bg-slate-50/50 transition-colors group">
+                                                                <td className="px-4 py-4 text-center text-[10px] font-bold text-slate-300">
+                                                                    {index + 1}
+                                                                </td>
+                                                                <td className="px-6 py-4 text-xs font-bold text-slate-400 font-mono">
+                                                                    {d.date}
+                                                                </td>
+                                                                <td className="px-6 py-4">
+                                                                    <div className="flex flex-col">
+                                                                        {d.ref ? (
+                                                                            <span className="text-xs font-bold text-slate-700">{d.ref}</span>
+                                                                        ) : <span className="text-xs font-bold text-slate-300 italic">Sans réf.</span>}
+                                                                        {(d.payer || d.commercial) && (
+                                                                            <span className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
+                                                                                {d.payer} {d.commercial && `• ${d.commercial}`}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-6 py-4 text-right">
+                                                                    <span className="text-sm font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
+                                                                        {d.amount.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px]">DT</span>
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-6 py-4 text-right">
+                                                                    <div className="flex items-center justify-end gap-1 opacity-20 group-hover:opacity-100 transition-all">
+                                                                        {/* Eye Icon: Only active if image exists */}
+                                                                        <button
+                                                                            onClick={() => (d.receiptImage || d.id === 'd_cap_1') && setViewingImage(d.receiptImage || 'https://via.placeholder.com/800x1000?text=Recu+476+3900DT')}
+                                                                            disabled={!d.receiptImage && d.id !== 'd_cap_1'}
+                                                                            className={`p-1.5 rounded-lg transition-colors ${(d.receiptImage || d.id === 'd_cap_1') ? 'hover:bg-blue-50 text-blue-500 cursor-pointer' : 'text-slate-200 cursor-not-allowed'}`}
+                                                                            title={(d.receiptImage || d.id === 'd_cap_1') ? 'Voir reçu' : 'Aucun reçu lié'}
+                                                                        >
+                                                                            <Eye className="h-4 w-4" />
+                                                                        </button>
+
+                                                                        {/* Image Icon: Always present for admin to link */}
+                                                                        {isAdmin && (
+                                                                            <button
+                                                                                onClick={() => handleOpenDocPicker('deposit', d.id)}
+                                                                                className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"
+                                                                                title="Lier un reçu"
+                                                                            >
+                                                                                <ImageIcon className="h-4 w-4" />
+                                                                            </button>
+                                                                        )}
+
+                                                                        {isAdmin && (
+                                                                            <>
+                                                                                <button
+                                                                                    onClick={() => handleEditDeposit(d)}
+                                                                                    className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"
+                                                                                    title="Modifier"
+                                                                                >
+                                                                                    <FileText className="h-4 w-4" />
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => handleDeleteDeposit(d.id)}
+                                                                                    className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+                                                                                    title="Supprimer"
+                                                                                >
+                                                                                    <Trash2 className="h-4 w-4" />
+                                                                                </button>
+                                                                            </>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        ))
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
                         )
                     }

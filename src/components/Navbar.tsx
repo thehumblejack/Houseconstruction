@@ -57,14 +57,15 @@ export default function Navbar() {
 
     // Don't show navbar on auth related pages, root landing page, or project case studies
     if (pathname === '/login' || pathname?.startsWith('/auth/')) return null;
-    if (pathname === '/' || pathname?.startsWith('/projets/')) return null;
+    if (pathname === '/') return null; // Root is landing page
+    if (pathname?.startsWith('/projets/')) return null;
 
     const navItems = [
         { name: 'DÉPENSES', path: '/expenses', icon: ReceiptText },
         { name: 'FOURNISSEURS', path: '/suppliers', icon: User },
         { name: 'ARTICLES', path: '/articles', icon: Package },
         { name: 'COMMANDES', path: '/orders', icon: ShoppingCart },
-        { name: 'CHANTIER', path: '/', icon: LayoutGrid },
+        { name: 'CHANTIER', path: '/chantier', icon: LayoutGrid },
     ];
 
     return (
@@ -325,7 +326,7 @@ export default function Navbar() {
                     {[
                         { name: 'Dépenses', path: '/expenses', icon: ReceiptText },
                         { name: 'Fourn.', path: '/suppliers', icon: User },
-                        { name: 'Chantier', path: '/', icon: LayoutGrid },
+                        { name: 'Chantier', path: '/chantier', icon: LayoutGrid },
                     ].map((item) => {
                         const isActive = pathname === item.path;
                         const Icon = item.icon;

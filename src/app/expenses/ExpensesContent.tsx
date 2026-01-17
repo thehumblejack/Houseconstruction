@@ -307,6 +307,7 @@ function ExpensesContentMain() {
             setLoading(false);
             return;
         }
+
         try {
             const [allSuppliersRes, expensesRes, depositsRes, settingsRes, uploadedDocsRes] = await Promise.all([
                 supabase.from('suppliers').select('*').is('deleted_at', null).order('name'),
@@ -455,12 +456,13 @@ function ExpensesContentMain() {
                     });
                 }
 
-                // Sort expenses by date desc (naive string sort or better logic needed? strings are dd/mm/yyyy so naive wont work well)
-                // For now, let's just keep DB order or reverse.
-                // ideally convert date string to Date object for sort.
+                // Sort expenses
                 Object.values(newSuppliers).forEach(s => {
-                    s.expenses.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()); // relying on created_at not present in interface but present in local obj? no.
-                    // we don't have created_at in interface. Let's trust insert order or use date string parsing later.
+                    s.expenses.sort((a, b) => {
+                        const dateA = new Date(a.date.split('/').reverse().join('-')).getTime();
+                        const dateB = new Date(b.date.split('/').reverse().join('-')).getTime();
+                        return dateB - dateA;
+                    });
                 });
 
                 setSuppliers(newSuppliers as Record<SupplierType, SupplierData>);
@@ -488,7 +490,7 @@ function ExpensesContentMain() {
             console.log('Expenses: Fetching data complete.');
             setLoading(false);
         }
-    }, [supabase, currentProject]);
+    }, [supabase, currentProject, activeTab, sessionLinkedSuppliers]);
 
     useEffect(() => {
         fetchData();

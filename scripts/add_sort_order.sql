@@ -1,0 +1,1 @@
+ALTER TABLE project_suppliers ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;

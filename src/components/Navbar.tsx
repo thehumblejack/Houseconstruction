@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
-import { LayoutGrid, Package, LogOut, ReceiptText, Building2, ShoppingCart, User, Shield, ChevronDown, Plus } from 'lucide-react';
+import { LayoutGrid, Package, LogOut, ReceiptText, Building2, ShoppingCart, User, Shield, ChevronDown, Plus, Trash2 } from 'lucide-react';
 import GlobalSearch from './GlobalSearch';
 import { useEffect, useState, useMemo } from 'react';
 import { createClient } from '@/lib/supabase';
@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 export default function Navbar() {
     const pathname = usePathname();
     const { signOut, isAdmin, user, isApproved } = useAuth();
-    const { projects, currentProject, setCurrentProject, createProject } = useProject();
+    const { projects, currentProject, setCurrentProject, createProject, deleteProject } = useProject();
     const [pendingCount, setPendingCount] = useState(0);
     const [isMoreOpen, setIsMoreOpen] = useState(false);
     const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
@@ -55,9 +55,9 @@ export default function Navbar() {
     }, [isAdmin, supabase]);
 
 
-    // Don't show navbar on auth related pages or root landing page
+    // Don't show navbar on auth related pages, root landing page, or project case studies
     if (pathname === '/login' || pathname?.startsWith('/auth/')) return null;
-    if (pathname === '/' && (!user || !isApproved)) return null;
+    if (pathname === '/' || pathname?.startsWith('/projets/')) return null;
 
     const navItems = [
         { name: 'DÉPENSES', path: '/expenses', icon: ReceiptText },
@@ -92,7 +92,7 @@ export default function Navbar() {
                         >
                             <div className="flex flex-col items-start">
                                 <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Projet Actuel</span>
-                                <span className="text-xs font-black text-white uppercase tracking-tight truncate max-w-[120px]">
+                                <span className="text-xs font-black text-white uppercase tracking-tight truncate max-w-[1200px]">
                                     {currentProject?.name || 'Sélectionner...'}
                                 </span>
                             </div>
@@ -112,17 +112,29 @@ export default function Navbar() {
                                         <div className="p-2 space-y-1">
                                             <p className="px-3 py-2 text-[8px] font-black text-slate-500 uppercase tracking-widest">Mes Chantiers</p>
                                             {projects.map((p) => (
-                                                <button
-                                                    key={p.id}
-                                                    onClick={() => {
-                                                        setCurrentProject(p);
-                                                        setIsProjectMenuOpen(false);
-                                                    }}
-                                                    className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between group transition-all ${currentProject?.id === p.id ? 'bg-[#FFB800] text-black' : 'text-slate-300 hover:bg-white/5'}`}
-                                                >
-                                                    <span className="text-xs font-bold uppercase truncate pr-4">{p.name}</span>
-                                                    {currentProject?.id === p.id && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
-                                                </button>
+                                                <div key={p.id} className="relative group/item">
+                                                    <button
+                                                        onClick={() => {
+                                                            setCurrentProject(p);
+                                                            setIsProjectMenuOpen(false);
+                                                        }}
+                                                        className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between group transition-all ${currentProject?.id === p.id ? 'bg-[#FFB800] text-black' : 'text-slate-300 hover:bg-white/5'}`}
+                                                    >
+                                                        <span className="text-xs font-bold uppercase truncate pr-8">{p.name}</span>
+                                                        {currentProject?.id === p.id && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                                                    </button>
+                                                    <button
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            if (confirm(`Êtes-vous sûr de vouloir supprimer le projet "${p.name}" ? Tous les frais, fournisseurs et documents associés seront définitivement supprimés.`)) {
+                                                                await deleteProject(p.id);
+                                                            }
+                                                        }}
+                                                        className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg opacity-0 group-hover/item:opacity-100 transition-all hover:bg-red-500/10 text-red-400 hover:text-red-500 ${currentProject?.id === p.id ? 'text-black/40 hover:text-black hover:bg-black/5' : ''}`}
+                                                    >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                    </button>
+                                                </div>
                                             ))}
                                             <button
                                                 onClick={async () => {

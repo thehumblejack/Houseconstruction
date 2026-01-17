@@ -9,8 +9,36 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-    title: "Construction Dashboard - Gestion des Étapes",
-    description: "Dashboard interactif pour gérer les étapes de construction d'un bâtiment en béton armé",
+    metadataBase: new URL('https://house-expert.pro'),
+    title: {
+        default: "HouseExpert - Suivi de Chantier & Gestion BTP",
+        template: "%s | HouseExpert"
+    },
+    description: "La solution complète pour le suivi de chantier, la gestion des étapes de construction, et la comparaison des prix fournisseurs. Gérez vos projets BTP avec précision.",
+    keywords: ["suivi de chantier", "gestion BTP", "comparateur prix construction", "gestion fournisseurs BTP", "étape construction bureau", "logiciel construction Tunisie", "suivi budget chantier", "maison individuelle", "béton armé"],
+    authors: [{ name: "HouseExpert Team" }],
+    creator: "HouseExpert",
+    publisher: "HouseExpert",
+    robots: "index, follow",
+    openGraph: {
+        type: "website",
+        locale: "fr_FR",
+        url: "https://house-expert.pro",
+        title: "HouseExpert - Suivi de Chantier & Gestion BTP",
+        description: "Optimisez la gestion de votre chantier : suivi des étapes, gestion des dépenses et comparateur de prix fournisseurs.",
+        siteName: "HouseExpert",
+    },
+    twitter: {
+        card: "summary_large_image",
+        title: "HouseExpert - Suivi de Chantier & Gestion BTP",
+        description: "Gérez votre chantier de A à Z : étapes, fournisseurs et budget en un seul clic.",
+    },
+    icons: {
+        icon: "/favicon.ico",
+        shortcut: "/icon.png",
+        apple: "/apple-icon.png",
+    },
+    manifest: "/site.webmanifest",
 };
 
 import { AuthProvider } from '@/context/AuthContext';
@@ -25,6 +53,24 @@ export default function RootLayout({
     return (
         <html lang="fr" className={jakarta.variable}>
             <body className={`${jakarta.className} bg-slate-50 relative`} suppressHydrationWarning={true}>
+                <script
+                    type="application/ld+json"
+                    dangerouslySetInnerHTML={{
+                        __html: JSON.stringify({
+                            "@context": "https://schema.org",
+                            "@type": "SoftwareApplication",
+                            "name": "HouseExpert",
+                            "operatingSystem": "Web",
+                            "applicationCategory": "BusinessApplication",
+                            "description": "Logiciel de suivi de chantier et gestion BTP avec comparateur de prix fournisseurs.",
+                            "offers": {
+                                "@type": "Offer",
+                                "price": "0",
+                                "priceCurrency": "TND"
+                            }
+                        })
+                    }}
+                />
                 <div className="grain" />
                 <AuthProvider>
                     <ProjectProvider>

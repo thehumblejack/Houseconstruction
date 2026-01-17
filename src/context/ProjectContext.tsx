@@ -17,6 +17,7 @@ interface ProjectContextType {
     loading: boolean;
     setCurrentProject: (project: Project) => void;
     createProject: (name: string, description: string) => Promise<Project | null>;
+    deleteProject: (id: string) => Promise<boolean>;
     refreshProjects: () => Promise<void>;
 }
 
@@ -26,6 +27,7 @@ const ProjectContext = createContext<ProjectContextType>({
     loading: true,
     setCurrentProject: () => { },
     createProject: async () => null,
+    deleteProject: async () => false,
     refreshProjects: async () => { },
 });
 
@@ -56,6 +58,8 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
                 const savedProjectId = localStorage.getItem('selectedProjectId');
                 const savedProject = data.find((p: Project) => p.id === savedProjectId);
                 setCurrentProjectState(savedProject || data[0]);
+            } else {
+                setCurrentProjectState(null);
             }
         } catch (error) {
             console.error('ProjectContext: Critical error:', error);
@@ -98,14 +102,45 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
         }
     };
 
+    const deleteProject = async (id: string) => {
+        try {
+            const { error } = await supabase
+                .from('projects')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
+
+            // Update local state
+            const updatedProjects = projects.filter(p => p.id !== id);
+            setProjects(updatedProjects);
+
+            // If we deleted the current project, select another one or null
+            if (currentProject?.id === id) {
+                if (updatedProjects.length > 0) {
+                    setCurrentProject(updatedProjects[0]);
+                } else {
+                    setCurrentProjectState(null);
+                    localStorage.removeItem('selectedProjectId');
+                }
+            }
+
+            return true;
+        } catch (error) {
+            console.error('ProjectContext: Error deleting project:', error);
+            return false;
+        }
+    };
+
     const value = useMemo(() => ({
         projects,
         currentProject,
         loading,
         setCurrentProject,
         createProject,
+        deleteProject,
         refreshProjects: fetchProjects
-    }), [projects, currentProject, loading, fetchProjects]);
+    }), [projects, currentProject, loading, fetchProjects, deleteProject]);
 
     return (
         <ProjectContext.Provider value={value}>

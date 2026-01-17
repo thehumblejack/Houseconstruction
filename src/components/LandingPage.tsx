@@ -30,10 +30,10 @@ export default function LandingPage() {
     }, []);
 
     const portfolioItems = [
-        { title: 'Villa Azure', category: 'Architecture Moderne', image: '/images/landing/hero.png' },
-        { title: 'Éclat Urbain', category: 'Design Commercial', image: '/images/landing/detail.png' },
-        { title: 'Havre de Paix', category: 'Maison Individuelle', image: '/images/landing/interior.png' },
-        { title: 'Structure Pro', category: 'Ingénierie', image: '/images/landing/construction.png' },
+        { title: 'Villa Azure', category: 'Architecture Moderne', image: '/images/landing/hero.png', slug: 'villa-azure' },
+        { title: 'Éclat Urbain', category: 'Design Commercial', image: '/images/landing/detail.png', slug: 'eclat-urbain' },
+        { title: 'Havre de Paix', category: 'Maison Individuelle', image: '/images/landing/interior.png', slug: 'havre-de-paix' },
+        { title: 'Structure Pro', category: 'Ingénierie', image: '/images/landing/construction.png', slug: 'structure-pro' },
     ];
 
     const fadeInUp = {
@@ -55,7 +55,7 @@ export default function LandingPage() {
 
             {/* Minimalist Floating Navigation */}
             <nav className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-700 px-6 md:px-12 ${scrolled ? 'py-4' : 'py-8'}`}>
-                <div className={`max-w-[1200px] mx-auto flex items-center justify-between transition-all duration-700 rounded-full px-8 py-3 ${scrolled ? 'bg-white/5 backdrop-blur-2xl border border-white/10 shadow-xl' : 'bg-transparent border-transparent'}`}>
+                <div className={`max-w-[1200px] mx-auto flex items-center justify-between transition-all duration-700 rounded-full px-8 py-3 ${scrolled ? 'bg-slate-900/80 backdrop-blur-2xl border border-white/10 shadow-2xl' : 'bg-transparent border-transparent'}`}>
                     <div className="flex items-center gap-2 group cursor-pointer">
                         <Building2 className="text-[#FFB800] w-5 h-5" />
                         <span className="font-bold text-sm tracking-tight uppercase">
@@ -165,13 +165,66 @@ export default function LandingPage() {
                 </div>
             </section>
 
-            {/* Compact Portfolio */}
+            {/* Dashboard Features Section for SEO */}
+            <section id="dashboard" className="py-24 bg-slate-50 border-y border-slate-100">
+                <div className="max-w-[1200px] mx-auto px-8">
+                    <div className="grid lg:grid-cols-2 gap-16 items-center">
+                        <div className="space-y-8">
+                            <div className="inline-flex items-center gap-3 px-4 py-1.5 bg-slate-900 rounded-full">
+                                <span className="w-1.5 h-1.5 bg-[#FFB800] rounded-full" />
+                                <span className="text-[#FFB800] text-[8px] font-black uppercase tracking-[0.4em]">Outil de Gestion BTP</span>
+                            </div>
+                            <h2 className="text-4xl md:text-5xl font-black text-slate-900 leading-tight uppercase tracking-tighter">
+                                Contrôlez chaque <span className="text-slate-300 italic">millimètre</span> de votre budget.
+                            </h2>
+                            <p className="text-slate-500 text-sm md:text-base font-medium leading-relaxed">
+                                Notre plateforme exclusive permet un suivi de chantier en temps réel, une gestion rigoureuse des fournisseurs et un comparateur de prix intelligent pour optimiser vos coûts de construction.
+                            </p>
+                            <ul className="space-y-4">
+                                {[
+                                    { title: "Suivi des Étapes", desc: "Suivez l'avancement chronologique de votre gros œuvre." },
+                                    { title: "Comparateur Fournisseurs", desc: "Analysez les prix du béton, fer et briques en un clic." },
+                                    { title: "Gestion Budgétaire", desc: "Maîtrisez vos dépenses et vos acomptes fournisseurs." }
+                                ].map((item, i) => (
+                                    <li key={i} className="flex gap-4">
+                                        <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm h-fit">
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-black text-xs uppercase text-slate-900">{item.title}</h4>
+                                            <p className="text-[11px] text-slate-400 font-medium">{item.desc}</p>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                        <div className="relative aspect-square bg-[#0A0A0A] rounded-[3rem] overflow-hidden shadow-2xl border-8 border-white group">
+                            <div className="absolute inset-0 bg-gradient-to-tr from-[#FFB800]/20 to-transparent z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                            <div className="h-full w-full flex items-center justify-center p-12">
+                                <div className="text-center space-y-4">
+                                    <Zap className="w-16 h-16 text-[#FFB800] mx-auto animate-pulse" />
+                                    <p className="text-white/20 font-black uppercase tracking-[0.3em] text-[10px]">Dashboard Visualizer</p>
+                                </div>
+                            </div>
+                            {/* Decorative elements representing a UI */}
+                            <div className="absolute top-8 left-8 right-8 h-2 bg-white/10 rounded-full overflow-hidden">
+                                <div className="h-full w-2/3 bg-[#FFB800]" />
+                            </div>
+                            <div className="absolute bottom-8 left-8 right-8 flex gap-2">
+                                <div className="h-20 flex-1 bg-white/5 rounded-2xl border border-white/10" />
+                                <div className="h-20 flex-1 bg-white/5 rounded-2xl border border-white/10" />
+                                <div className="h-20 flex-1 bg-white/5 rounded-2xl border border-white/10" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
             <section id="projets" className="py-24 bg-white text-black">
                 <div className="max-w-[1200px] mx-auto px-8">
                     <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase mb-16">Réalisations</h2>
                     <div className="grid md:grid-cols-2 gap-8">
                         {portfolioItems.map((item, i) => (
-                            <div key={i} className="group cursor-pointer space-y-4">
+                            <Link key={i} href={`/projets/${item.slug}`} className="group cursor-pointer space-y-4 block">
                                 <div className="relative aspect-video rounded-3xl overflow-hidden bg-slate-100 border border-slate-100">
                                     <Image
                                         src={item.image}
@@ -183,12 +236,12 @@ export default function LandingPage() {
                                 </div>
                                 <div className="flex justify-between items-center px-2">
                                     <div>
-                                        <h3 className="text-xs font-black uppercase tracking-tight">{item.title}</h3>
+                                        <h3 className="text-xs font-black uppercase tracking-tight text-slate-900">{item.title}</h3>
                                         <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{item.category}</p>
                                     </div>
                                     <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-[#FFB800] transition-colors" />
                                 </div>
-                            </div>
+                            </Link>
                         ))}
                     </div>
                 </div>

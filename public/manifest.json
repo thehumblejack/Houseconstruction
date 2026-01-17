@@ -1,0 +1,16 @@
+{
+    "name": "HouseExpert - Suivi de Chantier",
+    "short_name": "HouseExpert",
+    "description": "Logiciel de suivi de chantier et gestion BTP en Tunisie.",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#0f172a",
+    "icons": [
+        {
+            "src": "/favicon.ico",
+            "sizes": "64x64 32x32 24x24 16x16",
+            "type": "image/x-icon"
+        }
+    ]
+}

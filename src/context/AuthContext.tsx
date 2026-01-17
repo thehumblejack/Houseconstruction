@@ -211,14 +211,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
 
         const isAuthPage = pathname === '/login' || pathname?.startsWith('/auth/');
-        const isPublicPage = pathname === '/' || pathname === '/login';
+        const isPublicPage = pathname === '/' || pathname === '/login' || pathname?.startsWith('/projets/');
         console.log('Auth: Processing route', { pathname, isAuthPage, user: !!user, hasProfile: !!userProfile });
 
         if (!user) {
             // Not logged in
             if (!isPublicPage && !isAuthPage) {
-                console.log('Auth: Redirecting to login (unauthenticated)');
-                router.replace('/login');
+                console.log('Auth: Redirecting to landing page (unauthenticated)');
+                router.replace('/');
             }
         } else if (userProfile) {
             // Logged in with profile
@@ -251,14 +251,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUserProfile(null);
             setUser(null);
             setSession(null);
-            router.push('/login');
+            router.push('/');
         } catch (error) {
             console.error('Auth: Signout failed', error);
             // Force local clearing anyway
             setUserProfile(null);
             setUser(null);
             setSession(null);
-            router.push('/login');
+            router.push('/');
         }
     }, [supabase, router]);
 

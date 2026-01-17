@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Allow: /articles
+Allow: /suppliers
+Sitemap: https://house-expert.pro/sitemap.xml

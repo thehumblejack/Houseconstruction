@@ -211,8 +211,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
 
         const isAuthPage = pathname === '/login' || pathname?.startsWith('/auth/');
-        const isPublicPage = pathname === '/' || pathname === '/login' || pathname?.startsWith('/projets/');
-        console.log('Auth: Processing route', { pathname, isAuthPage, user: !!user, hasProfile: !!userProfile });
+        const isPublicPage = pathname === '/' || pathname === '/login' || pathname?.startsWith('/projets/') || pathname?.startsWith('/invite/');
+        console.log('Auth: Processing route', { pathname, isAuthPage, isPublicPage, user: !!user, hasProfile: !!userProfile });
 
         if (!user) {
             // Not logged in

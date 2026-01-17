@@ -43,6 +43,7 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
     const [copied, setCopied] = useState(false);
     const [deletingInvite, setDeletingInvite] = useState<string | null>(null);
     const [sendingEmail, setSendingEmail] = useState(false);
+    const [emailSuccess, setEmailSuccess] = useState(false);
 
     const supabase = useMemo(() => createClient(), []);
 
@@ -314,15 +315,15 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
                                             <button
                                                 onClick={async () => {
                                                     setSendingEmail(true);
+                                                    setEmailSuccess(false);
                                                     try {
                                                         console.log('Sending invitation email...');
-                                                        const { data: { user: currentUser } } = await supabase.auth.getUser();
 
                                                         const payload = {
                                                             email: inviteEmail,
                                                             projectName: currentProject?.name,
                                                             inviteLink: inviteLink,
-                                                            inviterName: currentUser?.user_metadata?.full_name || currentUser?.email
+                                                            inviterName: user?.user_metadata?.full_name || user?.email
                                                         };
 
                                                         console.log('Calling Edge Function with:', payload);
@@ -335,7 +336,6 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
 
                                                         if (response.error) {
                                                             console.error('Edge Function error:', response.error);
-                                                            // Try to get more details from the error
                                                             const errorMessage = response.error.message || response.error.toString();
                                                             throw new Error(errorMessage);
                                                         }
@@ -346,7 +346,8 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
                                                         }
 
                                                         console.log('Email sent successfully!', response.data);
-                                                        alert('Email envoyé avec succès !');
+                                                        setEmailSuccess(true);
+                                                        setTimeout(() => setEmailSuccess(false), 5000);
                                                     } catch (error: any) {
                                                         console.error('Error sending email:', error);
                                                         const errorMsg = error.message || error.toString() || 'Erreur inconnue';
@@ -356,10 +357,10 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
                                                     }
                                                 }}
                                                 disabled={sendingEmail}
-                                                className="flex-1 bg-blue-50 text-blue-600 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-100 transition-colors text-center flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                className={`flex-1 ${emailSuccess ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'} py-3 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-100 transition-colors text-center flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed`}
                                             >
-                                                <Mail className="h-3 w-3" />
-                                                {sendingEmail ? 'Envoi...' : 'Par Email'}
+                                                {emailSuccess ? <CheckCircle2 className="h-3 w-3" /> : <Mail className="h-3 w-3" />}
+                                                {sendingEmail ? 'Envoi...' : emailSuccess ? 'Email Envoyé !' : 'Par Email'}
                                             </button>
                                         </div>
                                         <button

@@ -38,7 +38,7 @@ export const metadata: Metadata = {
         shortcut: "/icon.png",
         apple: "/apple-icon.png",
     },
-    manifest: "/site.webmanifest",
+    manifest: "/manifest.json",
 };
 
 import { AuthProvider } from '@/context/AuthContext';

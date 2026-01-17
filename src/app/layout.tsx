@@ -51,7 +51,7 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="fr" className={jakarta.variable}>
+        <html lang="fr" className={jakarta.variable} suppressHydrationWarning>
             <body className={`${jakarta.className} bg-slate-50 relative`} suppressHydrationWarning={true}>
                 <script
                     type="application/ld+json"
@@ -71,7 +71,7 @@ export default function RootLayout({
                         })
                     }}
                 />
-                <div className="grain" />
+                <div className="grain" suppressHydrationWarning />
                 <AuthProvider>
                     <ProjectProvider>
                         <Navbar />

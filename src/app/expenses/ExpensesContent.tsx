@@ -210,6 +210,9 @@ function ExpensesContentMain() {
     const { currentProject } = useProject();
     const [activeTab, setActiveTab] = useState<SupplierType>('beton');
     const [viewingImage, setViewingImage] = useState<string | null>(null);
+    const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending'>('all');
+
+    // ... (rest of the state definitions)
     const [loading, setLoading] = useState(true);
     const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
     const [newSupplierName, setNewSupplierName] = useState('');
@@ -523,6 +526,10 @@ function ExpensesContentMain() {
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [showBreakdown, setShowBreakdown] = useState(false);
+    const [showAllPending, setShowAllPending] = useState(false);
+    const [showAllPaid, setShowAllPaid] = useState(false);
+    const [showAllExpenses, setShowAllExpenses] = useState(false);
+    const [expandedSuppliers, setExpandedSuppliers] = useState<Record<string, boolean>>({});
 
     // Manual Expense Add State
     const [isUploading, setIsUploading] = useState(false);
@@ -892,9 +899,15 @@ function ExpensesContentMain() {
 
     const sortedExpenses = useMemo(() => {
         if (!currentSupplier || !currentSupplier.expenses) return [];
-        let sorted = [...currentSupplier.expenses];
+        let items = [...currentSupplier.expenses];
 
-        sorted.sort((a, b) => {
+        // Filter by status
+        if (statusFilter !== 'all') {
+            items = items.filter(e => e.status === statusFilter);
+        }
+
+        // Sort
+        items.sort((a, b) => {
             if (sortConfig.key === 'date') {
                 const [d1, m1, y1] = a.date.split('/').map(Number);
                 const [d2, m2, y2] = b.date.split('/').map(Number);
@@ -905,8 +918,8 @@ function ExpensesContentMain() {
                 return sortConfig.direction === 'asc' ? a.price - b.price : b.price - a.price;
             }
         });
-        return sorted;
-    }, [currentSupplier, sortConfig]);
+        return items;
+    }, [currentSupplier, sortConfig, statusFilter]);
 
     const activeStat = useMemo(() => {
         const stat = supplierStats.find(s => s.id === activeTab);
@@ -1439,16 +1452,28 @@ function ExpensesContentMain() {
 
             {/* Global Stats - Compact */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
-                <div className="bg-slate-900 text-white p-3 md:p-5 rounded-xl shadow-lg border border-slate-800">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Chantier</p>
-                    <h2 className="text-lg md:text-2xl font-black">{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-500">DT</span></h2>
-                </div>
-                <div className="bg-white p-3 md:p-5 rounded-xl border border-slate-200 shadow-sm">
-                    <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Total Payé</p>
-                    <h2 className="text-lg md:text-2xl font-black text-emerald-700">{totalPaidGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 })}</h2>
-                </div>
                 <button
-                    onClick={() => setShowBreakdown(true)}
+                    onClick={() => setShowAllExpenses(true)}
+                    className="bg-slate-900 text-white p-3 md:p-5 rounded-xl shadow-lg border border-slate-800 text-left hover:bg-slate-800 transition-all group w-full"
+                >
+                    <div className="flex justify-between items-start">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Chantier</p>
+                        <AlertCircle className="h-3 w-3 text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <h2 className="text-lg md:text-2xl font-black">{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-500">DT</span></h2>
+                </button>
+                <button
+                    onClick={() => setShowAllPaid(true)}
+                    className="bg-white p-3 md:p-5 rounded-xl border border-slate-200 shadow-sm text-left hover:bg-emerald-50 transition-all group w-full"
+                >
+                    <div className="flex justify-between items-start">
+                        <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Total Payé</p>
+                        <AlertCircle className="h-3 w-3 text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <h2 className="text-lg md:text-2xl font-black text-emerald-700">{totalPaidGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 })}</h2>
+                </button>
+                <button
+                    onClick={() => setShowAllPending(true)}
                     className="bg-white p-3 md:p-5 rounded-xl border border-amber-200 shadow-sm text-left hover:bg-amber-50 transition-all group"
                 >
                     <div className="flex justify-between items-start">
@@ -1749,6 +1774,270 @@ function ExpensesContentMain() {
                         <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
                             <span className="text-xs font-bold text-slate-500 uppercase">Solde Général</span>
                             <span className={`text-xl font-black ${totalRemainingGlobal < 0 ? 'text-red-600' : 'text-slate-900'}`}>{totalRemainingGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Pending Expenses Modal */}
+            {showAllPending && (
+                <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowAllPending(false)}>
+                    <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+                        <div className="bg-amber-500 p-4 text-white flex justify-between items-center shrink-0">
+                            <div>
+                                <h2 className="text-lg font-black uppercase tracking-tight">Factures En Attente</h2>
+                                <p className="text-[9px] text-amber-100 font-bold uppercase">Par Fournisseur</p>
+                            </div>
+                            <X className="h-5 w-5 cursor-pointer hover:text-amber-200 transition-colors" onClick={() => setShowAllPending(false)} />
+                        </div>
+
+                        <div className="p-4 overflow-y-auto custom-scrollbar bg-white">
+                            {Object.values(suppliers)
+                                .filter(s => s.expenses.some(e => e.status === 'pending'))
+                                .map(supplier => {
+                                    const pendingExpenses = supplier.expenses.filter(e => e.status === 'pending');
+                                    const total = pendingExpenses.reduce((sum, e) => sum + e.price, 0);
+                                    const isExpanded = expandedSuppliers[`pending-${supplier.id}`] ?? true;
+                                    return (
+                                        <div key={supplier.id} className="mb-4 last:mb-0">
+                                            <div
+                                                className="flex items-center justify-between mb-2 pb-2 border-b-2 border-amber-100 cursor-pointer hover:bg-amber-50/30 -mx-2 px-2 rounded-lg transition-colors"
+                                                onClick={() => setExpandedSuppliers(prev => ({ ...prev, [`pending-${supplier.id}`]: !isExpanded }))}
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
+                                                    <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
+                                                        {supplier.name.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-sm font-black text-slate-900 uppercase">{supplier.name}</h3>
+                                                        <p className="text-[9px] font-bold text-slate-400">{pendingExpenses.length} facture{pendingExpenses.length > 1 ? 's' : ''}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-base font-black text-red-600">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span></p>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setShowAllPending(false);
+                                                            setActiveTab(supplier.id as SupplierType);
+                                                        }}
+                                                        className="text-[8px] font-black text-blue-500 hover:text-blue-600 uppercase flex items-center gap-1"
+                                                    >
+                                                        Voir <ArrowRight className="h-2.5 w-2.5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            {isExpanded && (
+                                                <div className="space-y-1 pl-10 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                    {pendingExpenses.map((e, i) => (
+                                                        <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-amber-50/50 rounded-lg transition-colors group">
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-xs font-bold text-slate-800 uppercase truncate">{e.item}</p>
+                                                                <p className="text-[9px] font-medium text-slate-400">{e.date}</p>
+                                                            </div>
+                                                            <p className="text-sm font-black text-red-600 ml-3">{e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            }
+                            {Object.values(suppliers).every(s => s.expenses.every(e => e.status !== 'pending')) && (
+                                <div className="p-8 text-center text-slate-400 flex flex-col items-center">
+                                    <CheckCircle2 className="h-12 w-12 mb-3 text-emerald-100" />
+                                    <p className="text-sm font-black uppercase text-emerald-600">Tout est payé !</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
+                            <span className="text-xs font-bold text-slate-500 uppercase">Total En Attente</span>
+                            <span className="text-xl font-black text-red-600">
+                                {Object.values(suppliers).reduce((acc, s) => acc + s.expenses.filter(e => e.status === 'pending').reduce((sum, e) => sum + e.price, 0), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-red-400">DT</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Paid Expenses Modal */}
+            {showAllPaid && (
+                <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowAllPaid(false)}>
+                    <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+                        <div className="bg-emerald-500 p-4 text-white flex justify-between items-center shrink-0">
+                            <div>
+                                <h2 className="text-lg font-black uppercase tracking-tight">Factures Payées</h2>
+                                <p className="text-[9px] text-emerald-100 font-bold uppercase">Par Fournisseur</p>
+                            </div>
+                            <X className="h-5 w-5 cursor-pointer hover:text-emerald-200 transition-colors" onClick={() => setShowAllPaid(false)} />
+                        </div>
+
+                        <div className="p-4 overflow-y-auto custom-scrollbar bg-white">
+                            {Object.values(suppliers)
+                                .filter(s => s.expenses.some(e => e.status === 'paid'))
+                                .map(supplier => {
+                                    const paidExpenses = supplier.expenses.filter(e => e.status === 'paid');
+                                    const total = paidExpenses.reduce((sum, e) => sum + e.price, 0);
+                                    const isExpanded = expandedSuppliers[`paid-${supplier.id}`] ?? true;
+                                    return (
+                                        <div key={supplier.id} className="mb-4 last:mb-0">
+                                            <div
+                                                className="flex items-center justify-between mb-2 pb-2 border-b-2 border-emerald-100 cursor-pointer hover:bg-emerald-50/30 -mx-2 px-2 rounded-lg transition-colors"
+                                                onClick={() => setExpandedSuppliers(prev => ({ ...prev, [`paid-${supplier.id}`]: !isExpanded }))}
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
+                                                    <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
+                                                        {supplier.name.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-sm font-black text-slate-900 uppercase">{supplier.name}</h3>
+                                                        <p className="text-[9px] font-bold text-slate-400">{paidExpenses.length} facture{paidExpenses.length > 1 ? 's' : ''}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-base font-black text-emerald-600">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span></p>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setShowAllPaid(false);
+                                                            setActiveTab(supplier.id as SupplierType);
+                                                        }}
+                                                        className="text-[8px] font-black text-blue-500 hover:text-blue-600 uppercase flex items-center gap-1"
+                                                    >
+                                                        Voir <ArrowRight className="h-2.5 w-2.5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            {isExpanded && (
+                                                <div className="space-y-1 pl-10 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                    {paidExpenses.map((e, i) => (
+                                                        <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-emerald-50/50 rounded-lg transition-colors group">
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-xs font-bold text-slate-800 uppercase truncate">{e.item}</p>
+                                                                <p className="text-[9px] font-medium text-slate-400">{e.date}</p>
+                                                            </div>
+                                                            <p className="text-sm font-black text-emerald-600 ml-3">{e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            }
+                            {Object.values(suppliers).every(s => s.expenses.every(e => e.status !== 'paid')) && (
+                                <div className="p-8 text-center text-slate-400 flex flex-col items-center">
+                                    <AlertCircle className="h-12 w-12 mb-3 text-slate-100" />
+                                    <p className="text-sm font-black uppercase text-slate-600">Aucun paiement</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
+                            <span className="text-xs font-bold text-slate-500 uppercase">Total Payé</span>
+                            <span className="text-xl font-black text-emerald-600">
+                                {Object.values(suppliers).reduce((acc, s) => acc + s.expenses.filter(e => e.status === 'paid').reduce((sum, e) => sum + e.price, 0), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-emerald-400">DT</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* All Expenses Modal */}
+            {showAllExpenses && (
+                <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowAllExpenses(false)}>
+                    <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+                        <div className="bg-slate-900 p-4 text-white flex justify-between items-center shrink-0">
+                            <div>
+                                <h2 className="text-lg font-black uppercase tracking-tight">Toutes les Factures</h2>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase">Par Fournisseur</p>
+                            </div>
+                            <X className="h-5 w-5 cursor-pointer hover:text-slate-400 transition-colors" onClick={() => setShowAllExpenses(false)} />
+                        </div>
+
+                        <div className="p-4 overflow-y-auto custom-scrollbar bg-white">
+                            {Object.values(suppliers)
+                                .filter(s => s.expenses.length > 0)
+                                .map(supplier => {
+                                    const total = supplier.expenses.reduce((sum, e) => sum + e.price, 0);
+                                    const paidCount = supplier.expenses.filter(e => e.status === 'paid').length;
+                                    const pendingCount = supplier.expenses.filter(e => e.status === 'pending').length;
+                                    const isExpanded = expandedSuppliers[`all-${supplier.id}`] ?? true;
+                                    return (
+                                        <div key={supplier.id} className="mb-4 last:mb-0">
+                                            <div
+                                                className="flex items-center justify-between mb-2 pb-2 border-b-2 border-slate-200 cursor-pointer hover:bg-slate-50 -mx-2 px-2 rounded-lg transition-colors"
+                                                onClick={() => setExpandedSuppliers(prev => ({ ...prev, [`all-${supplier.id}`]: !isExpanded }))}
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
+                                                    <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
+                                                        {supplier.name.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-sm font-black text-slate-900 uppercase">{supplier.name}</h3>
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="text-[9px] font-bold text-slate-400">{supplier.expenses.length} facture{supplier.expenses.length > 1 ? 's' : ''}</p>
+                                                            {paidCount > 0 && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">{paidCount} payé{paidCount > 1 ? 's' : ''}</span>}
+                                                            {pendingCount > 0 && <span className="text-[8px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">{pendingCount} en attente</span>}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-base font-black text-slate-900">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span></p>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setShowAllExpenses(false);
+                                                            setActiveTab(supplier.id as SupplierType);
+                                                        }}
+                                                        className="text-[8px] font-black text-blue-500 hover:text-blue-600 uppercase flex items-center gap-1"
+                                                    >
+                                                        Voir <ArrowRight className="h-2.5 w-2.5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            {isExpanded && (
+                                                <div className="space-y-1 pl-10 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                    {supplier.expenses.map((e, i) => (
+                                                        <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-slate-50 rounded-lg transition-colors group">
+                                                            <div className="flex-1 min-w-0 flex items-center gap-2">
+                                                                <p className="text-xs font-bold text-slate-800 uppercase truncate flex-1">{e.item}</p>
+                                                                <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${e.status === 'paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                                                                    {e.status === 'paid' ? 'P' : 'A'}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2 ml-3">
+                                                                <p className="text-[9px] font-medium text-slate-400">{e.date}</p>
+                                                                <p className={`text-sm font-black ${e.status === 'paid' ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                                                    {e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            }
+                            {Object.values(suppliers).every(s => s.expenses.length === 0) && (
+                                <div className="p-8 text-center text-slate-400 flex flex-col items-center">
+                                    <Package className="h-12 w-12 mb-3 text-slate-100" />
+                                    <p className="text-sm font-black uppercase text-slate-600">Aucune facture</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
+                            <span className="text-xs font-bold text-slate-500 uppercase">Total Chantier</span>
+                            <span className="text-xl font-black text-slate-900">
+                                {Object.values(suppliers).reduce((acc, s) => acc + s.expenses.reduce((sum, e) => sum + e.price, 0), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-slate-500">DT</span>
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -2156,6 +2445,29 @@ function ExpensesContentMain() {
 
                         {showExpensesSection && (
                             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
+                                {/* Table Controls */}
+                                <div className="p-2 border-b border-slate-100 flex justify-end">
+                                    <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-lg">
+                                        <button
+                                            onClick={() => setStatusFilter('all')}
+                                            className={`px-3 py-1 rounded-md text-[9px] font-black uppercase transition-all ${statusFilter === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            Tout
+                                        </button>
+                                        <button
+                                            onClick={() => setStatusFilter('pending')}
+                                            className={`px-3 py-1 rounded-md text-[9px] font-black uppercase transition-all ${statusFilter === 'pending' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-amber-500'}`}
+                                        >
+                                            En Attente
+                                        </button>
+                                        <button
+                                            onClick={() => setStatusFilter('paid')}
+                                            className={`px-3 py-1 rounded-md text-[9px] font-black uppercase transition-all ${statusFilter === 'paid' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-emerald-500'}`}
+                                        >
+                                            Payé
+                                        </button>
+                                    </div>
+                                </div>
                                 <div className="overflow-x-auto overflow-y-hidden">
                                     <table className="w-full text-left border-collapse min-w-[500px]">
                                         <thead className="bg-slate-50/80 backdrop-blur-sm sticky top-0 z-10 border-b border-slate-100 text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center">

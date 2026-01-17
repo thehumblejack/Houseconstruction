@@ -76,14 +76,14 @@ export default function Navbar() {
                 <nav className="flex items-center gap-1.5 p-1.5 bg-slate-900/95 backdrop-blur-2xl border border-white/10 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] pointer-events-auto transform transition-all hover:scale-[1.01] hover:shadow-[0_20px_40px_rgb(0,0,0,0.2)]">
 
                     {/* Logo Section */}
-                    <div className="flex items-center gap-2 pl-4 pr-6 border-r border-white/10 mr-1 group cursor-pointer">
+                    <Link href="/chantier" className="flex items-center gap-2 pl-4 pr-6 border-r border-white/10 mr-1 group cursor-pointer">
                         <div className="bg-[#FFB800] p-1.5 rounded-lg transition-transform group-hover:rotate-12">
                             <Building2 className="h-4 w-4 text-slate-900" />
                         </div>
                         <span className="font-bold tracking-[-0.05em] text-lg text-white uppercase flex items-center">
                             House<span className="text-[#FFB800]">Expert</span>
                         </span>
-                    </div>
+                    </Link>
 
                     {/* Project Selector */}
                     <div className="relative border-r border-white/10 pr-2 mr-2">

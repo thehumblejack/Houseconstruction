@@ -76,7 +76,7 @@ export default function LandingPage() {
                     </div>
 
                     <Link
-                        href={user ? (isApproved ? '/' : '/auth/pending') : '/login'}
+                        href={user ? (isApproved ? '/chantier' : '/auth/pending') : '/login'}
                         className="bg-white text-black px-6 py-2 rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-[#FFB800] transition-all"
                     >
                         {user ? 'Chantier' : 'Accès Client'}

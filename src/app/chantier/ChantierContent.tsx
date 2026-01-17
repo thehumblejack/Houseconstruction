@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { createClient } from '@/lib/supabase';
 import { constructionSteps, type ConstructionStep } from '@/data/construction-steps';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -15,10 +16,12 @@ import {
     Lock
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useProject } from '@/context/ProjectContext';
 import Link from 'next/link';
 
 export default function ChantierContent() {
     const { user, isApproved, loading } = useAuth();
+    const { currentProject } = useProject();
     const [steps, setSteps] = useState<ConstructionStep[]>(constructionSteps);
     const [activeStepId, setActiveStepId] = useState<string>('1');
     const [hoveredDetailIndex, setHoveredDetailIndex] = useState<number | null>(null);
@@ -52,14 +55,86 @@ export default function ChantierContent() {
         );
     }
 
+    const [loadingSteps, setLoadingSteps] = useState(false);
+    const supabase = createClient();
+
+    useEffect(() => {
+        if (!currentProject) return;
+
+        const fetchProjectSteps = async () => {
+            setLoadingSteps(true);
+            try {
+                const { data, error } = await supabase
+                    .from('project_steps')
+                    .select('*')
+                    .eq('project_id', currentProject.id);
+
+                if (error) {
+                    console.error('Error fetching steps:', error);
+                    return;
+                }
+
+                // Merge fetched steps with static steps
+                const mergedSteps = constructionSteps.map(step => {
+                    const projectStep = data?.find((s: any) => s.step_id === step.id);
+                    return projectStep
+                        ? { ...step, completed: projectStep.completed, timestamp: projectStep.completed_at }
+                        : { ...step, completed: false, timestamp: undefined };
+                });
+
+                setSteps(mergedSteps);
+            } catch (error) {
+                console.error('Critical error fetching steps:', error);
+            } finally {
+                setLoadingSteps(false);
+            }
+        };
+
+        fetchProjectSteps();
+    }, [currentProject, supabase]);
+
     const activeStep = steps.find((s: ConstructionStep) => s.id === activeStepId) || steps[0];
 
-    const toggleStepCompletion = (id: string) => {
-        setSteps(steps.map((step: ConstructionStep) =>
-            step.id === id
-                ? { ...step, completed: !step.completed, timestamp: !step.completed ? new Date().toISOString() : undefined }
-                : step
+    const toggleStepCompletion = async (id: string) => {
+        if (!currentProject) return;
+
+        const step = steps.find(s => s.id === id);
+        if (!step) return;
+
+        const newCompleted = !step.completed;
+        const timestamp = newCompleted ? new Date().toISOString() : null;
+
+        // Optimistic update
+        setSteps(steps.map((s: ConstructionStep) =>
+            s.id === id
+                ? { ...s, completed: newCompleted, timestamp: timestamp || undefined }
+                : s
         ));
+
+        // Persist to DB
+        try {
+            const { error } = await supabase
+                .from('project_steps')
+                .upsert({
+                    project_id: currentProject.id,
+                    step_id: id,
+                    completed: newCompleted,
+                    completed_at: timestamp,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'project_id, step_id' });
+
+            if (error) {
+                console.error('Error updating step:', error);
+                // Revert optimistic update on error (optional, but good practice)
+                setSteps(steps.map((s: ConstructionStep) =>
+                    s.id === id
+                        ? { ...s, completed: !newCompleted, timestamp: !newCompleted ? new Date().toISOString() : undefined }
+                        : s
+                ));
+            }
+        } catch (error) {
+            console.error('Critical error updating step:', error);
+        }
     };
 
     const getCategoryColor = (category: string) => {
@@ -125,9 +200,14 @@ export default function ChantierContent() {
                                 </div>
                             </div>
 
-                            <h1 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tighter leading-[1.1] uppercase italic">
-                                {activeStep.title}
-                            </h1>
+                            <div className="space-y-1">
+                                <p className="text-[10px] font-black text-[#FFB800] uppercase tracking-widest leading-none">
+                                    Chantier Actuel: {currentProject?.name || 'Inconnu'}
+                                </p>
+                                <h1 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tighter leading-[1.1] uppercase italic">
+                                    {activeStep.title}
+                                </h1>
+                            </div>
 
                             <p className="text-xs md:text-sm text-slate-500 leading-relaxed font-medium max-w-xl">
                                 {activeStep.description}

@@ -35,6 +35,7 @@ export default function SuppliersContent() {
     const [notesValue, setNotesValue] = useState('');
     const [viewMode, setViewMode] = useState<'list' | 'compact'>('compact');
     const [showDeleted, setShowDeleted] = useState(false);
+    const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set());
 
     // Delete Confirmation State
     const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
@@ -51,17 +52,27 @@ export default function SuppliersContent() {
         }
         setLoading(true);
         try {
-            const [sups, exps, deps, its] = await Promise.all([
+            const [sups, exps, deps, its, projectSups] = await Promise.all([
                 supabase.from('suppliers').select('*').order('name'),
                 supabase.from('expenses').select('*').eq('project_id', currentProject.id).is('deleted_at', null),
                 supabase.from('deposits').select('*').eq('project_id', currentProject.id).is('deleted_at', null),
-                supabase.from('invoice_items').select('*')
+                supabase.from('invoice_items').select('*'),
+                supabase.from('project_suppliers').select('supplier_id').eq('project_id', currentProject.id)
             ]);
+
+            const linkedSupplierIds = new Set<string>(projectSups.data?.map((ps: any) => ps.supplier_id) || []);
 
             setSuppliers(sups.data || []);
             setExpenses(exps.data || []);
             setDeposits(deps.data || []);
             setItems(its.data || []);
+
+            // Pass linked IDs to stats calculation if needed by storing in state, 
+            // OR just rely on re-calc. Since stats is a useMemo on [suppliers, expenses...], 
+            // we should probably store linkedIds in state if we want to use them in useMemo.
+            // Let's create a state for it or just inline the logic if we move stats calculation.
+            // Actually, best to store 'linkedSupplierIds' in a state to use it in useMemo.
+            setLinkedIds(linkedSupplierIds);
         } catch (error) {
             console.error('Error fetching data:', error);
         } finally {
@@ -164,7 +175,7 @@ export default function SuppliersContent() {
                 articleCount: supplierItems.length,
                 bestPriceCount,
                 notes: s.notes,
-                isSelected: totalInvoiceAmount > 0 || (s.id === 'beton' || s.id === 'fer'),
+                isSelected: totalInvoiceAmount > 0 || linkedIds.has(s.id),
                 deletedAt: s.deleted_at
             };
         }).sort((a: any, b: any) => b.totalCost - a.totalCost);
@@ -172,7 +183,7 @@ export default function SuppliersContent() {
         return showDeleted
             ? statsData.filter((s: any) => s.deletedAt !== null)
             : statsData.filter((s: any) => s.deletedAt === null);
-    }, [suppliers, expenses, deposits, items, showDeleted]);
+    }, [suppliers, expenses, deposits, items, showDeleted, linkedIds]);
 
     const filteredSuppliers = stats.filter(s =>
         s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

@@ -302,6 +302,11 @@ function ExpensesContentMain() {
         }
     }, [searchParams, loading, suppliers, activeTab]);
 
+    // Clear session-linked list when project changes
+    useEffect(() => {
+        setSessionLinkedSuppliers(new Set());
+    }, [currentProject?.id]);
+
     const fetchData = useCallback(async () => {
         if (!currentProject) {
             setLoading(false);

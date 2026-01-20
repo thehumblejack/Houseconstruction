@@ -8,20 +8,42 @@ import { useProject } from '@/context/ProjectContext';
 import { LayoutGrid, Package, LogOut, ReceiptText, Building2, ShoppingCart, User, Shield, ChevronDown, Plus, Trash2, Settings, Bell, CreditCard, Users } from 'lucide-react';
 import GlobalSearch from './GlobalSearch';
 import ProjectSettingsModal from './ProjectSettingsModal';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Navbar() {
     const pathname = usePathname();
     const { signOut, isAdmin, user, isApproved } = useAuth();
-    const { projects, currentProject, setCurrentProject, createProject, deleteProject } = useProject();
+
+    // Hide navbar on invite acceptance page
+    if (pathname === '/invite/accept') return null;
+
+    const { projects, currentProject, setCurrentProject, createProject, deleteProject, userRole } = useProject();
     const [pendingCount, setPendingCount] = useState(0);
     const [isMoreOpen, setIsMoreOpen] = useState(false);
     const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
     const [showProjectSettings, setShowProjectSettings] = useState(false);
     const supabase = useMemo(() => createClient(), []);
+
+    const projectMenuRef = useRef<HTMLDivElement>(null);
+    const profileMenuRef = useRef<HTMLDivElement>(null);
+
+    // Global click listener for dropdowns
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (projectMenuRef.current && !projectMenuRef.current.contains(event.target as Node)) {
+                setIsProjectMenuOpen(false);
+            }
+            if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+                setIsProfileMenuOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     useEffect(() => {
         if (isAdmin) {
@@ -89,7 +111,7 @@ export default function Navbar() {
                     </Link>
 
                     {/* Project Selector - Compact */}
-                    <div className="relative border-r border-white/10 pr-2 mr-1">
+                    <div className="relative border-r border-white/10 pr-2 mr-1" ref={projectMenuRef}>
                         <button
                             onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
                             className="flex items-center gap-2 px-4 py-2 hover:bg-white/5 rounded-full transition-all group"
@@ -103,7 +125,6 @@ export default function Navbar() {
                         <AnimatePresence>
                             {isProjectMenuOpen && (
                                 <>
-                                    <div className="fixed inset-0 z-[-1]" onClick={() => setIsProjectMenuOpen(false)} />
                                     <motion.div
                                         initial={{ opacity: 0, y: 10, scale: 0.95 }}
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -123,17 +144,19 @@ export default function Navbar() {
                                                         <span className="text-xs font-black uppercase truncate pr-8">{p.name}</span>
                                                         {currentProject?.id === p.id && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
                                                     </button>
-                                                    <button
-                                                        onClick={async (e) => {
-                                                            e.stopPropagation();
-                                                            if (confirm(`Supprimer "${p.name}" ?`)) {
-                                                                await deleteProject(p.id);
-                                                            }
-                                                        }}
-                                                        className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg opacity-0 group-hover/item:opacity-100 transition-all hover:bg-red-500/10 text-red-400 hover:text-red-500 ${currentProject?.id === p.id ? 'text-black/40 hover:text-black hover:bg-black/5' : ''}`}
-                                                    >
-                                                        <Trash2 className="h-3.5 w-3.5" />
-                                                    </button>
+                                                    {p.role === 'admin' && (
+                                                        <button
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                if (confirm(`Supprimer "${p.name}" ?`)) {
+                                                                    await deleteProject(p.id);
+                                                                }
+                                                            }}
+                                                            className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg opacity-0 group-hover/item:opacity-100 transition-all hover:bg-red-500/10 text-red-400 hover:text-red-500 ${currentProject?.id === p.id ? 'text-black/40 hover:text-black hover:bg-black/5' : ''}`}
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             ))}
                                             <button
@@ -213,7 +236,7 @@ export default function Navbar() {
                     <div className="w-px h-6 bg-white/10 mx-2" />
 
                     {/* Profile & Settings Dropdown */}
-                    <div className="relative ml-2">
+                    <div className="relative ml-2" ref={profileMenuRef}>
                         <button
                             onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
                             className="flex items-center gap-3 pl-1 pr-4 py-1.5 rounded-full hover:bg-white/5 transition-all group"
@@ -232,7 +255,6 @@ export default function Navbar() {
                         <AnimatePresence>
                             {isProfileMenuOpen && (
                                 <>
-                                    <div className="fixed inset-0 z-[-1]" onClick={() => setIsProfileMenuOpen(false)} />
                                     <motion.div
                                         initial={{ opacity: 0, y: 10, scale: 0.95 }}
                                         animate={{ opacity: 1, y: 0, scale: 1 }}

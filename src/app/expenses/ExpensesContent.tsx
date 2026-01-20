@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
 import {
     Plus, Receipt, FileText, Trash2, TrendingUp, DollarSign,
-    Upload, X, CheckCircle2, Clock, Eye, AlertCircle, Download, FileDown, ChevronDown,
+    Upload, X, CheckCircle2, Clock, Eye, EyeOff, AlertCircle, Download, FileDown, ChevronDown,
     ArrowUpDown, ArrowUp, ArrowDown, ArrowRight, Search, Pencil, Image as ImageIcon, Package, GripVertical,
     Store, FilePlus, Sparkles, Keyboard, ImagePlus, ClipboardList
 } from 'lucide-react';
@@ -207,8 +207,13 @@ const SupplierListItem = ({
 };
 
 function ExpensesContentMain() {
-    const { isAdmin, user } = useAuth();
-    const { currentProject } = useProject();
+    const { isAdmin: isGlobalAdmin, user } = useAuth();
+    const { currentProject, userRole } = useProject();
+
+    // Permission check: Global admins OR project admins/editors can edit
+    const isAdmin = isGlobalAdmin || userRole === 'admin' || userRole === 'editor';
+    const canManageProject = isGlobalAdmin || userRole === 'admin';
+
     const [activeTab, setActiveTab] = useState<SupplierType>('beton');
     const [viewingImage, setViewingImage] = useState<string | null>(null);
     const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending'>('all');
@@ -284,9 +289,17 @@ function ExpensesContentMain() {
     const [tempNoteValue, setTempNoteValue] = useState('');
     const [generalNote, setGeneralNote] = useState('');
     const [showUploadModal, setShowUploadModal] = useState(false);
+    const [replacingDocId, setReplacingDocId] = useState<string | null>(null);
+    const [lastReplacedDoc, setLastReplacedDoc] = useState<{ id: string, oldUrl: string, oldFileName: string } | null>(null);
+    const [showUndoToast, setShowUndoToast] = useState(false);
+    const [privacyMode, setPrivacyMode] = useState(false);
+    const replaceFileInputRef = useRef<HTMLInputElement>(null);
+    const undoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     // Delete Confirmation Modal State
     const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+    const [docToDelete, setDocToDelete] = useState<{ id: string | 'all', fileName?: string } | null>(null);
+    const [showDocDeleteModal, setShowDocDeleteModal] = useState(false);
     const [supplierToDelete, setSupplierToDelete] = useState<{ id: string, name: string } | null>(null);
     const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
     const [isDeleting, setIsDeleting] = useState(false);
@@ -641,16 +654,121 @@ function ExpensesContentMain() {
         }
     };
 
-    const handleDeleteUploadedDoc = async (docId: string) => {
-        const { error } = await supabase
-            .from('uploaded_documents')
-            .delete()
-            .eq('id', docId);
+    const handleDeleteUploadedDoc = async (docId: string | 'all') => {
+        setIsDeleting(true);
+        try {
+            if (docId === 'all') {
+                const docsToDelete = uploadedDocs.filter(doc => doc.supplierId === activeTab);
+                for (const doc of docsToDelete) {
+                    await supabase.from('uploaded_documents').delete().eq('id', doc.id);
+                }
+                setUploadedDocs(prev => prev.filter(d => d.supplierId !== activeTab));
+            } else {
+                const { error } = await supabase
+                    .from('uploaded_documents')
+                    .delete()
+                    .eq('id', docId);
 
-        if (error) {
-            console.error('Failed to delete document:', error);
-        } else {
-            setUploadedDocs(prev => prev.filter(d => d.id !== docId));
+                if (error) throw error;
+                setUploadedDocs(prev => prev.filter(d => d.id !== docId));
+            }
+            setShowDocDeleteModal(false);
+            setDocToDelete(null);
+        } catch (error) {
+            console.error('Failed to delete document(s):', error);
+            alert("Erreur lors de la suppression.");
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    const handleReplaceDocument = async (docId: string, file: File) => {
+        const project = currentProject;
+        if (!project) return;
+
+        setIsUploading(true);
+        try {
+            const doc = uploadedDocs.find(d => d.id === docId);
+            if (!doc) throw new Error("Document non trouvé");
+
+            // Store for Undo
+            setLastReplacedDoc({
+                id: docId,
+                oldUrl: doc.url,
+                oldFileName: doc.fileName
+            });
+
+            // 1. Upload new file
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+            const filePath = `${activeTab}/${fileName}`;
+
+            let bucketName = 'invoices';
+            let { error: uploadError } = await supabase.storage
+                .from(bucketName)
+                .upload(filePath, file);
+
+            if (uploadError) {
+                bucketName = 'documents';
+                const { error: matchError } = await supabase.storage
+                    .from(bucketName)
+                    .upload(filePath, file);
+                if (matchError) throw matchError;
+            }
+
+            const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+            const publicUrl = data.publicUrl;
+
+            // 2. Update database
+            const cleanFileName = file.name.replace(/[:\\/]/g, '-');
+            const { error: updateError } = await supabase
+                .from('uploaded_documents')
+                .update({
+                    file_url: publicUrl,
+                    file_name: cleanFileName,
+                    uploaded_at: new Date().toISOString()
+                })
+                .eq('id', docId);
+
+            if (updateError) throw updateError;
+
+            await fetchData();
+
+            // Show Undo Toast
+            setShowUndoToast(true);
+            if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+            undoTimeoutRef.current = setTimeout(() => setShowUndoToast(false), 5000);
+
+        } catch (error) {
+            console.error('Error replacing document:', error);
+            alert("Erreur lors du remplacement du document.");
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleUndoReplace = async () => {
+        if (!lastReplacedDoc) return;
+        setIsUploading(true);
+        try {
+            const { error } = await supabase
+                .from('uploaded_documents')
+                .update({
+                    file_url: lastReplacedDoc.oldUrl,
+                    file_name: lastReplacedDoc.oldFileName,
+                    uploaded_at: new Date().toISOString()
+                })
+                .eq('id', lastReplacedDoc.id);
+
+            if (error) throw error;
+            setLastReplacedDoc(null);
+            setShowUndoToast(false);
+            await fetchData();
+        } catch (error) {
+            console.error('Error undoing replacement:', error);
+            alert("Erreur lors de l'annulation.");
+        } finally {
+            setIsUploading(false);
         }
     };
 
@@ -1016,7 +1134,9 @@ function ExpensesContentMain() {
             setShowNoteModal(false);
         } catch (error) {
             console.error('Error saving note:', error);
-            alert('Erreur lors de l\'enregistrement de la note');
+            // Alert with more detail if possible
+            const errorMsg = (error as any)?.message || '';
+            alert('Erreur lors de l\'enregistrement de la note' + (errorMsg ? ': ' + errorMsg : ''));
         }
     };
 
@@ -1461,6 +1581,11 @@ function ExpensesContentMain() {
     };
 
 
+
+    const formatValue = (val: number) => {
+        if (privacyMode) return '••••••';
+        return val.toLocaleString(undefined, { minimumFractionDigits: 3 });
+    };
 
     if (loading) {
         return (
@@ -2032,7 +2157,19 @@ function ExpensesContentMain() {
             ) : (
                 <>
                     {/* Global Stats - Compact */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4 relative">
+                        {/* Privacy Toggle Floating */}
+                        <button
+                            onClick={() => setPrivacyMode(!privacyMode)}
+                            className={`absolute -top-10 right-2 md:right-0 p-2 rounded-full transition-all flex items-center gap-2 group z-50 ${privacyMode ? 'bg-slate-900 text-[#FFB800] border border-slate-700' : 'bg-white text-slate-400 border border-slate-200'}`}
+                            title={privacyMode ? "Désactiver le mode discret" : "Activer le mode discret"}
+                        >
+                            {privacyMode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            <span className="text-[9px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+                                {privacyMode ? 'Visible' : 'Discret'}
+                            </span>
+                        </button>
+
                         <button
                             onClick={() => setShowAllExpenses(true)}
                             className="bg-slate-900 text-white p-3 md:p-5 rounded-xl shadow-lg border border-slate-800 text-left hover:bg-slate-800 hover:shadow-xl transition-all group w-full cursor-pointer"
@@ -2041,7 +2178,7 @@ function ExpensesContentMain() {
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Chantier</p>
                                 <span className="text-[8px] font-black text-slate-500 group-hover:text-[#FFB800] uppercase bg-slate-800 group-hover:bg-slate-700 px-2 py-1 rounded transition-all">Voir</span>
                             </div>
-                            <h2 className="text-lg md:text-2xl font-black">{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-500">DT</span></h2>
+                            <h2 className="text-lg md:text-2xl font-black">{formatValue(grandTotal)} <span className="text-[10px] text-slate-500">DT</span></h2>
                         </button>
                         <button
                             onClick={() => setShowAllPaid(true)}
@@ -2051,7 +2188,7 @@ function ExpensesContentMain() {
                                 <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Total Payé</p>
                                 <span className="text-[8px] font-black text-emerald-400 group-hover:text-emerald-600 uppercase bg-emerald-50 group-hover:bg-emerald-100 px-2 py-1 rounded transition-all">Voir</span>
                             </div>
-                            <h2 className="text-lg md:text-2xl font-black text-emerald-700">{totalPaidGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 })}</h2>
+                            <h2 className="text-lg md:text-2xl font-black text-emerald-700">{formatValue(totalPaidGlobal)}</h2>
                         </button>
                         <button
                             onClick={() => setShowAllPending(true)}
@@ -2061,7 +2198,7 @@ function ExpensesContentMain() {
                                 <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Reste à Payer</p>
                                 <span className="text-[8px] font-black text-amber-400 group-hover:text-amber-600 uppercase bg-amber-50 group-hover:bg-amber-100 px-2 py-1 rounded transition-all">Voir</span>
                             </div>
-                            <h2 className="text-lg md:text-2xl font-black text-amber-700">{totalRemainingGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 })}</h2>
+                            <h2 className="text-lg md:text-2xl font-black text-amber-700">{formatValue(totalRemainingGlobal)}</h2>
                         </button>
 
 
@@ -2699,15 +2836,15 @@ function ExpensesContentMain() {
                                 <div className="flex gap-2">
                                     <div className="bg-slate-100 border border-slate-200 px-4 py-2 rounded-xl text-right">
                                         <p className="text-[8px] font-black text-slate-500 uppercase">Total Montant</p>
-                                        <p className="text-sm font-black text-slate-900">{activeStat.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                        <p className="text-sm font-black text-slate-900">{formatValue(activeStat.totalCost)}</p>
                                     </div>
                                     <div className="bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-xl text-right">
                                         <p className="text-[8px] font-black text-emerald-600 uppercase">Payé</p>
-                                        <p className="text-sm font-black text-emerald-800">{activeStat.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                        <p className="text-sm font-black text-emerald-800">{formatValue(activeStat.totalPaid)}</p>
                                     </div>
                                     <div className={`${activeStat.remaining < 0 ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'} border px-4 py-2 rounded-xl text-right`}>
                                         <p className={`text-[8px] font-black ${activeStat.remaining < 0 ? 'text-red-500' : 'text-blue-500'} uppercase`}>Solde</p>
-                                        <p className={`text-sm font-black ${activeStat.remaining < 0 ? 'text-red-800' : 'text-blue-800'}`}>{activeStat.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                        <p className={`text-sm font-black ${activeStat.remaining < 0 ? 'text-red-800' : 'text-blue-800'}`}>{formatValue(activeStat.remaining)}</p>
                                     </div>
                                 </div>
                             </div>
@@ -2900,30 +3037,28 @@ function ExpensesContentMain() {
 
 
                         {/* Uploaded Documents Review Section */}
-                        {isAdmin && uploadedDocs.filter(doc => doc.supplierId === activeTab).length > 0 && (
+                        {isAdmin && (
                             <div className="mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 <div
-                                    className="flex items-center justify-between px-1 mb-4 cursor-pointer group"
+                                    className="flex items-center justify-between px-3 py-3 rounded-2xl cursor-pointer group hover:bg-amber-50/50 transition-all border border-transparent hover:border-amber-100 mb-4"
                                     onClick={() => setShowUploadedDocs(!showUploadedDocs)}
                                 >
                                     <div className="flex items-center gap-3">
                                         <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${showUploadedDocs ? 'rotate-0' : '-rotate-90'}`} />
                                         <div className="w-1.5 h-6 bg-amber-400 rounded-full"></div>
                                         <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Documents Importés</h2>
-                                        <span className="text-[10px] font-bold bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full border border-amber-100">
-                                            {uploadedDocs.filter(doc => doc.supplierId === activeTab).length} document{uploadedDocs.filter(doc => doc.supplierId === activeTab).length > 1 ? 's' : ''}
-                                        </span>
+                                        {uploadedDocs.filter(doc => doc.supplierId === activeTab).length > 0 && (
+                                            <span className="text-[10px] font-bold bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full border border-amber-100">
+                                                {uploadedDocs.filter(doc => doc.supplierId === activeTab).length} document{uploadedDocs.filter(doc => doc.supplierId === activeTab).length > 1 ? 's' : ''}
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-4">
                                         <button
-                                            onClick={async (e) => {
+                                            onClick={(e) => {
                                                 e.stopPropagation();
-                                                if (confirm('Supprimer tous les documents importés pour ce fournisseur ?')) {
-                                                    const docsToDelete = uploadedDocs.filter(doc => doc.supplierId === activeTab);
-                                                    for (const doc of docsToDelete) {
-                                                        await handleDeleteUploadedDoc(doc.id);
-                                                    }
-                                                }
+                                                setDocToDelete({ id: 'all' });
+                                                setShowDocDeleteModal(true);
                                             }}
                                             className="text-[10px] font-bold text-red-500 hover:text-red-600 uppercase hover:underline"
                                         >
@@ -2945,43 +3080,73 @@ function ExpensesContentMain() {
 
                                 {showUploadedDocs && (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 px-1">
-                                        {uploadedDocs
-                                            .filter(doc => doc.supplierId === activeTab)
-                                            .map((doc, index) => (
-                                                <div key={doc.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 hover:shadow-md transition-all group relative">
-                                                    <button
-                                                        onClick={() => handleDeleteUploadedDoc(doc.id)}
-                                                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 z-10"
-                                                    >
-                                                        <X className="w-3 h-3" />
-                                                    </button>
-                                                    <div
-                                                        className="w-full h-40 bg-slate-100 rounded-xl mb-3 overflow-hidden cursor-pointer relative"
-                                                        onClick={() => setViewingImage(doc.url)}
-                                                    >
-                                                        {doc.fileName.toLowerCase().endsWith('.pdf') ? (
-                                                            <div className="w-full h-full flex items-center justify-center bg-red-50">
-                                                                <FileText className="h-12 w-12 text-red-500" />
+                                        {uploadedDocs.filter(doc => doc.supplierId === activeTab).length > 0 ? (
+                                            uploadedDocs
+                                                .filter(doc => doc.supplierId === activeTab)
+                                                .map((doc, index) => (
+                                                    <div key={doc.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 hover:shadow-md transition-all group relative">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setDocToDelete({ id: doc.id, fileName: doc.fileName });
+                                                                setShowDocDeleteModal(true);
+                                                            }}
+                                                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 z-10"
+                                                        >
+                                                            <X className="w-3 h-3" />
+                                                        </button>
+                                                        <div
+                                                            className="w-full h-40 bg-slate-100 rounded-xl mb-3 overflow-hidden cursor-pointer relative"
+                                                            onClick={() => setViewingImage(doc.url)}
+                                                        >
+                                                            {doc.fileName.toLowerCase().endsWith('.pdf') ? (
+                                                                <div className="w-full h-full flex items-center justify-center bg-red-50">
+                                                                    <FileText className="h-12 w-12 text-red-500" />
+                                                                </div>
+                                                            ) : (
+                                                                <img src={doc.url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={doc.fileName} />
+                                                            )}
+                                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                                <Eye className="text-white drop-shadow-md h-6 w-6" />
                                                             </div>
-                                                        ) : (
-                                                            <img src={doc.url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={doc.fileName} />
-                                                        )}
-                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                                            <Eye className="text-white drop-shadow-md h-6 w-6" />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Note</p>
+                                                            <textarea
+                                                                placeholder="Ajouter une note..."
+                                                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-blue-500 resize-none"
+                                                                rows={2}
+                                                                defaultValue={doc.note}
+                                                                onBlur={(e) => handleUpdateDocNote(doc.id, e.target.value)}
+                                                            />
+                                                            <button
+                                                                onClick={() => {
+                                                                    setReplacingDocId(doc.id);
+                                                                    replaceFileInputRef.current?.click();
+                                                                }}
+                                                                disabled={isUploading}
+                                                                className="w-full flex items-center justify-center gap-2 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                                            >
+                                                                <Upload className="h-3 w-3" />
+                                                                {isUploading && replacingDocId === doc.id ? 'Remplacement...' : 'Remplacer'}
+                                                            </button>
                                                         </div>
                                                     </div>
-                                                    <div className="space-y-2">
-                                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Note</p>
-                                                        <textarea
-                                                            placeholder="Ajouter une note..."
-                                                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-blue-500 resize-none"
-                                                            rows={2}
-                                                            defaultValue={doc.note}
-                                                            onBlur={(e) => handleUpdateDocNote(doc.id, e.target.value)}
-                                                        />
-                                                    </div>
+                                                ))
+                                        ) : (
+                                            <div className="col-span-full py-12 flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200 group-hover:bg-slate-50 transition-colors">
+                                                <div className="p-4 bg-white rounded-2xl shadow-sm border border-slate-100 mb-4">
+                                                    <ImagePlus className="h-8 w-8 text-slate-300" />
                                                 </div>
-                                            ))}
+                                                <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Aucun document importé</p>
+                                                <button
+                                                    onClick={() => setShowUploadModal(true)}
+                                                    className="mt-4 px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                                                >
+                                                    Importer le Premier
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -2989,7 +3154,7 @@ function ExpensesContentMain() {
 
                         <div className="space-y-4 mb-12">
                             <div
-                                className="flex items-center justify-between px-1 cursor-pointer group"
+                                className="flex items-center justify-between px-3 py-3 rounded-2xl cursor-pointer group hover:bg-blue-50/50 transition-all border border-transparent hover:border-blue-100"
                                 onClick={() => setShowExpensesSection(!showExpensesSection)}
                             >
                                 <div className="flex items-center gap-3">
@@ -3119,7 +3284,7 @@ function ExpensesContentMain() {
                                                                 <td className="px-4 py-4 text-right">
                                                                     <div className="flex flex-col items-end">
                                                                         <span className="text-sm font-black text-slate-900 tabular-nums tracking-tight">
-                                                                            {e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-400 font-bold ml-0.5">DT</span>
+                                                                            {formatValue(e.price)} <span className="text-[10px] text-slate-400 font-bold ml-0.5">DT</span>
                                                                         </span>
                                                                     </div>
                                                                 </td>
@@ -3230,7 +3395,7 @@ function ExpensesContentMain() {
                                                                                                             {item.remise ? `${item.remise}%` : '-'}
                                                                                                         </td>
                                                                                                     )}
-                                                                                                    <td className="px-4 py-2 text-right font-black text-blue-900 text-[10px]">{item.totalTTC.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                                                                                                    <td className="px-4 py-2 text-right font-black text-blue-900 text-[10px]">{formatValue(item.totalTTC)}</td>
                                                                                                 </tr>
                                                                                             ))}
                                                                                         </tbody>
@@ -3256,7 +3421,7 @@ function ExpensesContentMain() {
                             currentSupplier?.deposits && (
                                 <div className="space-y-4 mb-20">
                                     <div
-                                        className="flex items-center justify-between px-1 cursor-pointer group"
+                                        className="flex items-center justify-between px-3 py-3 rounded-2xl cursor-pointer group hover:bg-emerald-50/50 transition-all border border-transparent hover:border-emerald-100"
                                         onClick={() => setShowDepositsSection(!showDepositsSection)}
                                     >
                                         <div className="flex items-center gap-3">
@@ -3710,7 +3875,86 @@ function ExpensesContentMain() {
                     </div>
                 </div>
             )}
-        </div >
+
+            {/* Hidden Input for Replacing Documents */}
+            <input
+                type="file"
+                ref={replaceFileInputRef}
+                className="hidden"
+                accept="image/*,application/pdf"
+                onChange={(e) => {
+                    if (e.target.files && e.target.files[0] && replacingDocId) {
+                        handleReplaceDocument(replacingDocId, e.target.files[0]);
+                        setReplacingDocId(null);
+                        e.target.value = '';
+                    }
+                }}
+            />
+            {/* Undo Toast */}
+            {showUndoToast && lastReplacedDoc && (
+                <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[300] bg-slate-900 border border-slate-800 text-white px-6 py-4 rounded-3xl shadow-2xl flex items-center gap-6 animate-in slide-in-from-bottom-5 duration-300">
+                    <div className="flex flex-col">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 leading-none mb-1">Action effectuée</p>
+                        <p className="text-xs font-bold truncate max-w-[150px]">Document remplacé</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleUndoReplace}
+                            className="bg-[#FFB800] text-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-transform"
+                        >
+                            Annuler
+                        </button>
+                        <button
+                            onClick={() => setShowUndoToast(false)}
+                            className="p-2 hover:bg-slate-800 rounded-full transition-colors"
+                        >
+                            <X className="h-4 w-4 text-slate-400" />
+                        </button>
+                    </div>
+                </div>
+            )}
+            {/* Document Delete Confirmation Modal */}
+            {showDocDeleteModal && docToDelete && (
+                <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+                    <div className="bg-white rounded-[2rem] w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="bg-red-600 p-8 text-white relative">
+                            <button
+                                onClick={() => { setShowDocDeleteModal(false); setDocToDelete(null); }}
+                                className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-full transition-colors"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                            <div className="h-16 w-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6">
+                                <Trash2 className="h-8 w-8 text-white" />
+                            </div>
+                            <h2 className="text-2xl font-black uppercase tracking-tighter leading-tight">Supprimer ?</h2>
+                            <p className="mt-2 text-red-100 text-sm font-medium">
+                                {docToDelete.id === 'all'
+                                    ? "Êtes-vous sûr de vouloir supprimer TOUS les documents de ce fournisseur ?"
+                                    : `Êtes-vous sûr de vouloir supprimer le document "${docToDelete.fileName}" ?`
+                                }
+                            </p>
+                        </div>
+
+                        <div className="p-8 flex gap-4">
+                            <button
+                                onClick={() => { setShowDocDeleteModal(false); setDocToDelete(null); }}
+                                className="flex-1 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors bg-slate-50 rounded-2xl"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                onClick={() => handleDeleteUploadedDoc(docToDelete.id)}
+                                disabled={isDeleting}
+                                className="flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all bg-red-600 text-white shadow-xl shadow-red-200 hover:bg-red-700 disabled:bg-slate-100 disabled:text-slate-400"
+                            >
+                                {isDeleting ? 'Suppression...' : 'Supprimer'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }
 

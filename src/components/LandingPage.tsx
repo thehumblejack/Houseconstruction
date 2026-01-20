@@ -76,7 +76,7 @@ export default function LandingPage() {
                     </div>
 
                     <Link
-                        href={user ? (isApproved ? '/chantier' : '/auth/pending') : '/login'}
+                        href={user ? (isApproved ? '/expenses' : '/auth/pending') : '/login'}
                         className="bg-white text-black px-6 py-2 rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-[#FFB800] transition-all"
                     >
                         {user ? 'Tableau de Bord' : 'Accès Client'}
@@ -124,7 +124,7 @@ export default function LandingPage() {
 
                         <motion.div variants={fadeInUp} className="flex flex-wrap gap-4 pt-4">
                             {user ? (
-                                <Link href="/chantier" className="bg-[#FFB800] text-black px-8 py-4 rounded-xl font-black uppercase tracking-widest hover:bg-white transition-all flex items-center gap-3 group text-[10px]">
+                                <Link href="/expenses" className="bg-[#FFB800] text-black px-8 py-4 rounded-xl font-black uppercase tracking-widest hover:bg-white transition-all flex items-center gap-3 group text-[10px]">
                                     Retour au Tableau de Bord
                                     <HardHat className="w-4 h-4 group-hover:rotate-12 transition-transform" />
                                 </Link>

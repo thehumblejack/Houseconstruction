@@ -9,11 +9,13 @@ interface Project {
     name: string;
     description: string | null;
     created_at: string;
+    role?: 'admin' | 'editor' | 'viewer';
 }
 
 interface ProjectContextType {
     projects: Project[];
     currentProject: Project | null;
+    userRole: 'admin' | 'editor' | 'viewer' | null;
     loading: boolean;
     setCurrentProject: (project: Project) => void;
     createProject: (name: string, description: string) => Promise<Project | null>;
@@ -24,6 +26,7 @@ interface ProjectContextType {
 const ProjectContext = createContext<ProjectContextType>({
     projects: [],
     currentProject: null,
+    userRole: null,
     loading: true,
     setCurrentProject: () => { },
     createProject: async () => null,
@@ -35,6 +38,8 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
     const { user } = useAuth();
     const [projects, setProjects] = useState<Project[]>([]);
     const [currentProject, setCurrentProjectState] = useState<Project | null>(null);
+    const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
+    const [rawMemberships, setRawMemberships] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const supabase = useMemo(() => createClient(), []);
 
@@ -61,26 +66,23 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
 
                     if (!error) {
                         setProjects(data || []);
-                        handleSelection(data || []);
+                        setRawMemberships((data || []).map((p: any) => ({ project_id: p.id, role: 'admin' })));
+                        handleSelection(data || [], (data || []).map((p: any) => ({ project_id: p.id, role: 'admin' })));
                     }
                     return;
                 }
-
-                // If error is empty object (rare weirdness), ignore or warn but don't crash
-                if (Object.keys(memberError).length === 0) {
-                    console.warn('ProjectContext: Empty error object received via project_members fetch. Likely RLS or empty table. Proceeding to legacy check.');
-                } else {
-                    console.error('ProjectContext: Error fetching project members:', memberError);
-                }
-                // Don't return here! We need to attempt auto-migration if this failed (likely due to first-time setup)
+                console.error('ProjectContext: Error fetching project members:', memberError);
             }
 
-            // Map the joined data structure back to Project[]
-            // Map the joined data structure back to Project[]
+            setRawMemberships(memberData || []);
+
             let mappedProjects = memberData
                 ? memberData
-                    .map((m: any) => m.projects)
-                    .filter((p: any) => p !== null)
+                    .map((m: any) => ({
+                        ...m.projects,
+                        role: m.role
+                    }))
+                    .filter((p: any) => p !== null && p.id)
                     .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
                 : [];
 
@@ -89,8 +91,6 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
                 const { data: legacyData } = await supabase.from('projects').select('*').order('created_at', { ascending: true });
 
                 if (legacyData && legacyData.length > 0) {
-                    console.log('ProjectContext: Found legacy projects. Auto-migrating user as admin...');
-
                     const newMembers = legacyData.map((p: any) => ({
                         project_id: p.id,
                         user_id: user.id,
@@ -100,18 +100,17 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
                     const { error: migError } = await supabase.from('project_members').insert(newMembers);
 
                     if (!migError) {
-                        console.log('ProjectContext: Migration successful.');
-                        mappedProjects = legacyData;
+                        mappedProjects = legacyData.map((p: any) => ({ ...p, role: 'admin' }));
+                        setRawMemberships(newMembers);
                     } else {
-                        console.error('ProjectContext: Migration failed:', migError);
-                        // Still show them temporarily so the UI isn't empty, though they might have permission issues editing
-                        mappedProjects = legacyData;
+                        mappedProjects = legacyData.map((p: any) => ({ ...p, role: 'admin' }));
+                        setRawMemberships(newMembers);
                     }
                 }
             }
 
             setProjects(mappedProjects);
-            handleSelection(mappedProjects);
+            handleSelection(mappedProjects, memberData || mappedProjects.map((p: any) => ({ project_id: p.id, role: 'admin' })));
 
         } catch (error) {
             console.error('ProjectContext: Critical error:', error);
@@ -120,13 +119,18 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
         }
     }, [supabase, user]);
 
-    const handleSelection = (projectList: Project[]) => {
+    const handleSelection = (projectList: Project[], memberships: any[]) => {
         if (projectList && projectList.length > 0) {
             const savedProjectId = localStorage.getItem('selectedProjectId');
             const savedProject = projectList.find((p: Project) => p.id === savedProjectId);
-            setCurrentProjectState(savedProject || projectList[0]);
+            const selected = savedProject || projectList[0];
+
+            setCurrentProjectState(selected);
+            const membership = memberships.find(m => m.project_id === selected.id);
+            setUserRole(membership?.role || 'viewer');
         } else {
             setCurrentProjectState(null);
+            setUserRole(null);
         }
     };
 
@@ -143,10 +147,15 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
     const setCurrentProject = (project: Project) => {
         setCurrentProjectState(project);
         localStorage.setItem('selectedProjectId', project.id);
+        const membership = rawMemberships.find(m => m.project_id === project.id);
+        setUserRole(membership?.role || 'viewer');
     };
 
     const createProject = async (name: string, description: string) => {
         try {
+            // Only admins can create projects if we want to enforce it here too
+            // or we keep it for now as a way to "start" a project
+
             // 1. Create Project
             const { data: projectData, error: projectError } = await supabase
                 .from('projects')
@@ -168,7 +177,6 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
 
                 if (memberError) {
                     console.error('Error creating admin member:', memberError);
-                    // Critical failure, might want to rollback project or retry
                 }
             }
 
@@ -183,6 +191,13 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
 
     const deleteProject = async (id: string) => {
         try {
+            // Check if user is admin for this project
+            const membership = rawMemberships.find(m => m.project_id === id);
+            if (membership?.role !== 'admin') {
+                alert('Seuls les administrateurs peuvent supprimer un projet.');
+                return false;
+            }
+
             const { error } = await supabase
                 .from('projects')
                 .delete()
@@ -196,7 +211,7 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
 
             // If we deleted the current project, select another one or null
             if (currentProject?.id === id) {
-                handleSelection(updatedProjects);
+                handleSelection(updatedProjects, rawMemberships);
             }
 
             return true;
@@ -209,12 +224,13 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
     const value = useMemo(() => ({
         projects,
         currentProject,
+        userRole,
         loading,
         setCurrentProject,
         createProject,
         deleteProject,
         refreshProjects: fetchProjects
-    }), [projects, currentProject, loading, fetchProjects, deleteProject]);
+    }), [projects, currentProject, userRole, loading, fetchProjects, deleteProject]);
 
     return (
         <ProjectContext.Provider value={value}>

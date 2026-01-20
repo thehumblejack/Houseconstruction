@@ -229,8 +229,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             } else if (userProfile.status === 'rejected' && pathname !== '/auth/rejected') {
                 console.log('Auth: Redirecting to rejected page');
                 router.replace('/auth/rejected');
-            } else if (userProfile.status === 'approved' && isAuthPage) {
-                console.log('Auth: Approved user on auth page, redirecting to expenses');
+            } else if (userProfile.status === 'approved' && (isAuthPage || pathname === '/')) {
+                console.log('Auth: Approved user on auth or home page, redirecting to expenses');
                 router.replace('/expenses');
             }
         } else if (user && !userProfile && !isAuthPage) {

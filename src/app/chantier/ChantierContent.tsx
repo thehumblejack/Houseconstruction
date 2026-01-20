@@ -20,8 +20,12 @@ import { useProject } from '@/context/ProjectContext';
 import Link from 'next/link';
 
 export default function ChantierContent() {
-    const { user, isApproved, loading } = useAuth();
-    const { currentProject } = useProject();
+    const { user, isApproved, loading, isAdmin: isGlobalAdmin } = useAuth();
+    const { currentProject, userRole } = useProject();
+
+    // Permission: Only project admins or editors (or global admins) can toggle progress
+    const canToggleProgress = isGlobalAdmin || userRole === 'admin' || userRole === 'editor';
+
     const [steps, setSteps] = useState<ConstructionStep[]>(constructionSteps);
     const [activeStepId, setActiveStepId] = useState<string>('1');
     const [hoveredDetailIndex, setHoveredDetailIndex] = useState<number | null>(null);
@@ -219,15 +223,16 @@ export default function ChantierContent() {
                             <Checkbox
                                 id="step-complete"
                                 checked={activeStep.completed}
-                                onCheckedChange={() => toggleStepCompletion(activeStep.id)}
-                                className="w-5 h-5 rounded-md border-2 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                                onCheckedChange={() => canToggleProgress && toggleStepCompletion(activeStep.id)}
+                                disabled={!canToggleProgress}
+                                className={`w-5 h-5 rounded-md border-2 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600 ${!canToggleProgress ? 'opacity-50 cursor-not-allowed' : ''}`}
                             />
                             <div className="flex flex-col">
                                 <label htmlFor="step-complete" className="text-[11px] font-black text-slate-900 cursor-pointer uppercase tracking-tight">
-                                    Marquer comme Terminé
+                                    {canToggleProgress ? 'Marquer comme Terminé' : 'Progression (Lecture seule)'}
                                 </label>
                                 <p className="text-[10px] text-slate-400 font-bold uppercase italic">
-                                    {activeStep.completed ? 'Validé sur chantier' : 'Action requise'}
+                                    {activeStep.completed ? 'Validé sur chantier' : canToggleProgress ? 'Action requise' : 'En attente de validation par un admin'}
                                 </p>
                             </div>
                         </div>

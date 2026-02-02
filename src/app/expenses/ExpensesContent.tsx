@@ -137,7 +137,7 @@ const SupplierList = ({
     setDeleteConfirmInput
 }: any) => {
     return (
-        <Reorder.Group axis="y" values={orderedSuppliers} onReorder={handleReorder} className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible no-scrollbar">
+        <Reorder.Group axis="y" values={orderedSuppliers} onReorder={handleReorder} className="flex lg:flex-col gap-3 overflow-x-auto lg:overflow-visible no-scrollbar pb-4 lg:pb-0">
             {orderedSuppliers.map((sup: any) => (
                 <SupplierListItem
                     key={sup.id}
@@ -171,22 +171,29 @@ const SupplierListItem = ({
             dragControls={controls}
             dragListener={false}
             className={`
-                group flex-shrink-0 lg:flex-shrink-1 flex items-center justify-between gap-2 px-3 py-2 rounded-lg cursor-pointer
-                ${activeTab === sup.id ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}
+                group flex-shrink-0 lg:flex-shrink-1 flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl cursor-pointer transition-all duration-300
+                ${activeTab === sup.id
+                    ? 'bg-slate-900 text-white shadow-xl shadow-slate-900/20 ring-1 ring-white/10'
+                    : 'bg-white/50 backdrop-blur-sm border border-slate-200/60 text-slate-500 hover:bg-white hover:border-slate-300 hover:shadow-lg hover:shadow-slate-200/50 hover:-translate-y-0.5'}
             `}
             onClick={() => setActiveTab(sup.id as any)}
             layout
         >
-            <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
                 {isAdmin && (
                     <div
-                        className="hidden lg:block cursor-grab active:cursor-grabbing text-slate-300 group-hover:text-slate-400 p-1 -ml-1"
+                        className={`hidden lg:flex items-center justify-center p-1 rounded-lg transition-colors cursor-grab active:cursor-grabbing ${activeTab === sup.id ? 'text-white/20 hover:text-white/40' : 'text-slate-300 hover:text-slate-400'}`}
                         onPointerDown={(e) => controls.start(e)}
                     >
-                        <GripVertical className="h-3.5 w-3.5" />
+                        <GripVertical className="h-4 w-4" />
                     </div>
                 )}
-                <span className="text-xs font-bold whitespace-nowrap truncate">{sup.name}</span>
+                <div className="flex flex-col min-w-0">
+                    <span className={`text-[11px] font-black uppercase tracking-tight truncate ${activeTab === sup.id ? 'text-white' : 'text-slate-900'}`}>{sup.name}</span>
+                    <span className={`text-[8px] font-bold uppercase tracking-[0.1em] mt-0.5 ${activeTab === sup.id ? 'text-white/40' : 'text-slate-400'}`}>
+                        {sup.expenses?.length || 0} Docs
+                    </span>
+                </div>
             </div>
             {isAdmin && (
                 <button
@@ -196,7 +203,7 @@ const SupplierListItem = ({
                         setShowDeleteConfirmModal(true);
                         setDeleteConfirmInput('');
                     }}
-                    className={`p-1.5 rounded-full transition-colors flex-shrink-0 ${activeTab === sup.id ? 'text-slate-400 hover:text-white hover:bg-red-500' : 'text-slate-300 hover:text-white hover:bg-red-500'}`}
+                    className={`p-2 rounded-xl transition-all opacity-0 group-hover:opacity-100 ${activeTab === sup.id ? 'bg-white/10 text-white/40 hover:text-white hover:bg-rose-500' : 'bg-slate-50 text-slate-300 hover:text-white hover:bg-rose-500 shadow-sm'}`}
                     title="Supprimer"
                 >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -256,9 +263,9 @@ function ExpensesContentMain() {
         setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
     };
 
-    const [showUploadedDocs, setShowUploadedDocs] = useState(true);
-    const [showExpensesSection, setShowExpensesSection] = useState(true);
-    const [showDepositsSection, setShowDepositsSection] = useState(true);
+    const [showUploadedDocs, setShowUploadedDocs] = useState(false);
+    const [showExpensesSection, setShowExpensesSection] = useState(false);
+    const [showDepositsSection, setShowDepositsSection] = useState(false);
 
     const [suppliers, setSuppliers] = useState<Record<string, SupplierData>>({});
     const [allAvailableSuppliers, setAllAvailableSuppliers] = useState<any[]>([]);
@@ -952,71 +959,55 @@ function ExpensesContentMain() {
     };
 
     // Calculations
-    const isPayment = (item: string) => {
-        const up = item.toUpperCase();
-        return up.includes('REÇU') ||
-            up.includes('PAIEMENT') ||
-            up.includes('AVANCE') ||
-            up.includes('ACOMPTE') ||
-            up.includes('CHEQUE') ||
-            up.includes('CHÈQUE') ||
-            up.includes('VERSEMENT') ||
-            up.includes('VIREMENT');
-    };
 
     const supplierStats = useMemo(() => Object.values(suppliers).map(s => {
+        // Sum of all acomptes (deposits/règlements)
         const d_Total = s.deposits?.reduce((sum, d) => sum + d.amount, 0) || 0;
-        const hasDeposits = (s.deposits && s.deposits.length > 0);
-        const isLabor = s.id === 'ali';
 
-        let totalInvoiceAmount = 0;
+        let totalExpenseAll = 0;   // sum of elements in factures et bons
+        let totalExpensePaid = 0;  // sum of only 'payé'
 
         s.expenses.forEach(e => {
-            // All expenses count towards Total Montant
-            totalInvoiceAmount += e.price;
+            totalExpenseAll += e.price;
+            if (e.status === 'paid') {
+                totalExpensePaid += e.price;
+            }
         });
 
-        // Scenario 1: Has Deposits (Mostakbel)
-        // Payé = Sum(Deposits)
-        // Reste = Payé - TotalInvoiceAmount
-
-        // Scenario 2: No Deposits (Ben Hdya, Ali, Cap Beton now)
-        // Payé = TotalInvoiceAmount
-        // Reste = 0
-
-        let computedPaid = 0;
-        let computedRemaining = 0;
-
-        if (hasDeposits) {
-            computedPaid = d_Total;
-            computedRemaining = d_Total - totalInvoiceAmount;
-        } else {
-            // For standard suppliers, we calculate paid based on status
-            // All expenses (including REÇU) with status='paid' count as paid
-            const paidExpenses = s.expenses.filter(e => e.status === 'paid');
-            computedPaid = paidExpenses.reduce((sum, e) => sum + e.price, 0);
-
-            // Remaining = Paid - Cost
-            computedRemaining = computedPaid - totalInvoiceAmount;
-
-            // @ts-ignore
-            if (s.id === 'test' || s.id === 'cap_beton' || s.name.toLowerCase().includes('test') || s.name.toLowerCase().includes('cap')) {
-                console.log(`--- DEBUG: ${s.name} ---`);
-                console.log('Total Montant (All expenses):', totalInvoiceAmount);
-                console.log('Paid (Status=paid):', computedPaid);
-                console.log('Solde (Paid - Cost):', computedRemaining);
-                console.log('--- DETAILS ---');
-                s.expenses.forEach(e => {
-                    console.log(`Item: ${e.item} | Price: ${e.price} | Status: ${e.status}`);
-                });
+        // sum of elements that has Attente status (Outstanding Bill)
+        let totalExpensePending = 0;
+        s.expenses.forEach(e => {
+            if (e.status === 'pending') {
+                totalExpensePending += e.price;
             }
+        });
+
+        // 1. Total Montant = The sum of ALL internal elements (factures et bons)
+        const computedTotalMontant = totalExpenseAll;
+
+        // 2. Payé = The cash you have outlaid
+        // This is the maximum between your advances and your settled invoices.
+        const computedTotalPaye = Math.max(d_Total, totalExpensePaid);
+
+        // 3. Solde Calculation (Dual-Mode to ensure instant responsiveness):
+        let computedRemaining = 0;
+        if (d_Total > computedTotalMontant) {
+            // CREDIT MODE: You have given more than they have billed.
+            // Solde = "Money I have left" in my cash envelope.
+            // This updates instantly whenever you mark a bill as 'payé' (consuming credit).
+            computedRemaining = d_Total - totalExpensePaid;
+        } else {
+            // DEBT MODE: (Mostakbel case) They have billed more than your advance.
+            // Solde = Your current debt position.
+            // This updates instantly whenever you settle more bills than your initial advance.
+            computedRemaining = computedTotalPaye - computedTotalMontant;
         }
 
         return {
             id: s.id as SupplierType,
             name: s.name,
-            totalCost: totalInvoiceAmount,
-            totalPaid: computedPaid,
+            totalCost: computedTotalMontant,
+            totalPaid: computedTotalPaye,
             remaining: computedRemaining,
             color: s.color
         };
@@ -1024,8 +1015,8 @@ function ExpensesContentMain() {
 
     const grandTotal = supplierStats.reduce((sum, s) => sum + s.totalCost, 0);
     const totalPaidGlobal = supplierStats.reduce((sum, s) => sum + s.totalPaid, 0);
-    // Reste à Payer = Sum of ONLY negative soldes (debts)
-    const totalRemainingGlobal = supplierStats.reduce((sum, s) => sum + (s.remaining < 0 ? s.remaining : 0), 0);
+    // Solde Général = Sum of all individual balances
+    const totalRemainingGlobal = supplierStats.reduce((sum, s) => sum + s.remaining, 0);
 
     const currentSupplier = suppliers[activeTab];
 
@@ -1078,6 +1069,24 @@ function ExpensesContentMain() {
 
 
     const updateStatus = async (id: string, newStatus: PaymentStatus) => {
+        // Optimistic Update for immediate UI feedback
+        setSuppliers(prev => {
+            const next = { ...prev };
+            let found = false;
+            for (const supId in next) {
+                const sup = next[supId];
+                const idx = sup.expenses.findIndex(e => e.id === id);
+                if (idx !== -1) {
+                    const newExpenses = [...sup.expenses];
+                    newExpenses[idx] = { ...newExpenses[idx], status: newStatus };
+                    next[supId] = { ...sup, expenses: newExpenses };
+                    found = true;
+                    break;
+                }
+            }
+            return next;
+        });
+
         try {
             const { error } = await supabase
                 .from('expenses')
@@ -1085,17 +1094,35 @@ function ExpensesContentMain() {
                 .eq('id', id);
 
             if (error) throw error;
-
-            // Force immediate refresh
+            // No need to call fetchData() immediately if realtime is active, 
+            // but keeping it as a fallback won't hurt. 
+            // Actually, let's keep it to ensure consistency.
             await fetchData();
         } catch (error) {
             console.error('Error updating status:', error);
             alert('Impossible de mettre à jour le statut');
+            await fetchData(); // Rollback to server state
         }
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm('Supprimer cet enregistrement définitivement ?')) return;
+
+        // Optimistic Delete
+        setSuppliers(prev => {
+            const next = { ...prev };
+            for (const supId in next) {
+                const sup = next[supId];
+                const idx = sup.expenses.findIndex(e => e.id === id);
+                if (idx !== -1) {
+                    const newExpenses = sup.expenses.filter(e => e.id !== id);
+                    next[supId] = { ...sup, expenses: newExpenses };
+                    break;
+                }
+            }
+            return next;
+        });
+
         try {
             const { error } = await supabase
                 .from('expenses')
@@ -1103,10 +1130,11 @@ function ExpensesContentMain() {
                 .eq('id', id);
 
             if (error) throw error;
-            // Realtime subscription will handle the UI update
+            await fetchData();
         } catch (error) {
             console.error('Error deleting expense:', error);
             alert('Impossible de supprimer');
+            await fetchData();
         }
     };
 
@@ -1304,16 +1332,37 @@ function ExpensesContentMain() {
             return;
         }
 
+        // Optimistic Update for immediate feedback
+        const tempId = 'temp-' + Date.now();
+        const activeTabSave = activeTab;
+        const newDeposit = {
+            id: tempId,
+            amount: amount,
+            date: newDepositData.date,
+            payer: newDepositData.payer,
+            commercial: newDepositData.commercial,
+            ref: newDepositData.ref,
+            receiptImage: null
+        };
+
+        setSuppliers(prev => {
+            const next = { ...prev };
+            if (next[activeTabSave]) {
+                const newDeposits = [...(next[activeTabSave].deposits || []), newDeposit];
+                next[activeTabSave] = { ...next[activeTabSave], deposits: newDeposits };
+            }
+            return next;
+        });
+
         try {
             const { error } = await supabase.from('deposits').insert({
                 project_id: project.id,
-                supplier_id: activeTab,
+                supplier_id: activeTabSave,
                 amount: amount,
-                date: newDepositData.date, // Format YYYY-MM-DD expected by Postgres date or string
+                date: newDepositData.date,
                 payer: newDepositData.payer,
                 commercial: newDepositData.commercial,
                 ref: newDepositData.ref
-                // invoice_image ? We can add upload later if needed
             });
 
             if (error) throw error;
@@ -1326,10 +1375,11 @@ function ExpensesContentMain() {
                 commercial: '',
                 ref: ''
             });
-            fetchData(); // Refresh data
+            await fetchData();
         } catch (error) {
             console.error('Error adding deposit:', error);
             alert("Erreur lors de l'ajout de l'acompte");
+            await fetchData(); // Rollback
         }
     };
 
@@ -1342,50 +1392,92 @@ function ExpensesContentMain() {
             return;
         }
 
+        const idToUpdate = editingDepositId;
+        const activeTabSave = activeTab;
+
+        // Optimistic Update
+        setSuppliers(prev => {
+            const next = { ...prev };
+            if (next[activeTabSave]) {
+                const newDeposits = idToUpdate
+                    ? next[activeTabSave].deposits?.map(d =>
+                        d.id === idToUpdate ? {
+                            ...d,
+                            amount: amount,
+                            date: newDepositData.date,
+                            payer: newDepositData.payer,
+                            commercial: newDepositData.commercial,
+                            ref: newDepositData.ref
+                        } : d
+                    )
+                    : [...(next[activeTabSave].deposits || []), {
+                        id: 'temp-' + Date.now(),
+                        amount: amount,
+                        date: newDepositData.date,
+                        payer: newDepositData.payer,
+                        commercial: newDepositData.commercial,
+                        ref: newDepositData.ref,
+                        receiptImage: null
+                    }];
+                next[activeTabSave] = { ...next[activeTabSave], deposits: newDeposits as any };
+            }
+            return next;
+        });
+
         try {
-            if (editingDepositId) {
-                // UPDATE existing
+            if (idToUpdate) {
                 const { error } = await supabase.from('deposits').update({
                     amount: amount,
                     date: newDepositData.date,
                     payer: newDepositData.payer,
                     commercial: newDepositData.commercial,
                     ref: newDepositData.ref
-                }).eq('id', editingDepositId);
-
+                }).eq('id', idToUpdate);
                 if (error) throw error;
             } else {
-                // INSERT new
                 const { error } = await supabase.from('deposits').insert({
                     project_id: project.id,
-                    supplier_id: activeTab,
+                    supplier_id: activeTabSave,
                     amount: amount,
                     date: newDepositData.date,
                     payer: newDepositData.payer,
                     commercial: newDepositData.commercial,
                     ref: newDepositData.ref
                 });
-
                 if (error) throw error;
             }
 
             closeDepositModal();
-            fetchData();
+            await fetchData();
         } catch (error) {
             console.error('Error saving deposit:', error);
             alert("Erreur lors de l'enregistrement");
+            await fetchData(); // Rollback
         }
     };
 
     const handleDeleteDeposit = async (id: string) => {
         if (!confirm('Supprimer cet acompte définitivement ?')) return;
+
+        const activeTabSave = activeTab;
+        // Optimistic Delete
+        setSuppliers(prev => {
+            const next = { ...prev };
+            if (next[activeTabSave]) {
+                const newDeposits = next[activeTabSave].deposits?.filter(d => d.id !== id);
+                next[activeTabSave] = { ...next[activeTabSave], deposits: newDeposits };
+            }
+            return next;
+        });
+
         try {
             const { error } = await supabase.from('deposits').delete().eq('id', id);
             if (error) throw error;
-            fetchData();
+            await fetchData();
         } catch (error) {
             console.error('Error deleting deposit:', error);
             alert("Impossible de supprimer l'acompte");
+            await fetchData(); // Rollback
         }
     };
 
@@ -1529,42 +1621,43 @@ function ExpensesContentMain() {
 
         const tableData: any[] = [];
 
-        Object.values(suppliers).forEach(s => {
+        Object.values(supplierStats).forEach(s => {
             // Header for supplier
             tableData.push([{ content: s.name.toUpperCase(), colSpan: 5, styles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' } }]);
 
-            s.expenses.forEach(e => {
-                tableData.push([
-                    e.date,
-                    e.item,
-                    e.status === 'paid' ? 'Payé' : 'Attente',
-                    e.price.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT',
-                    '-'
-                ]);
+            // We use the original suppliers data for listing individual items
+            const originalSup = suppliers[s.id];
+            if (originalSup) {
+                originalSup.expenses.forEach(e => {
+                    tableData.push([
+                        e.date,
+                        e.item,
+                        e.status === 'paid' ? 'Payé' : 'Attente',
+                        e.price.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT',
+                        '-'
+                    ]);
+                });
+            }
 
-                if (e.items && e.items.length > 0) {
-                    e.items.forEach(i => {
-                        tableData.push([
-                            '',
-                            `-> ${i.designation}`,
-                            '-',
-                            '-',
-                            i.totalTTC.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT'
-                        ]);
-                    });
-                }
-            });
-
-            // Subtotal row
+            // Subtotal rows for this supplier
             tableData.push([
-                { content: 'Total ' + s.name, colSpan: 3, styles: { fontStyle: 'bold', halign: 'right' } },
-                { content: s.expenses.reduce((sum, x) => sum + x.price, 0).toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT', colSpan: 2, styles: { fontStyle: 'bold' } }
+                { content: 'TOTAL MONTANT (FOURNISSEUR)', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right' } },
+                { content: s.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT', colSpan: 2, styles: { fontStyle: 'bold' } }
+            ]);
+            tableData.push([
+                { content: 'TOTAL PAYE', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right', textColor: [39, 174, 96] } },
+                { content: s.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT', colSpan: 2, styles: { fontStyle: 'bold', textColor: [39, 174, 96] } }
+            ]);
+            tableData.push([
+                { content: 'SOLDE (PAYE - MONTANT)', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right', textColor: s.remaining < 0 ? [192, 57, 43] : [41, 128, 185] } },
+                { content: s.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT', colSpan: 2, styles: { fontStyle: 'bold', textColor: s.remaining < 0 ? [192, 57, 43] : [41, 128, 185] } }
             ]);
         });
 
-        // Final Total
+        // Final Global Totals
+        tableData.push([{ content: '', colSpan: 5, styles: { fillColor: [255, 255, 255] } }]);
         tableData.push([
-            { content: 'TOTAL GÉNÉRAL', colSpan: 3, styles: { fillColor: [44, 62, 80], textColor: 255, fontStyle: 'bold', halign: 'right' } },
+            { content: 'BILAN GÉNÉRAL DU CHANTIER', colSpan: 3, styles: { fillColor: [44, 62, 80], textColor: 255, fontStyle: 'bold', halign: 'right' } },
             { content: totalRemainingGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT', colSpan: 2, styles: { fillColor: [44, 62, 80], textColor: 255, fontStyle: 'bold' } }
         ]);
 
@@ -2116,103 +2209,151 @@ function ExpensesContentMain() {
 
             {isEmpty ? (
                 <div className="min-h-[80vh] flex flex-col items-center justify-center p-6 text-center">
-                    <div className="relative mb-12">
-                        <div className="absolute inset-0 bg-blue-500/10 blur-[100px] rounded-full" />
-                        <div className="w-48 h-48 bg-slate-50 rounded-[3rem] flex items-center justify-center mx-auto border-4 border-slate-100 relative mb-8">
-                            <ClipboardList className="w-24 h-24 text-slate-200" strokeWidth={1} />
-                            <div className="absolute -right-4 -bottom-4 bg-white p-4 rounded-2xl shadow-xl border border-slate-100">
-                                <Plus className="w-8 h-8 text-blue-500" />
-                            </div>
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="relative mb-12"
+                    >
+                        <div className="absolute inset-0 bg-[#FFB800]/10 blur-[120px] rounded-full animate-pulse" />
+                        <div className="w-56 h-56 bg-white rounded-[4rem] flex items-center justify-center mx-auto border border-slate-100 shadow-2xl relative mb-8 rotate-3 hover:rotate-0 transition-transform duration-700">
+                            <ClipboardList className="w-24 h-24 text-slate-100" strokeWidth={1} />
+                            <motion.div
+                                initial={{ y: 20, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                transition={{ delay: 0.3 }}
+                                className="absolute -right-6 -bottom-6 bg-[#FFB800] p-6 rounded-3xl shadow-2xl shadow-amber-500/20 border-4 border-white"
+                            >
+                                <Plus className="w-8 h-8 text-slate-900" strokeWidth={3} />
+                            </motion.div>
                         </div>
-                    </div>
+                    </motion.div>
 
-                    <h2 className="text-3xl md:text-4xl font-black text-slate-900 uppercase tracking-tight mb-4">
-                        Votre Chantier est Prêt
-                    </h2>
-                    <p className="text-slate-500 font-bold mb-10 max-w-md mx-auto">
-                        Commencez par ajouter un fournisseur ou enregistrez votre première facture pour suivre vos dépenses.
-                    </p>
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.2 }}
+                    >
+                        <h2 className="text-4xl md:text-5xl font-black text-slate-900 uppercase tracking-tighter mb-4 leading-none">
+                            Prêt pour le <span className="text-[#FFB800]">Chantier</span>
+                        </h2>
+                        <p className="text-slate-400 font-bold mb-12 max-w-sm mx-auto uppercase text-[10px] tracking-[0.2em] leading-relaxed">
+                            Commencez par ajouter un fournisseur ou enregistrez votre première facture pour suivre vos dépenses en temps réel.
+                        </p>
 
-                    <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
-                        <button
-                            onClick={() => setShowAddSupplierModal(true)}
-                            className="flex-1 bg-white border-2 border-slate-200 hover:border-slate-900 p-6 rounded-[2rem] font-black uppercase tracking-widest text-sm transition-all flex flex-col items-center gap-3 group shadow-xl shadow-slate-200/50"
-                        >
-                            <div className="p-4 bg-slate-50 rounded-2xl group-hover:bg-slate-900 group-hover:text-white transition-colors">
-                                <Store className="h-6 w-6" />
-                            </div>
-                            Ajouter Fournisseur
-                        </button>
-                        <button
-                            onClick={() => setShowAddInvoiceStep1(true)}
-                            className="flex-1 bg-slate-900 text-white p-6 rounded-[2rem] font-black uppercase tracking-widest text-sm transition-all flex flex-col items-center gap-3 hover:bg-slate-800 shadow-xl shadow-slate-900/20"
-                        >
-                            <div className="p-4 bg-white/10 rounded-2xl">
-                                <FilePlus className="h-6 w-6" />
-                            </div>
-                            Ajouter Facture
-                        </button>
-                    </div>
+                        <div className="flex flex-col sm:flex-row gap-6 w-full max-w-md mx-auto">
+                            <button
+                                onClick={() => setShowAddSupplierModal(true)}
+                                className="luxury-button-secondary flex-1 p-8 rounded-[2.5rem] flex flex-col items-center gap-4 group transition-all duration-500"
+                            >
+                                <div className="p-4 bg-slate-50 rounded-2xl group-hover:bg-slate-900 group-hover:text-white transition-all duration-500 group-hover:rotate-6">
+                                    <Store className="h-6 w-6" />
+                                </div>
+                                <span className="text-[10px] font-black uppercase tracking-widest tracking-[0.2em]">Fournisseur</span>
+                            </button>
+                            <button
+                                onClick={() => setShowAddInvoiceStep1(true)}
+                                className="luxury-button-gold flex-1 p-8 rounded-[2.5rem] flex flex-col items-center gap-4 group transition-all duration-500"
+                            >
+                                <div className="p-4 bg-white/20 rounded-2xl group-hover:bg-white group-hover:text-black transition-all duration-500 group-hover:-rotate-6">
+                                    <FilePlus className="h-6 w-6" />
+                                </div>
+                                <span className="text-[10px] font-black uppercase tracking-widest tracking-[0.2em]">Facture</span>
+                            </button>
+                        </div>
+                    </motion.div>
                 </div>
             ) : (
                 <>
-                    {/* Global Stats - Compact */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4 relative">
+                    {/* Global Stats - Luxury Grid */}
+                    <div className="relative mb-12">
                         {/* Privacy Toggle Floating */}
-                        <button
+                        <motion.button
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
                             onClick={() => setPrivacyMode(!privacyMode)}
-                            className={`absolute -top-10 right-2 md:right-0 p-2 rounded-full transition-all flex items-center gap-2 group z-50 ${privacyMode ? 'bg-slate-900 text-[#FFB800] border border-slate-700' : 'bg-white text-slate-400 border border-slate-200'}`}
-                            title={privacyMode ? "Désactiver le mode discret" : "Activer le mode discret"}
+                            className={`absolute -top-12 right-0 p-2.5 rounded-2xl transition-all flex items-center gap-3 group z-50 ${privacyMode ? 'bg-slate-900 text-[#FFB800] shadow-xl shadow-amber-500/10 border border-slate-800' : 'bg-white text-slate-400 border border-slate-200 shadow-sm'}`}
                         >
                             {privacyMode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            <span className="text-[9px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
-                                {privacyMode ? 'Visible' : 'Discret'}
+                            <span className="text-[9px] font-black uppercase tracking-[0.2em] hidden md:block">
+                                {privacyMode ? 'Mode Visible' : 'Mode Discret'}
                             </span>
-                        </button>
+                        </motion.button>
 
-                        <button
-                            onClick={() => setShowAllExpenses(true)}
-                            className="bg-slate-900 text-white p-3 md:p-5 rounded-xl shadow-lg border border-slate-800 text-left hover:bg-slate-800 hover:shadow-xl transition-all group w-full cursor-pointer"
-                        >
-                            <div className="flex justify-between items-center mb-2">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Chantier</p>
-                                <span className="text-[8px] font-black text-slate-500 group-hover:text-[#FFB800] uppercase bg-slate-800 group-hover:bg-slate-700 px-2 py-1 rounded transition-all">Voir</span>
-                            </div>
-                            <h2 className="text-lg md:text-2xl font-black">{formatValue(grandTotal)} <span className="text-[10px] text-slate-500">DT</span></h2>
-                        </button>
-                        <button
-                            onClick={() => setShowAllPaid(true)}
-                            className="bg-white p-3 md:p-5 rounded-xl border border-slate-200 shadow-sm text-left hover:bg-emerald-50 hover:border-emerald-200 hover:shadow-md transition-all group w-full cursor-pointer"
-                        >
-                            <div className="flex justify-between items-center mb-2">
-                                <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Total Payé</p>
-                                <span className="text-[8px] font-black text-emerald-400 group-hover:text-emerald-600 uppercase bg-emerald-50 group-hover:bg-emerald-100 px-2 py-1 rounded transition-all">Voir</span>
-                            </div>
-                            <h2 className="text-lg md:text-2xl font-black text-emerald-700">{formatValue(totalPaidGlobal)}</h2>
-                        </button>
-                        <button
-                            onClick={() => setShowAllPending(true)}
-                            className="bg-white p-3 md:p-5 rounded-xl border border-amber-200 shadow-sm text-left hover:bg-amber-50 hover:border-amber-300 hover:shadow-md transition-all group cursor-pointer"
-                        >
-                            <div className="flex justify-between items-center mb-2">
-                                <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Reste à Payer</p>
-                                <span className="text-[8px] font-black text-amber-400 group-hover:text-amber-600 uppercase bg-amber-50 group-hover:bg-amber-100 px-2 py-1 rounded transition-all">Voir</span>
-                            </div>
-                            <h2 className="text-lg md:text-2xl font-black text-amber-700">{formatValue(totalRemainingGlobal)}</h2>
-                        </button>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                            {[
+                                {
+                                    label: 'Total Chantier',
+                                    value: grandTotal,
+                                    onClick: () => setShowAllExpenses(true),
+                                    color: 'slate',
+                                    icon: Receipt
+                                },
+                                {
+                                    label: 'Total Payé',
+                                    value: totalPaidGlobal,
+                                    onClick: () => setShowAllPaid(true),
+                                    color: 'emerald',
+                                    icon: CheckCircle2
+                                },
+                                {
+                                    label: 'Solde Restant',
+                                    value: totalRemainingGlobal,
+                                    onClick: () => setShowAllPending(true),
+                                    color: totalRemainingGlobal < 0 ? 'rose' : 'emerald',
+                                    icon: TrendingUp
+                                },
+                                {
+                                    label: 'Export Bilan',
+                                    value: null,
+                                    onClick: handleExportPDF,
+                                    color: 'amber',
+                                    icon: FileDown,
+                                    isAction: true
+                                }
+                            ].map((stat, i) => (
+                                <motion.div
+                                    key={stat.label}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: i * 0.1 }}
+                                >
+                                    <button
+                                        onClick={stat.onClick}
+                                        className="luxury-card w-full p-8 text-left bg-white group relative overflow-hidden h-full flex flex-col justify-between"
+                                    >
+                                        <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-full translate-x-1/2 -translate-y-1/2 group-hover:scale-150 transition-transform duration-700 pointer-events-none" />
 
+                                        <div className="relative">
+                                            <div className={`w-12 h-12 rounded-2xl mb-6 flex items-center justify-center transition-all duration-500 ${stat.color === 'emerald' ? 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white' :
+                                                stat.color === 'rose' ? 'bg-rose-50 text-rose-600 group-hover:bg-rose-600 group-hover:text-white' :
+                                                    stat.color === 'amber' ? 'bg-amber-50 text-amber-600 group-hover:bg-amber-600 group-hover:text-white' :
+                                                        'bg-slate-900 text-white group-hover:bg-[#FFB800] group-hover:text-slate-900'
+                                                }`}>
+                                                <stat.icon className="h-6 w-6" strokeWidth={2.5} />
+                                            </div>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">{stat.label}</p>
+                                        </div>
 
-
-                        <button
-                            onClick={handleExportPDF}
-                            className="bg-white p-3 md:p-5 rounded-xl border border-slate-200 shadow-sm text-left hover:bg-slate-50 transition-all group flex flex-col justify-center items-center gap-2"
-                        >
-                            <FileDown className="h-6 w-6 text-slate-400 group-hover:text-red-600 transition-colors" />
-                            <span className="text-[10px] font-black text-slate-500 group-hover:text-red-700 uppercase text-center">Exporter en PDF</span>
-                        </button>
+                                        <div className="relative mt-auto">
+                                            {stat.isAction ? (
+                                                <span className="text-[11px] font-black uppercase tracking-widest text-slate-900 flex items-center gap-2 group-hover:translate-x-2 transition-transform">
+                                                    Générer PDF <ArrowRight className="h-4 w-4" />
+                                                </span>
+                                            ) : (
+                                                <div className="flex items-baseline gap-2">
+                                                    <span className={`text-2xl font-black tracking-tighter ${stat.label === 'Solde Restant' && (stat.value || 0) < 0 ? 'text-rose-600' : 'text-slate-900'
+                                                        }`}>
+                                                        {formatValue(stat.value ?? 0)}
+                                                    </span>
+                                                    <span className="text-[10px] font-black text-slate-400">DT</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </button>
+                                </motion.div>
+                            ))}
+                        </div>
                     </div>
-
-                    {[...Array(6)].map((_, i) => null)} {/* Placeholder for line indexing alignment if needed */}
                 </>
             )}
 
@@ -2255,9 +2396,6 @@ function ExpensesContentMain() {
                                             className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center justify-between group ${isAlreadyInProject ? 'bg-slate-50 border-slate-100' : 'bg-white border-transparent hover:bg-slate-50 hover:border-slate-100'}`}
                                         >
                                             <div className="flex items-center gap-4">
-                                                <div className={`w-10 h-10 rounded-xl ${s.color} flex items-center justify-center text-white text-xs font-black shadow-lg shadow-slate-200`}>
-                                                    {s.name.charAt(0).toUpperCase()}
-                                                </div>
                                                 <div>
                                                     <p className="text-sm font-black text-slate-800 uppercase leading-none">{s.name}</p>
                                                     <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">
@@ -2303,1133 +2441,1199 @@ function ExpensesContentMain() {
                         </button>
                     </div>
                 </div>
-            )}
+            )
+            }
 
             {/* Add Deposit Modal */}
-            {showAddDepositModal && (
-                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                    <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
-                        <h3 className="text-lg font-black mb-4 text-slate-900 uppercase tracking-tight">
-                            {editingDepositId ? 'Modifier Acompte' : 'Nouvel Acompte'}
-                        </h3>
+            {
+                showAddDepositModal && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+                        <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+                            <h3 className="text-lg font-black mb-4 text-slate-900 uppercase tracking-tight">
+                                {editingDepositId ? 'Modifier Acompte' : 'Nouvel Acompte'}
+                            </h3>
 
-                        <div className="space-y-3">
-                            <div>
-                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Montant (DT)</label>
-                                <input
-                                    type="number"
-                                    className="w-full border border-slate-200 p-3 rounded-xl text-lg font-black text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
-                                    placeholder="0.000"
-                                    autoFocus
-                                    value={newDepositData.amount}
-                                    onChange={(e) => setNewDepositData({ ...newDepositData, amount: e.target.value })}
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-3">
                                 <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Date</label>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Montant (DT)</label>
                                     <input
-                                        type="date"
-                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
-                                        value={newDepositData.date}
-                                        onChange={(e) => setNewDepositData({ ...newDepositData, date: e.target.value })}
+                                        type="number"
+                                        className="w-full border border-slate-200 p-3 rounded-xl text-lg font-black text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                                        placeholder="0.000"
+                                        autoFocus
+                                        value={newDepositData.amount}
+                                        onChange={(e) => setNewDepositData({ ...newDepositData, amount: e.target.value })}
                                     />
                                 </div>
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Référence</label>
-                                    <input
-                                        type="text"
-                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
-                                        placeholder="Chèque/Virement..."
-                                        value={newDepositData.ref}
-                                        onChange={(e) => setNewDepositData({ ...newDepositData, ref: e.target.value })}
-                                    />
-                                </div>
-                            </div>
 
-                            <div>
-                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Payeur</label>
-                                <input
-                                    type="text"
-                                    className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
-                                    placeholder="Qui a payé ?"
-                                    value={newDepositData.payer}
-                                    onChange={(e) => setNewDepositData({ ...newDepositData, payer: e.target.value })}
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Commercial</label>
-                                <input
-                                    type="text"
-                                    className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
-                                    placeholder="Reçu par..."
-                                    value={newDepositData.commercial}
-                                    onChange={(e) => setNewDepositData({ ...newDepositData, commercial: e.target.value })}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2 mt-6">
-                            <button onClick={closeDepositModal} className="text-xs font-bold px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Annuler</button>
-                            <button onClick={handleSaveDeposit} className="text-xs font-bold px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-lg shadow-emerald-200 transition-all flex items-center gap-2">
-                                <CheckCircle2 className="h-4 w-4" />
-                                {editingDepositId ? 'Enregistrer' : 'Confirmer'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Add Expense Modal */}
-            {showAddExpenseModal && (
-                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                    <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
-                        <h3 className="text-lg font-black mb-4 text-slate-900 uppercase tracking-tight">
-                            {editingExpenseId ? 'Modifier Facture/Bon' : 'Nouvelle Facture/Bon'}
-                        </h3>
-
-                        <div className="space-y-3">
-                            <div>
-                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Désignation (Num Facture/Bon)</label>
-                                <input
-                                    type="text"
-                                    className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold uppercase"
-                                    placeholder="Ex: Facture 123..."
-                                    value={newExpenseData.item}
-                                    onChange={(e) => setNewExpenseData({ ...newExpenseData, item: e.target.value })}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Montant (DT)</label>
-                                <input
-                                    type="number"
-                                    step="0.001"
-                                    className="w-full border border-slate-200 p-3 rounded-xl text-lg font-black text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="0.000"
-                                    value={newExpenseData.price}
-                                    onChange={(e) => setNewExpenseData({ ...newExpenseData, price: e.target.value })}
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Date</label>
-                                    <input
-                                        type="date"
-                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
-                                        value={newExpenseData.date}
-                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, date: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Quantité</label>
-                                    <input
-                                        type="text"
-                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
-                                        placeholder="Ex: 1"
-                                        value={newExpenseData.quantity}
-                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, quantity: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">État du Paiement</label>
-                                <select
-                                    value={newExpenseData.status}
-                                    onChange={(e) => setNewExpenseData({ ...newExpenseData, status: e.target.value as PaymentStatus })}
-                                    className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold bg-white"
-                                >
-                                    <option value="pending">ATTENTE</option>
-                                    <option value="paid">PAYÉ</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2 mt-6">
-                            <button onClick={closeExpenseModal} className="text-xs font-bold px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Annuler</button>
-                            <button onClick={handleSaveExpense} className="text-xs font-bold px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-200 transition-all flex items-center gap-2">
-                                <CheckCircle2 className="h-4 w-4" />
-                                {editingExpenseId ? 'Enregistrer' : 'Confirmer'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Breakdown Modal */}
-            {showBreakdown && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowBreakdown(false)}>
-                    <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                        <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
-                            <div>
-                                <h2 className="text-xl font-black uppercase tracking-tighter">Bilan par Fournisseur</h2>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase">Payé - Total Montant = Solde</p>
-                            </div>
-                            <X className="h-6 w-6 cursor-pointer hover:text-red-400 transition-colors" onClick={() => setShowBreakdown(false)} />
-                        </div>
-                        <div className="p-4 space-y-3">
-                            {supplierStats.map(s => (
-                                <div key={s.id} className="flex flex-col p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <div className={`w-2 h-2 rounded-full ${s.color}`} />
-                                            <span className="text-sm font-black text-slate-900 uppercase">{s.name}</span>
-                                        </div>
-                                        <div>
-                                            <p className="text-[8px] font-bold text-slate-400 uppercase">Total Montant</p>
-                                            <p className="text-xs font-black text-slate-700">{s.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[8px] font-bold text-slate-400 uppercase">Payé</p>
-                                            <p className="text-xs font-black text-emerald-600">{s.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-[8px] font-bold text-slate-400 uppercase">Solde</p>
-                                            <p className={`text-sm font-black ${s.remaining < 0 ? 'text-red-600' : 'text-blue-600'}`}>{s.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
-                                        </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Date</label>
+                                        <input
+                                            type="date"
+                                            className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
+                                            value={newDepositData.date}
+                                            onChange={(e) => setNewDepositData({ ...newDepositData, date: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Référence</label>
+                                        <input
+                                            type="text"
+                                            className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
+                                            placeholder="Chèque/Virement..."
+                                            value={newDepositData.ref}
+                                            onChange={(e) => setNewDepositData({ ...newDepositData, ref: e.target.value })}
+                                        />
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                        <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-                            <span className="text-xs font-bold text-slate-500 uppercase">Solde Général</span>
-                            <span className={`text-xl font-black ${totalRemainingGlobal < 0 ? 'text-red-600' : 'text-slate-900'}`}>{totalRemainingGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT</span>
+
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Payeur</label>
+                                    <input
+                                        type="text"
+                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
+                                        placeholder="Qui a payé ?"
+                                        value={newDepositData.payer}
+                                        onChange={(e) => setNewDepositData({ ...newDepositData, payer: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Commercial</label>
+                                    <input
+                                        type="text"
+                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
+                                        placeholder="Reçu par..."
+                                        value={newDepositData.commercial}
+                                        onChange={(e) => setNewDepositData({ ...newDepositData, commercial: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-2 mt-6">
+                                <button onClick={closeDepositModal} className="text-xs font-bold px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Annuler</button>
+                                <button onClick={handleSaveDeposit} className="text-xs font-bold px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-lg shadow-emerald-200 transition-all flex items-center gap-2">
+                                    <CheckCircle2 className="h-4 w-4" />
+                                    {editingDepositId ? 'Enregistrer' : 'Confirmer'}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
+
+            {/* Add Expense Modal */}
+            {
+                showAddExpenseModal && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+                        <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+                            <h3 className="text-lg font-black mb-4 text-slate-900 uppercase tracking-tight">
+                                {editingExpenseId ? 'Modifier Facture/Bon' : 'Nouvelle Facture/Bon'}
+                            </h3>
+
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Désignation (Num Facture/Bon)</label>
+                                    <input
+                                        type="text"
+                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold uppercase"
+                                        placeholder="Ex: Facture 123..."
+                                        value={newExpenseData.item}
+                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, item: e.target.value })}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Montant (DT)</label>
+                                    <input
+                                        type="number"
+                                        step="0.001"
+                                        className="w-full border border-slate-200 p-3 rounded-xl text-lg font-black text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        placeholder="0.000"
+                                        value={newExpenseData.price}
+                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, price: e.target.value })}
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Date</label>
+                                        <input
+                                            type="date"
+                                            className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
+                                            value={newExpenseData.date}
+                                            onChange={(e) => setNewExpenseData({ ...newExpenseData, date: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Quantité</label>
+                                        <input
+                                            type="text"
+                                            className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
+                                            placeholder="Ex: 1"
+                                            value={newExpenseData.quantity}
+                                            onChange={(e) => setNewExpenseData({ ...newExpenseData, quantity: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">État du Paiement</label>
+                                    <select
+                                        value={newExpenseData.status}
+                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, status: e.target.value as PaymentStatus })}
+                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold bg-white"
+                                    >
+                                        <option value="pending">ATTENTE</option>
+                                        <option value="paid">PAYÉ</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-2 mt-6">
+                                <button onClick={closeExpenseModal} className="text-xs font-bold px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Annuler</button>
+                                <button onClick={handleSaveExpense} className="text-xs font-bold px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-200 transition-all flex items-center gap-2">
+                                    <CheckCircle2 className="h-4 w-4" />
+                                    {editingExpenseId ? 'Enregistrer' : 'Confirmer'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Breakdown Modal */}
+            {
+                showBreakdown && (
+                    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowBreakdown(false)}>
+                        <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                            <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-xl font-black uppercase tracking-tighter">Bilan par Fournisseur</h2>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase">Payé - Total Montant = Solde (Dette si négatif)</p>
+                                </div>
+                                <X className="h-6 w-6 cursor-pointer hover:text-red-400 transition-colors" onClick={() => setShowBreakdown(false)} />
+                            </div>
+                            <div className="p-4 space-y-3">
+                                {supplierStats.map(s => (
+                                    <div key={s.id} className="flex flex-col p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`w-2 h-2 rounded-full ${s.color}`} />
+                                                <span className="text-sm font-black text-slate-900 uppercase">{s.name}</span>
+                                            </div>
+                                            <div>
+                                                <p className="text-[8px] font-bold text-slate-400 uppercase">Total Montant</p>
+                                                <p className="text-xs font-black text-slate-700">{s.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[8px] font-bold text-slate-400 uppercase">Payé</p>
+                                                <p className="text-xs font-black text-emerald-600">{s.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-[8px] font-bold text-slate-400 uppercase">Solde</p>
+                                                <p className={`text-sm font-black ${s.remaining < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{s.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+                                <span className="text-xs font-bold text-slate-500 uppercase">Solde Général</span>
+                                <span className={`text-xl font-black ${totalRemainingGlobal < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{totalRemainingGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT</span>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
 
             {/* Pending Expenses Modal */}
-            {showAllPending && (
-                <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowAllPending(false)}>
-                    <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
-                        <div className="bg-amber-500 p-4 text-white flex justify-between items-center shrink-0">
-                            <div>
-                                <h2 className="text-lg font-black uppercase tracking-tight">Factures En Attente</h2>
-                                <p className="text-[9px] text-amber-100 font-bold uppercase">Par Fournisseur</p>
-                            </div>
-                            <X className="h-5 w-5 cursor-pointer hover:text-amber-200 transition-colors" onClick={() => setShowAllPending(false)} />
-                        </div>
-
-                        <div className="p-4 overflow-y-auto custom-scrollbar bg-white">
-                            {Object.values(suppliers)
-                                .filter(s => s.expenses.some(e => e.status === 'pending'))
-                                .map(supplier => {
-                                    const pendingExpenses = supplier.expenses.filter(e => e.status === 'pending');
-                                    const total = pendingExpenses.reduce((sum, e) => sum + e.price, 0);
-                                    const isExpanded = expandedSuppliers[`pending-${supplier.id}`] ?? true;
-                                    return (
-                                        <div key={supplier.id} className="mb-4 last:mb-0">
-                                            <div
-                                                className="flex items-center justify-between mb-2 pb-2 border-b-2 border-amber-100 cursor-pointer hover:bg-amber-50/30 -mx-2 px-2 rounded-lg transition-colors"
-                                                onClick={() => setExpandedSuppliers(prev => ({ ...prev, [`pending-${supplier.id}`]: !isExpanded }))}
-                                            >
-                                                <div className="flex items-center gap-2">
-                                                    <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
-                                                    <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
-                                                        {supplier.name.charAt(0)}
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="text-sm font-black text-slate-900 uppercase">{supplier.name}</h3>
-                                                        <p className="text-[9px] font-bold text-slate-400">{pendingExpenses.length} facture{pendingExpenses.length > 1 ? 's' : ''}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="text-base font-black text-red-600">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span></p>
-                                                    <p className="text-base font-black text-red-600">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span></p>
-                                                </div>
-                                            </div>
-                                            {isExpanded && (
-                                                <div className="space-y-1 pl-10 animate-in fade-in slide-in-from-top-1 duration-200">
-                                                    {pendingExpenses.map((e, i) => (
-                                                        <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-amber-50/50 rounded-lg transition-colors group">
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-xs font-bold text-slate-800 uppercase truncate">{e.item}</p>
-                                                                <p className="text-[9px] font-medium text-slate-400">{e.date}</p>
-                                                            </div>
-                                                            <p className="text-sm font-black text-red-600 ml-3">{e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })
-                            }
-                            {Object.values(suppliers).every(s => s.expenses.every(e => e.status !== 'pending')) && (
-                                <div className="p-8 text-center text-slate-400 flex flex-col items-center">
-                                    <CheckCircle2 className="h-12 w-12 mb-3 text-emerald-100" />
-                                    <p className="text-sm font-black uppercase text-emerald-600">Tout est payé !</p>
+            {
+                showAllPending && (
+                    <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowAllPending(false)}>
+                        <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+                            <div className="bg-amber-500 p-4 text-white flex justify-between items-center shrink-0">
+                                <div>
+                                    <h2 className="text-lg font-black uppercase tracking-tight">Factures En Attente</h2>
+                                    <p className="text-[9px] text-amber-100 font-bold uppercase">Par Fournisseur</p>
                                 </div>
-                            )}
-                        </div>
+                                <X className="h-5 w-5 cursor-pointer hover:text-amber-200 transition-colors" onClick={() => setShowAllPending(false)} />
+                            </div>
 
-                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
-                            <span className="text-xs font-bold text-slate-500 uppercase">Total En Attente</span>
-                            <span className="text-xl font-black text-red-600">
-                                {Object.values(suppliers).reduce((acc, s) => acc + s.expenses.filter(e => e.status === 'pending').reduce((sum, e) => sum + e.price, 0), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-red-400">DT</span>
-                            </span>
+                            <div className="p-4 overflow-y-auto custom-scrollbar bg-white">
+                                {supplierStats
+                                    .filter(stat => {
+                                        const supplier = suppliers[stat.id];
+                                        return supplier && (supplier.expenses.some(e => e.status === 'pending') || stat.remaining < 0);
+                                    })
+                                    .map(stat => {
+                                        const supplier = suppliers[stat.id]!;
+                                        const pendingExpenses = supplier.expenses.filter(e => e.status === 'pending');
+                                        const isExpanded = expandedSuppliers[`pending-${supplier.id}`] ?? true;
+                                        const solde = stat.remaining;
+                                        return (
+                                            <div key={supplier.id} className="mb-4 last:mb-0">
+                                                <div
+                                                    className="flex items-center justify-between mb-2 pb-2 border-b-2 border-amber-100 cursor-pointer hover:bg-amber-50/30 -mx-2 px-2 rounded-lg transition-colors"
+                                                    onClick={() => setExpandedSuppliers(prev => ({ ...prev, [`pending-${supplier.id}`]: !isExpanded }))}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
+                                                        <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
+                                                            {supplier.name.charAt(0)}
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="text-sm font-black text-slate-900 uppercase">{supplier.name}</h3>
+                                                            <p className="text-[9px] font-bold text-slate-400">{pendingExpenses.length} facture{pendingExpenses.length > 1 ? 's' : ''}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className={`text-base font-black ${solde < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                            {solde.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span>
+                                                        </p>
+                                                        <p className="text-[8px] font-bold text-slate-400 uppercase">Solde Actuel</p>
+                                                    </div>
+                                                </div>
+                                                {isExpanded && (
+                                                    <div className="space-y-1 pl-10 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                        {pendingExpenses.map((e, i) => (
+                                                            <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-amber-50/50 rounded-lg transition-colors group">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-xs font-bold text-slate-800 uppercase truncate">{e.item}</p>
+                                                                    <p className="text-[9px] font-medium text-slate-400">{e.date}</p>
+                                                                </div>
+                                                                <p className="text-sm font-black text-red-600 ml-3">{e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                }
+                                {Object.values(suppliers).every(s => s.expenses.every(e => e.status !== 'pending')) && (
+                                    <div className="p-8 text-center text-slate-400 flex flex-col items-center">
+                                        <CheckCircle2 className="h-12 w-12 mb-3 text-emerald-100" />
+                                        <p className="text-sm font-black uppercase text-emerald-600">Tout est payé !</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
+                                <span className="text-xs font-bold text-slate-500 uppercase">Bilan Total Solde</span>
+                                <span className={`text-xl font-black ${totalRemainingGlobal < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                    {totalRemainingGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm">DT</span>
+                                </span>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Paid Expenses Modal */}
-            {showAllPaid && (
-                <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowAllPaid(false)}>
-                    <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
-                        <div className="bg-emerald-500 p-4 text-white flex justify-between items-center shrink-0">
-                            <div>
-                                <h2 className="text-lg font-black uppercase tracking-tight">Factures Payées</h2>
-                                <p className="text-[9px] text-emerald-100 font-bold uppercase">Par Fournisseur</p>
-                            </div>
-                            <X className="h-5 w-5 cursor-pointer hover:text-emerald-200 transition-colors" onClick={() => setShowAllPaid(false)} />
-                        </div>
-
-                        <div className="p-4 overflow-y-auto custom-scrollbar bg-white">
-                            {Object.values(suppliers)
-                                .filter(s => s.expenses.some(e => e.status === 'paid'))
-                                .map(supplier => {
-                                    const paidExpenses = supplier.expenses.filter(e => e.status === 'paid');
-                                    const total = paidExpenses.reduce((sum, e) => sum + e.price, 0);
-                                    const isExpanded = expandedSuppliers[`paid-${supplier.id}`] ?? true;
-                                    return (
-                                        <div key={supplier.id} className="mb-4 last:mb-0">
-                                            <div
-                                                className="flex items-center justify-between mb-2 pb-2 border-b-2 border-emerald-100 cursor-pointer hover:bg-emerald-50/30 -mx-2 px-2 rounded-lg transition-colors"
-                                                onClick={() => setExpandedSuppliers(prev => ({ ...prev, [`paid-${supplier.id}`]: !isExpanded }))}
-                                            >
-                                                <div className="flex items-center gap-2">
-                                                    <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
-                                                    <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
-                                                        {supplier.name.charAt(0)}
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="text-sm font-black text-slate-900 uppercase">{supplier.name}</h3>
-                                                        <p className="text-[9px] font-bold text-slate-400">{paidExpenses.length} facture{paidExpenses.length > 1 ? 's' : ''}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="text-base font-black text-emerald-600">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span></p>
-                                                    <p className="text-base font-black text-emerald-600">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span></p>
-                                                </div>
-                                            </div>
-                                            {isExpanded && (
-                                                <div className="space-y-1 pl-10 animate-in fade-in slide-in-from-top-1 duration-200">
-                                                    {paidExpenses.map((e, i) => (
-                                                        <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-emerald-50/50 rounded-lg transition-colors group">
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-xs font-bold text-slate-800 uppercase truncate">{e.item}</p>
-                                                                <p className="text-[9px] font-medium text-slate-400">{e.date}</p>
-                                                            </div>
-                                                            <p className="text-sm font-black text-emerald-600 ml-3">{e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })
-                            }
-                            {Object.values(suppliers).every(s => s.expenses.every(e => e.status !== 'paid')) && (
-                                <div className="p-8 text-center text-slate-400 flex flex-col items-center">
-                                    <AlertCircle className="h-12 w-12 mb-3 text-slate-100" />
-                                    <p className="text-sm font-black uppercase text-slate-600">Aucun paiement</p>
+            {
+                showAllPaid && (
+                    <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowAllPaid(false)}>
+                        <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+                            <div className="bg-emerald-500 p-4 text-white flex justify-between items-center shrink-0">
+                                <div>
+                                    <h2 className="text-lg font-black uppercase tracking-tight">Factures Payées</h2>
+                                    <p className="text-[9px] text-emerald-100 font-bold uppercase">Par Fournisseur</p>
                                 </div>
-                            )}
-                        </div>
+                                <X className="h-5 w-5 cursor-pointer hover:text-emerald-200 transition-colors" onClick={() => setShowAllPaid(false)} />
+                            </div>
 
-                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
-                            <span className="text-xs font-bold text-slate-500 uppercase">Total Payé</span>
-                            <span className="text-xl font-black text-emerald-600">
-                                {Object.values(suppliers).reduce((acc, s) => acc + s.expenses.filter(e => e.status === 'paid').reduce((sum, e) => sum + e.price, 0), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-emerald-400">DT</span>
-                            </span>
+                            <div className="p-4 overflow-y-auto custom-scrollbar bg-white">
+                                {Object.values(suppliers)
+                                    .filter(s => s.expenses.some(e => e.status === 'paid'))
+                                    .map(supplier => {
+                                        const paidExpenses = supplier.expenses.filter(e => e.status === 'paid');
+                                        const total = paidExpenses.reduce((sum, e) => sum + e.price, 0);
+                                        const isExpanded = expandedSuppliers[`paid-${supplier.id}`] ?? true;
+                                        return (
+                                            <div key={supplier.id} className="mb-4 last:mb-0">
+                                                <div
+                                                    className="flex items-center justify-between mb-2 pb-2 border-b-2 border-emerald-100 cursor-pointer hover:bg-emerald-50/30 -mx-2 px-2 rounded-lg transition-colors"
+                                                    onClick={() => setExpandedSuppliers(prev => ({ ...prev, [`paid-${supplier.id}`]: !isExpanded }))}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
+                                                        <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
+                                                            {supplier.name.charAt(0)}
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="text-sm font-black text-slate-900 uppercase">{supplier.name}</h3>
+                                                            <p className="text-[9px] font-bold text-slate-400">{paidExpenses.length} facture{paidExpenses.length > 1 ? 's' : ''}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-base font-black text-emerald-600">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span></p>
+                                                        <p className="text-base font-black text-emerald-600">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span></p>
+                                                    </div>
+                                                </div>
+                                                {isExpanded && (
+                                                    <div className="space-y-1 pl-10 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                        {paidExpenses.map((e, i) => (
+                                                            <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-emerald-50/50 rounded-lg transition-colors group">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-xs font-bold text-slate-800 uppercase truncate">{e.item}</p>
+                                                                    <p className="text-[9px] font-medium text-slate-400">{e.date}</p>
+                                                                </div>
+                                                                <p className="text-sm font-black text-emerald-600 ml-3">{e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                }
+                                {Object.values(suppliers).every(s => s.expenses.every(e => e.status !== 'paid')) && (
+                                    <div className="p-8 text-center text-slate-400 flex flex-col items-center">
+                                        <AlertCircle className="h-12 w-12 mb-3 text-slate-100" />
+                                        <p className="text-sm font-black uppercase text-slate-600">Aucun paiement</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
+                                <span className="text-xs font-bold text-slate-500 uppercase">Total Payé</span>
+                                <span className="text-xl font-black text-emerald-600">
+                                    {Object.values(suppliers).reduce((acc, s) => acc + s.expenses.filter(e => e.status === 'paid').reduce((sum, e) => sum + e.price, 0), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-emerald-400">DT</span>
+                                </span>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* All Expenses Modal */}
-            {showAllExpenses && (
-                <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowAllExpenses(false)}>
-                    <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
-                        <div className="bg-slate-900 p-4 text-white flex justify-between items-center shrink-0">
-                            <div>
-                                <h2 className="text-lg font-black uppercase tracking-tight">Toutes les Factures</h2>
-                                <p className="text-[9px] text-slate-400 font-bold uppercase">Par Fournisseur</p>
-                            </div>
-                            <X className="h-5 w-5 cursor-pointer hover:text-slate-400 transition-colors" onClick={() => setShowAllExpenses(false)} />
-                        </div>
-
-                        <div className="p-4 overflow-y-auto custom-scrollbar bg-white">
-                            {Object.values(suppliers)
-                                .filter(s => s.expenses.length > 0)
-                                .map(supplier => {
-                                    const total = supplier.expenses.reduce((sum, e) => sum + e.price, 0);
-                                    const paidCount = supplier.expenses.filter(e => e.status === 'paid').length;
-                                    const pendingCount = supplier.expenses.filter(e => e.status === 'pending').length;
-                                    const isExpanded = expandedSuppliers[`all-${supplier.id}`] ?? true;
-                                    return (
-                                        <div key={supplier.id} className="mb-4 last:mb-0">
-                                            <div
-                                                className="flex items-center justify-between mb-2 pb-2 border-b-2 border-slate-200 cursor-pointer hover:bg-slate-50 -mx-2 px-2 rounded-lg transition-colors"
-                                                onClick={() => setExpandedSuppliers(prev => ({ ...prev, [`all-${supplier.id}`]: !isExpanded }))}
-                                            >
-                                                <div className="flex items-center gap-2">
-                                                    <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
-                                                    <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
-                                                        {supplier.name.charAt(0)}
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="text-sm font-black text-slate-900 uppercase">{supplier.name}</h3>
-                                                        <div className="flex items-center gap-2">
-                                                            <p className="text-[9px] font-bold text-slate-400">{supplier.expenses.length} facture{supplier.expenses.length > 1 ? 's' : ''}</p>
-                                                            {paidCount > 0 && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">{paidCount} payé{paidCount > 1 ? 's' : ''}</span>}
-                                                            {pendingCount > 0 && <span className="text-[8px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">{pendingCount} en attente</span>}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="text-base font-black text-slate-900">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span></p>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setShowAllExpenses(false);
-                                                            setActiveTab(supplier.id as SupplierType);
-                                                        }}
-                                                        className="mt-1 bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all"
-                                                    >
-                                                        Voir
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            {isExpanded && (
-                                                <div className="space-y-1 pl-10 animate-in fade-in slide-in-from-top-1 duration-200">
-                                                    {supplier.expenses.map((e, i) => (
-                                                        <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-slate-50 rounded-lg transition-colors group">
-                                                            <div className="flex-1 min-w-0 flex items-center gap-2">
-                                                                <p className="text-xs font-bold text-slate-800 uppercase truncate flex-1">{e.item}</p>
-                                                                <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${e.status === 'paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                                                                    {e.status === 'paid' ? 'P' : 'A'}
-                                                                </span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 ml-3">
-                                                                <p className="text-[9px] font-medium text-slate-400">{e.date}</p>
-                                                                <p className={`text-sm font-black ${e.status === 'paid' ? 'text-emerald-600' : 'text-slate-900'}`}>
-                                                                    {e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })
-                            }
-                            {Object.values(suppliers).every(s => s.expenses.length === 0) && (
-                                <div className="p-8 text-center text-slate-400 flex flex-col items-center">
-                                    <Package className="h-12 w-12 mb-3 text-slate-100" />
-                                    <p className="text-sm font-black uppercase text-slate-600">Aucune facture</p>
+            {
+                showAllExpenses && (
+                    <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowAllExpenses(false)}>
+                        <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+                            <div className="bg-slate-900 p-4 text-white flex justify-between items-center shrink-0">
+                                <div>
+                                    <h2 className="text-lg font-black uppercase tracking-tight">Toutes les Factures</h2>
+                                    <p className="text-[9px] text-slate-400 font-bold uppercase">Par Fournisseur</p>
                                 </div>
-                            )}
-                        </div>
+                                <X className="h-5 w-5 cursor-pointer hover:text-slate-400 transition-colors" onClick={() => setShowAllExpenses(false)} />
+                            </div>
 
-                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
-                            <span className="text-xs font-bold text-slate-500 uppercase">Total Chantier</span>
-                            <span className="text-xl font-black text-slate-900">
-                                {Object.values(suppliers).reduce((acc, s) => acc + s.expenses.reduce((sum, e) => sum + e.price, 0), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-slate-500">DT</span>
-                            </span>
+                            <div className="p-4 overflow-y-auto custom-scrollbar bg-white">
+                                {Object.values(suppliers)
+                                    .filter(s => s.expenses.length > 0)
+                                    .map(supplier => {
+                                        const total = supplier.expenses.reduce((sum, e) => sum + e.price, 0);
+                                        const paidCount = supplier.expenses.filter(e => e.status === 'paid').length;
+                                        const pendingCount = supplier.expenses.filter(e => e.status === 'pending').length;
+                                        const isExpanded = expandedSuppliers[`all-${supplier.id}`] ?? true;
+                                        return (
+                                            <div key={supplier.id} className="mb-4 last:mb-0">
+                                                <div
+                                                    className="flex items-center justify-between mb-2 pb-2 border-b-2 border-slate-200 cursor-pointer hover:bg-slate-50 -mx-2 px-2 rounded-lg transition-colors"
+                                                    onClick={() => setExpandedSuppliers(prev => ({ ...prev, [`all-${supplier.id}`]: !isExpanded }))}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
+                                                        <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
+                                                            {supplier.name.charAt(0)}
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="text-sm font-black text-slate-900 uppercase">{supplier.name}</h3>
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-[9px] font-bold text-slate-400">{supplier.expenses.length} facture{supplier.expenses.length > 1 ? 's' : ''}</p>
+                                                                {paidCount > 0 && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">{paidCount} payé{paidCount > 1 ? 's' : ''}</span>}
+                                                                {pendingCount > 0 && <span className="text-[8px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">{pendingCount} en attente</span>}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-base font-black text-slate-900">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span></p>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setShowAllExpenses(false);
+                                                                setActiveTab(supplier.id as SupplierType);
+                                                            }}
+                                                            className="mt-1 bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all"
+                                                        >
+                                                            Voir
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                {isExpanded && (
+                                                    <div className="space-y-1 pl-10 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                        {supplier.expenses.map((e, i) => (
+                                                            <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-slate-50 rounded-lg transition-colors group">
+                                                                <div className="flex-1 min-w-0 flex items-center gap-2">
+                                                                    <p className="text-xs font-bold text-slate-800 uppercase truncate flex-1">{e.item}</p>
+                                                                    <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${e.status === 'paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                                                                        {e.status === 'paid' ? 'P' : 'A'}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex items-center gap-2 ml-3">
+                                                                    <p className="text-[9px] font-medium text-slate-400">{e.date}</p>
+                                                                    <p className={`text-sm font-black ${e.status === 'paid' ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                                                        {e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                }
+                                {Object.values(suppliers).every(s => s.expenses.length === 0) && (
+                                    <div className="p-8 text-center text-slate-400 flex flex-col items-center">
+                                        <Package className="h-12 w-12 mb-3 text-slate-100" />
+                                        <p className="text-sm font-black uppercase text-slate-600">Aucune facture</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
+                                <span className="text-xs font-bold text-slate-500 uppercase">Total Chantier</span>
+                                <span className="text-xl font-black text-slate-900">
+                                    {Object.values(suppliers).reduce((acc, s) => acc + s.expenses.reduce((sum, e) => sum + e.price, 0), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-slate-500">DT</span>
+                                </span>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Layout Main */}
-            {!isEmpty && (
-                <div className="flex flex-col lg:flex-row gap-4">
-                    {/* Tabs Mobile Side Scroll / Table Desktop Sidebar */}
-                    <div className="w-full lg:w-64 flex-shrink-0">
-                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible no-scrollbar">
-                            <div className="flex items-center justify-between mb-2 px-1">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Fournisseurs</span>
-                                    {archivedSuppliers.length > 0 && (
+            {
+                !isEmpty && (
+                    <div className="flex flex-col lg:flex-row gap-4">
+                        {/* Tabs / Supplier Sidebar */}
+                        <motion.div
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="w-full lg:w-72 flex-shrink-0"
+                        >
+                            <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-5 flex lg:flex-col gap-3 overflow-x-auto lg:overflow-visible no-scrollbar">
+                                <div className="flex items-center justify-between mb-4 px-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="bg-slate-900 p-1.5 rounded-lg">
+                                            <Store className="h-3 w-3 text-white" />
+                                        </div>
+                                        <span className="text-[10px] font-black uppercase text-slate-900 tracking-[0.2em]">Partenaires</span>
+                                    </div>
+                                    {isAdmin && (
                                         <button
-                                            onClick={() => setShowTrashModal(true)}
-                                            className="text-slate-300 hover:text-blue-500 transition-colors"
-                                            title="Voir la corbeille"
+                                            onClick={() => setShowAddSupplierModal(true)}
+                                            className="bg-slate-50 hover:bg-slate-900 hover:text-white p-2 rounded-xl transition-all duration-300 shadow-sm"
                                         >
-                                            <Clock className="h-3 w-3" />
+                                            <Plus className="h-3.5 w-3.5" />
                                         </button>
                                     )}
                                 </div>
-                                {isAdmin && (
-                                    <button onClick={() => setShowAddSupplierModal(true)} className="bg-slate-100 hover:bg-slate-200 p-1 rounded transition-colors">
-                                        <Plus className="h-3 w-3 text-slate-600" />
-                                    </button>
-                                )}
+                                <SupplierList
+                                    orderedSuppliers={orderedSuppliers}
+                                    activeTab={activeTab}
+                                    setActiveTab={setActiveTab}
+                                    handleReorder={handleReorder}
+                                    isAdmin={isAdmin}
+                                    setSupplierToDelete={setSupplierToDelete}
+                                    setShowDeleteConfirmModal={setShowDeleteConfirmModal}
+                                    setDeleteConfirmInput={setDeleteConfirmInput}
+                                />
                             </div>
-                            <SupplierList
-                                orderedSuppliers={orderedSuppliers}
-                                activeTab={activeTab}
-                                setActiveTab={setActiveTab}
-                                handleReorder={handleReorder}
-                                isAdmin={isAdmin}
-                                setSupplierToDelete={setSupplierToDelete}
-                                setShowDeleteConfirmModal={setShowDeleteConfirmModal}
-                                setDeleteConfirmInput={setDeleteConfirmInput}
-                            />
-                        </div>
 
-                        {/* General Note Sidebar Section (Desktop) */}
-                        {isAdmin && (
-                            <div
-                                className="mt-4 hidden md:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden group cursor-pointer hover:bg-slate-50/50 transition-colors"
-                                onClick={() => {
-                                    setNoteEditorType('general');
-                                    setTempNoteValue(generalNote);
-                                    setShowNoteModal(true);
-                                }}
-                            >
-                                <div className="bg-slate-50 px-4 py-2 border-b border-slate-100 flex justify-between items-center">
-                                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-                                        <FileText className="h-3 w-3" />
-                                        NOTE GÉNÉRALE
-                                    </span>
-                                    <div className="p-1 opacity-0 group-hover:opacity-100">
-                                        <Pencil className="h-2.5 w-2.5 text-slate-400" />
-                                    </div>
-                                </div>
-                                <div className="p-4 max-h-[250px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
-                                    <p className="text-[11px] font-medium text-slate-500 italic leading-relaxed whitespace-pre-wrap">
-                                        {generalNote || "Aucune note générale pour le moment..."}
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="flex-1 space-y-4">
-                        {!currentSupplier ? (
-                            <div className="bg-white rounded-xl p-8 border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center">
-                                <Package className="h-12 w-12 text-slate-200 mb-4" />
-                                <h2 className="text-lg font-black text-slate-900 uppercase">Aucun fournisseur trouvé</h2>
-                                <p className="text-xs text-slate-500 font-medium max-w-xs mt-2">
-                                    Ajoutez votre premier fournisseur pour commencer à suivre vos dépenses et acomptes.
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between gap-4">
-                                <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">{currentSupplier.name}</h1>
-                                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-black text-white ${currentSupplier.color}`}>
-                                            {currentSupplier.id.toUpperCase()}
+                            {/* General Note Sidebar Section (Desktop) */}
+                            {isAdmin && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.3 }}
+                                    className="mt-6 hidden lg:block bg-amber-50/30 rounded-[2rem] border border-amber-100 shadow-sm overflow-hidden group cursor-pointer hover:bg-amber-50 transition-colors"
+                                    onClick={() => {
+                                        setNoteEditorType('general');
+                                        setTempNoteValue(generalNote);
+                                        setShowNoteModal(true);
+                                    }}
+                                >
+                                    <div className="px-6 py-4 border-b border-amber-100/50 flex justify-between items-center">
+                                        <span className="text-[10px] font-black uppercase text-amber-600 tracking-[0.2em] flex items-center gap-2">
+                                            <FileText className="h-3.5 w-3.5" />
+                                            MÉMO GÉNÉRAL
                                         </span>
                                     </div>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase truncate max-w-xs">{currentSupplier.address || 'Tunisie'}</p>
-                                </div>
-                                <div className="flex gap-2">
-                                    <div className="bg-slate-100 border border-slate-200 px-4 py-2 rounded-xl text-right">
-                                        <p className="text-[8px] font-black text-slate-500 uppercase">Total Montant</p>
-                                        <p className="text-sm font-black text-slate-900">{formatValue(activeStat.totalCost)}</p>
-                                    </div>
-                                    <div className="bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-xl text-right">
-                                        <p className="text-[8px] font-black text-emerald-600 uppercase">Payé</p>
-                                        <p className="text-sm font-black text-emerald-800">{formatValue(activeStat.totalPaid)}</p>
-                                    </div>
-                                    <div className={`${activeStat.remaining < 0 ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'} border px-4 py-2 rounded-xl text-right`}>
-                                        <p className={`text-[8px] font-black ${activeStat.remaining < 0 ? 'text-red-500' : 'text-blue-500'} uppercase`}>Solde</p>
-                                        <p className={`text-sm font-black ${activeStat.remaining < 0 ? 'text-red-800' : 'text-blue-800'}`}>{formatValue(activeStat.remaining)}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* General Note (Mobile Only - below supplier header) */}
-                        {isAdmin && (
-                            <div
-                                className="md:hidden bg-slate-50 border border-slate-200 rounded-xl overflow-hidden mb-6 cursor-pointer hover:bg-slate-100/50 transition-colors"
-                                onClick={() => {
-                                    setNoteEditorType('general');
-                                    setTempNoteValue(generalNote);
-                                    setShowNoteModal(true);
-                                }}
-                            >
-                                <div className="bg-slate-50 px-4 py-2 border-b border-slate-100 flex justify-between items-center">
-                                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-                                        <FileText className="h-3 w-3" />
-                                        NOTE GÉNÉRALE
-                                    </span>
-                                    <div className="p-1">
-                                        <Pencil className="h-2.5 w-2.5 text-slate-400" />
-                                    </div>
-                                </div>
-                                <div className="p-4 max-h-[150px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
-                                    <p className="text-[11px] font-medium text-slate-500 italic leading-relaxed whitespace-pre-wrap">
-                                        {generalNote || "Aucune note générale pour le moment..."}
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Notes Section */}
-                        {isAdmin && (
-                            <div
-                                className="bg-amber-50/50 border border-amber-100 p-3 rounded-xl flex items-start gap-3 min-h-[70px] mb-6 cursor-pointer hover:bg-amber-100/50 transition-colors"
-                                onClick={() => {
-                                    setNoteEditorType('supplier');
-                                    setTempNoteValue(currentSupplier?.notes || '');
-                                    setShowNoteModal(true);
-                                }}
-                            >
-                                <div className="bg-amber-100 p-1.5 rounded-lg shrink-0">
-                                    <FileText className="h-3.5 w-3.5 text-amber-600" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex justify-between items-center mb-1">
-                                        <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Notes du Chantier</span>
-                                        <div className="text-[8px] font-black text-amber-600 uppercase underline shrink-0 ml-2">
-                                            Éditer
-                                        </div>
-                                    </div>
-                                    <p className="text-[11px] font-medium text-slate-600 leading-relaxed italic max-h-[60px] overflow-y-auto scrollbar-thin scrollbar-thumb-amber-200 scrollbar-track-transparent pr-1">
-                                        {currentSupplier?.notes || "Aucune consigne particulière."}
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Upload Modal */}
-                        {showUploadModal && (
-                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowUploadModal(false)}>
-                                <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                                    <div className="sticky top-0 bg-white border-b border-slate-200 p-6 flex items-center justify-between rounded-t-2xl">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-slate-900 rounded-xl">
-                                                <Upload className="h-5 w-5 text-white" />
-                                            </div>
-                                            <div>
-                                                <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Importer un Document</h3>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Facture, Devis ou Reçu</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => setShowUploadModal(false)}
-                                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                                        >
-                                            <X className="h-5 w-5 text-slate-400" />
-                                        </button>
-                                    </div>
-
                                     <div className="p-6">
-                                        <div className="flex flex-col items-center gap-6">
-                                            {/* File Upload Zone */}
-                                            <div
-                                                onClick={() => !isUploading && fileInputRef.current?.click()}
-                                                onDragOver={handleDragOver}
-                                                onDragLeave={handleDragLeave}
-                                                onDrop={handleDrop}
-                                                className={`
+                                        <p className="text-[11px] font-medium text-slate-600 italic leading-relaxed whitespace-pre-wrap">
+                                            {generalNote || "Aucune note générale..."}
+                                        </p>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </motion.div>
+
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="flex-1 space-y-6"
+                        >
+                            {!currentSupplier ? (
+                                <div className="bg-white rounded-[2.5rem] p-12 border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center">
+                                    <Package className="h-16 w-16 text-slate-100 mb-6" />
+                                    <h2 className="text-2xl font-black text-slate-900 uppercase">Aucun fournisseur</h2>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest max-w-xs mt-3 leading-relaxed">
+                                        Veuillez sélectionner ou ajouter un fournisseur dans la barre latérale pour afficher ses détails.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="rounded-[2.5rem] flex flex-col lg:flex-row justify-between items-center gap-8 relative">
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-slate-50 rounded-full translate-x-1/2 -translate-y-1/2 -z-10 opacity-0" />
+
+                                    <div className="flex items-center gap-6">
+                                        <div>
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-tight">{currentSupplier.name}</h1>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <div className="bg-slate-100 p-1 rounded-md">
+                                                    <Store className="h-3 w-3 text-slate-400" />
+                                                </div>
+                                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{currentSupplier.address || 'PARTENAIRE OFFICIEL'}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-4 w-full lg:w-auto overflow-x-auto no-scrollbar pb-2 lg:pb-0">
+                                        <div className="bg-slate-900 p-6 rounded-[2rem] min-w-[140px] text-center shadow-xl shadow-slate-900/10">
+                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total</p>
+                                            <p className="text-lg font-black text-white leading-none">{formatValue(activeStat.totalCost)}</p>
+                                        </div>
+                                        <div className="bg-emerald-500 p-6 rounded-[2rem] min-w-[140px] text-center shadow-xl shadow-emerald-500/10">
+                                            <p className="text-[9px] font-black text-emerald-100 uppercase tracking-widest mb-1">Payé</p>
+                                            <p className="text-lg font-black text-white leading-none">{formatValue(activeStat.totalPaid)}</p>
+                                        </div>
+                                        <div className={`${activeStat.remaining < 0 ? 'bg-rose-500' : 'bg-[#FFB800]'} p-6 rounded-[2rem] min-w-[140px] text-center shadow-xl shadow-amber-500/10`}>
+                                            <p className={`text-[9px] font-black ${activeStat.remaining < 0 ? 'text-rose-100' : 'text-slate-900/60'} uppercase tracking-widest mb-1`}>Solde</p>
+                                            <p className={`text-lg font-black ${activeStat.remaining < 0 ? 'text-white' : 'text-slate-900'} leading-none`}>{formatValue(activeStat.remaining)}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* General Note (Mobile Only - below supplier header) */}
+                            {isAdmin && (
+                                <div
+                                    className="md:hidden bg-slate-50 border border-slate-200 rounded-xl overflow-hidden mb-6 cursor-pointer hover:bg-slate-100/50 transition-colors"
+                                    onClick={() => {
+                                        setNoteEditorType('general');
+                                        setTempNoteValue(generalNote);
+                                        setShowNoteModal(true);
+                                    }}
+                                >
+                                    <div className="bg-slate-50 px-4 py-2 border-b border-slate-100 flex justify-between items-center">
+                                        <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
+                                            <FileText className="h-3 w-3" />
+                                            NOTE GÉNÉRALE
+                                        </span>
+                                        <div className="p-1">
+                                            <Pencil className="h-2.5 w-2.5 text-slate-400" />
+                                        </div>
+                                    </div>
+                                    <div className="p-4 max-h-[150px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
+                                        <p className="text-[11px] font-medium text-slate-500 italic leading-relaxed whitespace-pre-wrap">
+                                            {generalNote || "Aucune note générale pour le moment..."}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Notes Section */}
+                            {isAdmin && (
+                                <div
+                                    className="bg-amber-50/50 border border-amber-100 p-3 rounded-xl flex items-start gap-3 min-h-[70px] mb-6 cursor-pointer hover:bg-amber-100/50 transition-colors"
+                                    onClick={() => {
+                                        setNoteEditorType('supplier');
+                                        setTempNoteValue(currentSupplier?.notes || '');
+                                        setShowNoteModal(true);
+                                    }}
+                                >
+                                    <div className="bg-amber-100 p-1.5 rounded-lg shrink-0">
+                                        <FileText className="h-3.5 w-3.5 text-amber-600" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Notes du Chantier</span>
+                                            <div className="text-[8px] font-black text-amber-600 uppercase underline shrink-0 ml-2">
+                                                Éditer
+                                            </div>
+                                        </div>
+                                        <p className="text-[11px] font-medium text-slate-600 leading-relaxed italic max-h-[60px] overflow-y-auto scrollbar-thin scrollbar-thumb-amber-200 scrollbar-track-transparent pr-1">
+                                            {currentSupplier?.notes || "Aucune consigne particulière."}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Upload Modal */}
+                            {showUploadModal && (
+                                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowUploadModal(false)}>
+                                    <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                                        <div className="sticky top-0 bg-white border-b border-slate-200 p-6 flex items-center justify-between rounded-t-2xl">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-slate-900 rounded-xl">
+                                                    <Upload className="h-5 w-5 text-white" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Importer un Document</h3>
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Facture, Devis ou Reçu</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => setShowUploadModal(false)}
+                                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                            >
+                                                <X className="h-5 w-5 text-slate-400" />
+                                            </button>
+                                        </div>
+
+                                        <div className="p-6">
+                                            <div className="flex flex-col items-center gap-6">
+                                                {/* File Upload Zone */}
+                                                <div
+                                                    onClick={() => !isUploading && fileInputRef.current?.click()}
+                                                    onDragOver={handleDragOver}
+                                                    onDragLeave={handleDragLeave}
+                                                    onDrop={handleDrop}
+                                                    className={`
                                                 w-full relative group cursor-pointer
                                                 border-2 border-dashed rounded-2xl p-8
                                                 flex flex-col items-center justify-center text-center transition-all min-h-[200px]
                                                 ${isDragging ? 'border-blue-500 bg-blue-50' : ''}
                                                 ${manualForm.files.length > 0 && !isDragging
-                                                        ? 'border-emerald-200 bg-emerald-50/30'
-                                                        : !isDragging ? 'border-slate-200 hover:border-blue-400 hover:bg-slate-50' : ''
-                                                    }
+                                                            ? 'border-emerald-200 bg-emerald-50/30'
+                                                            : !isDragging ? 'border-slate-200 hover:border-blue-400 hover:bg-slate-50' : ''
+                                                        }
                                                 ${isUploading ? 'opacity-50 pointer-events-none' : ''}
                                             `}
-                                            >
-                                                {manualForm.files.length > 0 ? (
-                                                    <>
-                                                        <div className="flex flex-wrap gap-2 mb-4 justify-center">
-                                                            {previewUrls.map((url, i) => (
-                                                                <div key={i} className="relative group/preview">
-                                                                    <div className="w-20 h-20 rounded-lg border-2 border-white shadow-md overflow-hidden bg-white">
-                                                                        {manualForm.files[i]?.type.startsWith('image/') ? (
-                                                                            <img src={url} className="w-full h-full object-cover" alt="Preview" />
-                                                                        ) : (
-                                                                            <div className="w-full h-full flex items-center justify-center bg-slate-100 flex-col gap-1">
-                                                                                <FileText className="h-6 w-6 text-slate-400" />
-                                                                                <span className="text-[6px] text-slate-500 px-1 truncate w-full">{manualForm.files[i]?.name}</span>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            handleRemoveFile(i);
-                                                                        }}
-                                                                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/preview:opacity-100 transition-opacity hover:bg-red-600"
-                                                                    >
-                                                                        <X className="w-3 h-3" />
-                                                                    </button>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                        <p className="text-sm font-black text-emerald-700 uppercase">{manualForm.files.length} fichiers sélectionnés</p>
-                                                        <div className="flex items-center gap-2 mt-2">
-                                                            <p className="text-[10px] font-bold text-emerald-500 uppercase">Cliquez ou Glissez pour ajouter plus</p>
-                                                            <span className="text-emerald-300">•</span>
-                                                            <button
-                                                                onClick={handleClearAll}
-                                                                className="text-[10px] font-bold text-red-400 hover:text-red-500 uppercase hover:underline z-10 relative"
-                                                            >
-                                                                Tout supprimer
-                                                            </button>
-                                                        </div>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                                            <Upload className={`h-8 w-8 ${isDragging ? 'text-blue-500' : 'text-slate-400'} group-hover:text-blue-500`} />
-                                                        </div>
-                                                        <p className="text-sm font-black text-slate-500 uppercase">
-                                                            {isDragging ? 'Déposez les fichiers ici' : 'Cliquez ou Glissez pour choisir'}
-                                                        </p>
-                                                        <p className="text-[10px] font-bold text-slate-400 uppercase mt-2">Sélection multiple supportée</p>
-                                                    </>
-                                                )}
-                                                <input
-                                                    type="file"
-                                                    ref={fileInputRef}
-                                                    className="hidden"
-                                                    accept="image/*,application/pdf"
-                                                    multiple
-                                                    onChange={handleManualFileSelect}
-                                                />
-                                            </div>
-
-                                            {manualForm.files.length > 0 && (
-                                                <button
-                                                    onClick={async () => {
-                                                        await handleManualSubmitNew();
-                                                        setShowUploadModal(false);
-                                                    }}
-                                                    disabled={isUploading}
-                                                    className="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg text-xs"
                                                 >
-                                                    {isUploading ? (
+                                                    {manualForm.files.length > 0 ? (
                                                         <>
-                                                            <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                                            Importation {uploadProgress}%
+                                                            <div className="flex flex-wrap gap-2 mb-4 justify-center">
+                                                                {previewUrls.map((url, i) => (
+                                                                    <div key={i} className="relative group/preview">
+                                                                        <div className="w-20 h-20 rounded-lg border-2 border-white shadow-md overflow-hidden bg-white">
+                                                                            {manualForm.files[i]?.type.startsWith('image/') ? (
+                                                                                <img src={url} className="w-full h-full object-cover" alt="Preview" />
+                                                                            ) : (
+                                                                                <div className="w-full h-full flex items-center justify-center bg-slate-100 flex-col gap-1">
+                                                                                    <FileText className="h-6 w-6 text-slate-400" />
+                                                                                    <span className="text-[6px] text-slate-500 px-1 truncate w-full">{manualForm.files[i]?.name}</span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleRemoveFile(i);
+                                                                            }}
+                                                                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/preview:opacity-100 transition-opacity hover:bg-red-600"
+                                                                        >
+                                                                            <X className="w-3 h-3" />
+                                                                        </button>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                            <p className="text-sm font-black text-emerald-700 uppercase">{manualForm.files.length} fichiers sélectionnés</p>
+                                                            <div className="flex items-center gap-2 mt-2">
+                                                                <p className="text-[10px] font-bold text-emerald-500 uppercase">Cliquez ou Glissez pour ajouter plus</p>
+                                                                <span className="text-emerald-300">•</span>
+                                                                <button
+                                                                    onClick={handleClearAll}
+                                                                    className="text-[10px] font-bold text-red-400 hover:text-red-500 uppercase hover:underline z-10 relative"
+                                                                >
+                                                                    Tout supprimer
+                                                                </button>
+                                                            </div>
                                                         </>
                                                     ) : (
                                                         <>
-                                                            <CheckCircle2 className="h-4 w-4" />
-                                                            Importer {manualForm.files.length} {manualForm.files.length > 1 ? 'Documents' : 'Document'}
+                                                            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                                                <Upload className={`h-8 w-8 ${isDragging ? 'text-blue-500' : 'text-slate-400'} group-hover:text-blue-500`} />
+                                                            </div>
+                                                            <p className="text-sm font-black text-slate-500 uppercase">
+                                                                {isDragging ? 'Déposez les fichiers ici' : 'Cliquez ou Glissez pour choisir'}
+                                                            </p>
+                                                            <p className="text-[10px] font-bold text-slate-400 uppercase mt-2">Sélection multiple supportée</p>
                                                         </>
                                                     )}
-                                                </button>
-                                            )}
+                                                    <input
+                                                        type="file"
+                                                        ref={fileInputRef}
+                                                        className="hidden"
+                                                        accept="image/*,application/pdf"
+                                                        multiple
+                                                        onChange={handleManualFileSelect}
+                                                    />
+                                                </div>
+
+                                                {manualForm.files.length > 0 && (
+                                                    <button
+                                                        onClick={async () => {
+                                                            await handleManualSubmitNew();
+                                                            setShowUploadModal(false);
+                                                        }}
+                                                        disabled={isUploading}
+                                                        className="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg text-xs"
+                                                    >
+                                                        {isUploading ? (
+                                                            <>
+                                                                <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                                Importation {uploadProgress}%
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <CheckCircle2 className="h-4 w-4" />
+                                                                Importer {manualForm.files.length} {manualForm.files.length > 1 ? 'Documents' : 'Document'}
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
 
 
-                        {/* Uploaded Documents Review Section */}
-                        {isAdmin && (
-                            <div className="mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                <div
-                                    className="flex items-center justify-between px-3 py-3 rounded-2xl cursor-pointer group hover:bg-amber-50/50 transition-all border border-transparent hover:border-amber-100 mb-4"
-                                    onClick={() => setShowUploadedDocs(!showUploadedDocs)}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${showUploadedDocs ? 'rotate-0' : '-rotate-90'}`} />
-                                        <div className="w-1.5 h-6 bg-amber-400 rounded-full"></div>
-                                        <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Documents Importés</h2>
-                                        {uploadedDocs.filter(doc => doc.supplierId === activeTab).length > 0 && (
-                                            <span className="text-[10px] font-bold bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full border border-amber-100">
-                                                {uploadedDocs.filter(doc => doc.supplierId === activeTab).length} document{uploadedDocs.filter(doc => doc.supplierId === activeTab).length > 1 ? 's' : ''}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setDocToDelete({ id: 'all' });
-                                                setShowDocDeleteModal(true);
-                                            }}
-                                            className="text-[10px] font-bold text-red-500 hover:text-red-600 uppercase hover:underline"
-                                        >
-                                            Tout supprimer
-                                        </button>
-                                        <div className="w-px h-4 bg-slate-200" />
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setShowUploadModal(true);
-                                            }}
-                                            className="flex items-center gap-2 text-[10px] font-black text-slate-900 uppercase hover:text-blue-600 transition-colors"
-                                        >
-                                            <Plus className="h-3.5 w-3.5" />
-                                            Importer
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {showUploadedDocs && (
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 px-1">
-                                        {uploadedDocs.filter(doc => doc.supplierId === activeTab).length > 0 ? (
-                                            uploadedDocs
-                                                .filter(doc => doc.supplierId === activeTab)
-                                                .map((doc, index) => (
-                                                    <div key={doc.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 hover:shadow-md transition-all group relative">
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setDocToDelete({ id: doc.id, fileName: doc.fileName });
-                                                                setShowDocDeleteModal(true);
-                                                            }}
-                                                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 z-10"
-                                                        >
-                                                            <X className="w-3 h-3" />
-                                                        </button>
-                                                        <div
-                                                            className="w-full h-40 bg-slate-100 rounded-xl mb-3 overflow-hidden cursor-pointer relative"
-                                                            onClick={() => setViewingImage(doc.url)}
-                                                        >
-                                                            {doc.fileName.toLowerCase().endsWith('.pdf') ? (
-                                                                <div className="w-full h-full flex items-center justify-center bg-red-50">
-                                                                    <FileText className="h-12 w-12 text-red-500" />
-                                                                </div>
-                                                            ) : (
-                                                                <img src={doc.url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={doc.fileName} />
-                                                            )}
-                                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                                                <Eye className="text-white drop-shadow-md h-6 w-6" />
-                                                            </div>
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Note</p>
-                                                            <textarea
-                                                                placeholder="Ajouter une note..."
-                                                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-blue-500 resize-none"
-                                                                rows={2}
-                                                                defaultValue={doc.note}
-                                                                onBlur={(e) => handleUpdateDocNote(doc.id, e.target.value)}
-                                                            />
-                                                            <button
-                                                                onClick={() => {
-                                                                    setReplacingDocId(doc.id);
-                                                                    replaceFileInputRef.current?.click();
-                                                                }}
-                                                                disabled={isUploading}
-                                                                className="w-full flex items-center justify-center gap-2 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
-                                                            >
-                                                                <Upload className="h-3 w-3" />
-                                                                {isUploading && replacingDocId === doc.id ? 'Remplacement...' : 'Remplacer'}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                ))
-                                        ) : (
-                                            <div className="col-span-full py-12 flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200 group-hover:bg-slate-50 transition-colors">
-                                                <div className="p-4 bg-white rounded-2xl shadow-sm border border-slate-100 mb-4">
-                                                    <ImagePlus className="h-8 w-8 text-slate-300" />
-                                                </div>
-                                                <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Aucun document importé</p>
+                            {/* Uploaded Documents Review Section */}
+                            {isAdmin && (
+                                <div className="mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    <div
+                                        className="flex items-center justify-between px-6 py-4 rounded-3xl cursor-pointer group hover:bg-white transition-all border border-transparent hover:border-slate-200 hover:shadow-xl hover:shadow-slate-200/50"
+                                        onClick={() => setShowUploadedDocs(!showUploadedDocs)}
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 ${showUploadedDocs ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-500 group-hover:bg-amber-500 group-hover:text-white'}`}>
+                                                <FileText className="h-6 w-6" strokeWidth={2} />
+                                            </div>
+                                            <div>
+                                                <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Documents Importés</h2>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{uploadedDocs.filter(doc => doc.supplierId === activeTab).length} fichiers archivés</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <div className="flex items-center gap-2">
                                                 <button
-                                                    onClick={() => setShowUploadModal(true)}
-                                                    className="mt-4 px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setDocToDelete({ id: 'all' });
+                                                        setShowDocDeleteModal(true);
+                                                    }}
+                                                    className="h-10 px-4 rounded-xl bg-rose-50 text-rose-500 text-[9px] font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all duration-300 flex items-center gap-2 border border-rose-100"
                                                 >
-                                                    Importer le Premier
+                                                    <Trash2 className="h-3 w-3" />
+                                                    TOUT SUPPRIMER
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setShowUploadModal(true);
+                                                    }}
+                                                    className="h-10 px-6 rounded-xl bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest hover:bg-amber-500 transition-all duration-300 shadow-lg shadow-slate-900/10 flex items-center gap-2"
+                                                >
+                                                    <Plus className="h-3.5 w-3.5" />
+                                                    IMPORTER
                                                 </button>
                                             </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <div className="space-y-4 mb-12">
-                            <div
-                                className="flex items-center justify-between px-3 py-3 rounded-2xl cursor-pointer group hover:bg-blue-50/50 transition-all border border-transparent hover:border-blue-100"
-                                onClick={() => setShowExpensesSection(!showExpensesSection)}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${showExpensesSection ? 'rotate-0' : '-rotate-90'}`} />
-                                    <div className="w-1.5 h-6 bg-blue-500 rounded-full"></div>
-                                    <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Factures & Bons</h2>
-                                    <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{currentSupplier?.expenses?.length || 0} documents</span>
-                                </div>
-                                {isAdmin && (
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setShowAddExpenseModal(true);
-                                        }}
-                                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-blue-100"
-                                    >
-                                        <Plus className="h-3.5 w-3.5" />
-                                        Ajouter
-                                    </button>
-                                )}
-                            </div>
-
-                            {showExpensesSection && (
-                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
-                                    {/* Table Controls */}
-                                    <div className="p-2 border-b border-slate-100 flex justify-end">
-                                        <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-lg">
-                                            <button
-                                                onClick={() => setStatusFilter('all')}
-                                                className={`px-3 py-1 rounded-md text-[9px] font-black uppercase transition-all ${statusFilter === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                                            >
-                                                Tout
-                                            </button>
-                                            <button
-                                                onClick={() => setStatusFilter('pending')}
-                                                className={`px-3 py-1 rounded-md text-[9px] font-black uppercase transition-all ${statusFilter === 'pending' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-amber-500'}`}
-                                            >
-                                                En Attente
-                                            </button>
-                                            <button
-                                                onClick={() => setStatusFilter('paid')}
-                                                className={`px-3 py-1 rounded-md text-[9px] font-black uppercase transition-all ${statusFilter === 'paid' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-emerald-500'}`}
-                                            >
-                                                Payé
-                                            </button>
+                                            <div className={`p-2 rounded-full border border-slate-100 transition-transform duration-500 ${showUploadedDocs ? 'rotate-180' : ''}`}>
+                                                <ChevronDown className="h-5 w-5 text-slate-400" />
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="overflow-x-auto overflow-y-hidden">
-                                        <table className="w-full text-left border-collapse min-w-[500px]">
-                                            <thead className="bg-slate-50/80 backdrop-blur-sm sticky top-0 z-10 border-b border-slate-100 text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center">
-                                                <tr>
-                                                    <th className="px-4 py-3 text-left w-8">#</th>
-                                                    <th className="px-4 py-3 text-left w-10"></th>
-                                                    <th className="px-4 py-3 text-left w-24">État</th>
-                                                    <th
-                                                        className="px-4 py-3 text-left cursor-pointer hover:bg-slate-100/50 transition-colors select-none group"
-                                                        onClick={() => handleSort('date')}
-                                                    >
-                                                        <div className="flex items-center gap-1 group-hover:text-blue-600 transition-colors">
-                                                            Date / Désignation
-                                                            {sortConfig?.key === 'date' ? (
-                                                                sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-500" /> : <ArrowDown className="w-3 h-3 text-blue-500" />
-                                                            ) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100" />}
-                                                        </div>
-                                                    </th>
-                                                    <th
-                                                        className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100/50 transition-colors select-none group"
-                                                        onClick={() => handleSort('price')}
-                                                    >
-                                                        <div className="flex items-center justify-end gap-1 group-hover:text-blue-600 transition-colors">
-                                                            Montant
-                                                            {sortConfig?.key === 'price' ? (
-                                                                sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-500" /> : <ArrowDown className="w-3 h-3 text-blue-500" />
-                                                            ) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100" />}
-                                                        </div>
-                                                    </th>
-                                                    <th className="px-4 py-3 text-right w-32">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-50">
-                                                {sortedExpenses.map((e, index) => {
-                                                    const isExpanded = expandedRows[e.id];
-                                                    return (
-                                                        <React.Fragment key={e.id}>
-                                                            <tr
-                                                                id={e.id}
-                                                                className={`
-                                                        group transition-all duration-200 cursor-pointer
-                                                        ${isExpanded ? 'bg-blue-50/40' : 'hover:bg-slate-50/50'}
-                                                    `}
-                                                                onClick={() => toggleRow(e.id)}
+
+                                    {showUploadedDocs && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 px-1">
+                                            {uploadedDocs.filter(doc => doc.supplierId === activeTab).length > 0 ? (
+                                                uploadedDocs
+                                                    .filter(doc => doc.supplierId === activeTab)
+                                                    .map((doc, index) => (
+                                                        <motion.div
+                                                            key={doc.id}
+                                                            initial={{ opacity: 0, scale: 0.95 }}
+                                                            animate={{ opacity: 1, scale: 1 }}
+                                                            className="luxury-card bg-white p-4 border-none shadow-xl shadow-slate-200/40 relative overflow-hidden group"
+                                                        >
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setDocToDelete({ id: doc.id, fileName: doc.fileName });
+                                                                    setShowDocDeleteModal(true);
+                                                                }}
+                                                                className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm text-slate-400 rounded-xl p-2 opacity-0 group-hover:opacity-100 transition-all hover:bg-rose-500 hover:text-white z-10 shadow-lg"
                                                             >
-                                                                <td className="px-2 py-4 text-center text-[10px] font-bold text-slate-300">
-                                                                    {index + 1}
-                                                                </td>
-                                                                <td className="px-4 py-4 text-center">
-                                                                    <ChevronDown className={`h-4 w-4 text-slate-300 transition-transform duration-300 ${isExpanded ? 'rotate-180 text-blue-500' : ''}`} />
-                                                                </td>
-                                                                <td className="px-4 py-4" onClick={(ev) => ev.stopPropagation()}>
-                                                                    <div className="relative w-fit">
-                                                                        <select
-                                                                            value={e.status}
-                                                                            onChange={(ev) => updateStatus(e.id, ev.target.value as PaymentStatus)}
-                                                                            className={`
-                                                                    appearance-none cursor-pointer
-                                                                    pl-3 pr-8 py-1 rounded-full text-[9px] font-bold border transition-all shadow-sm
-                                                                    focus:outline-none focus:ring-2 focus:ring-offset-1
-                                                                    ${e.status === 'paid'
-                                                                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-100 focus:ring-emerald-200'
-                                                                                    : 'bg-amber-50 text-amber-600 border-amber-100 focus:ring-amber-200'}
-                                                                `}
-                                                                        >
-                                                                            <option value="paid">PAYÉ</option>
-                                                                            <option value="pending">ATTENTE</option>
-                                                                        </select>
-                                                                        <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none ${e.status === 'paid' ? 'text-emerald-500' : 'text-amber-500'}`} />
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-4 py-4">
-                                                                    <div className="flex flex-col">
-                                                                        <span className="text-[11px] font-bold text-slate-400 font-mono tracking-tight">{e.date}</span>
-                                                                        <span className={`text-xs font-black uppercase transition-colors ${isExpanded ? 'text-blue-600' : 'text-slate-800'}`}>
-                                                                            {e.item}
-                                                                        </span>
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-4 py-4 text-right">
-                                                                    <div className="flex flex-col items-end">
-                                                                        <span className="text-sm font-black text-slate-900 tabular-nums tracking-tight">
-                                                                            {formatValue(e.price)} <span className="text-[10px] text-slate-400 font-bold ml-0.5">DT</span>
-                                                                        </span>
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-4 py-4 text-right">
-                                                                    <div className="flex items-center justify-end gap-1 opacity-40 group-hover:opacity-100 transition-all duration-300" onClick={(ev) => ev.stopPropagation()}>
-                                                                        {/* Eye Icon: Only active if image exists */}
-                                                                        <button
-                                                                            onClick={() => e.invoiceImage && setViewingImage(e.invoiceImage)}
-                                                                            disabled={!e.invoiceImage}
-                                                                            className={`p-1.5 rounded-lg transition-colors ${e.invoiceImage ? 'hover:bg-blue-50 text-blue-500 cursor-pointer' : 'text-slate-200 cursor-not-allowed'}`}
-                                                                            title={e.invoiceImage ? 'Voir le document' : 'Aucun document lié'}
-                                                                        >
-                                                                            <Eye className="h-3.5 w-3.5" />
-                                                                        </button>
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
 
-                                                                        {/* Image Icon: Always present for admin to link */}
-                                                                        {isAdmin && (
+                                                            <div
+                                                                className="w-full h-44 bg-slate-50 rounded-2xl mb-4 overflow-hidden cursor-pointer relative border border-slate-100/50 shadow-inner"
+                                                                onClick={() => setViewingImage(doc.url)}
+                                                            >
+                                                                {doc.fileName.toLowerCase().endsWith('.pdf') ? (
+                                                                    <div className="w-full h-full flex flex-col items-center justify-center bg-rose-50/30">
+                                                                        <div className="w-16 h-16 rounded-2xl bg-rose-100 flex items-center justify-center text-rose-500 mb-2">
+                                                                            <FileText className="h-8 w-8" />
+                                                                        </div>
+                                                                        <span className="text-[8px] font-black text-rose-400 uppercase tracking-widest">Format PDF</span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <img src={doc.url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={doc.fileName} />
+                                                                )}
+                                                                <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition-all duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                                    <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30">
+                                                                        <Eye className="text-white h-6 w-6" />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="space-y-4">
+                                                                <div>
+                                                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Notes de document</label>
+                                                                    <textarea
+                                                                        placeholder="Préciser l'utilité du document..."
+                                                                        className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-3 py-2 text-[11px] font-medium text-slate-900 focus:outline-none focus:border-amber-500/50 focus:bg-white transition-all resize-none placeholder:text-slate-300"
+                                                                        rows={2}
+                                                                        defaultValue={doc.note}
+                                                                        onBlur={(e) => handleUpdateDocNote(doc.id, e.target.value)}
+                                                                    />
+                                                                </div>
+
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setReplacingDocId(doc.id);
+                                                                        replaceFileInputRef.current?.click();
+                                                                    }}
+                                                                    disabled={isUploading}
+                                                                    className="w-full flex items-center justify-center gap-3 py-3 bg-slate-50 hover:bg-slate-900 hover:text-white text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-300 border border-slate-100"
+                                                                >
+                                                                    <Upload className="h-3.5 w-3.5" />
+                                                                    {isUploading && replacingDocId === doc.id ? 'Traitement...' : 'Remplacer le fichier'}
+                                                                </button>
+                                                            </div>
+                                                        </motion.div>
+                                                    ))
+                                            ) : (
+                                                <div className="col-span-full py-12 flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200 group-hover:bg-slate-50 transition-colors">
+                                                    <div className="p-4 bg-white rounded-2xl shadow-sm border border-slate-100 mb-4">
+                                                        <ImagePlus className="h-8 w-8 text-slate-300" />
+                                                    </div>
+                                                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Aucun document importé</p>
+                                                    <button
+                                                        onClick={() => setShowUploadModal(true)}
+                                                        className="mt-4 px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                                                    >
+                                                        Importer le Premier
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Factures & Bons section - Luxury Table */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.1 }}
+                                className="space-y-6"
+                            >
+                                <div
+                                    className="flex items-center justify-between px-6 py-4 rounded-3xl cursor-pointer group hover:bg-white transition-all border border-transparent hover:border-slate-200 hover:shadow-xl hover:shadow-slate-200/50"
+                                    onClick={() => setShowExpensesSection(!showExpensesSection)}
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 ${showExpensesSection ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-400 group-hover:bg-slate-900 group-hover:text-white'}`}>
+                                            <Receipt className="h-6 w-6" strokeWidth={2} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Factures & Bons</h2>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{currentSupplier?.expenses?.length || 0} documents enregistrés</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        {isAdmin && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setShowAddExpenseModal(true);
+                                                }}
+                                                className="luxury-button-primary scale-90"
+                                            >
+                                                <Plus className="h-4 w-4 mr-2" /> AJOUTER
+                                            </button>
+                                        )}
+                                        <div className={`p-2 rounded-full border border-slate-100 transition-transform duration-500 ${showExpensesSection ? 'rotate-180' : ''}`}>
+                                            <ChevronDown className="h-5 w-5 text-slate-400" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {showExpensesSection && (
+                                    <div className="luxury-card bg-white overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500">
+                                        {/* Table Controls */}
+                                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
+                                            <div className="flex items-center gap-2">
+                                                <Search className="h-3.5 w-3.5 text-slate-400 ml-2" />
+                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtres</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 bg-white/50 backdrop-blur-md p-1.5 rounded-2xl border border-slate-200 shadow-sm">
+                                                {[
+                                                    { id: 'all', label: 'Tout', color: 'slate' },
+                                                    { id: 'pending', label: 'Attente', color: 'amber' },
+                                                    { id: 'paid', label: 'Payé', color: 'emerald' }
+                                                ].map(filter => (
+                                                    <button
+                                                        key={filter.id}
+                                                        onClick={() => setStatusFilter(filter.id as any)}
+                                                        className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all duration-300 ${statusFilter === filter.id ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}
+                                                    >
+                                                        {filter.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead className="bg-[#1e293b] text-white/50 text-[9px] font-black uppercase tracking-[0.2em]">
+                                                    <tr>
+                                                        <th className="px-6 py-5 text-left w-8 opacity-50 font-medium">#</th>
+                                                        <th className="px-2 py-5 text-center w-8"></th>
+                                                        <th className="px-6 py-5 text-left">Désignation / Date</th>
+                                                        <th className="px-6 py-5 text-center w-32">État du Paiement</th>
+                                                        <th className="px-6 py-5 text-right w-48">Montant TTC</th>
+                                                        <th className="px-6 py-5 text-right w-32">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {sortedExpenses.map((e, index) => {
+                                                        const isExpanded = expandedRows[e.id];
+                                                        return (
+                                                            <React.Fragment key={e.id}>
+                                                                <tr
+                                                                    className={`group transition-all duration-500 cursor-pointer ${isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50/50'}`}
+                                                                    onClick={() => toggleRow(e.id)}
+                                                                >
+                                                                    <td className="px-6 py-6 text-left text-[10px] font-black text-slate-300 group-hover:text-[#FFB800] transition-colors">{index + 1}</td>
+                                                                    <td className="px-2 py-6">
+                                                                        <div className={`p-1.5 rounded-lg transition-all duration-500 ${isExpanded ? 'bg-slate-900 text-white rotate-180' : 'text-slate-300 group-hover:text-slate-900'}`}>
+                                                                            <ChevronDown className="h-4 w-4" />
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-6 py-6">
+                                                                        <div className="flex flex-col gap-1">
+                                                                            <span className="text-[13px] font-black text-slate-900 uppercase tracking-tight group-hover:translate-x-1 transition-transform inline-flex items-center gap-2">
+                                                                                {e.item}
+                                                                                {e.items && e.items.length > 0 && <span className="p-1 px-1.5 bg-blue-50 text-blue-500 rounded-md text-[8px] font-black">{e.items.length} ART.</span>}
+                                                                            </span>
+                                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                                                                <Clock className="h-3 w-3" /> {e.date}
+                                                                            </span>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-6 py-6" onClick={(ev) => ev.stopPropagation()}>
+                                                                        <div className="flex justify-center">
                                                                             <button
-                                                                                onClick={() => handleOpenDocPicker('expense', e.id)}
-                                                                                className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"
-                                                                                title="Lier un document"
+                                                                                onClick={() => updateStatus(e.id, e.status === 'paid' ? 'pending' : 'paid')}
+                                                                                className={`px-4 py-2 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 shadow-sm ${e.status === 'paid'
+                                                                                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-600 hover:text-white'
+                                                                                    : 'bg-amber-50 text-amber-600 border border-amber-100 hover:bg-amber-600 hover:text-white'
+                                                                                    }`}
                                                                             >
-                                                                                <ImageIcon className="h-3.5 w-3.5" />
+                                                                                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${e.status === 'paid' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                                                {e.status === 'paid' ? 'Payé' : 'En Attente'}
                                                                             </button>
-                                                                        )}
-
-                                                                        {isAdmin && (
-                                                                            <button onClick={() => handleEditExpense(e)} className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors" title="Modifier">
-                                                                                <Pencil className="h-3.5 w-3.5" />
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-6 py-6 text-right">
+                                                                        <div className="flex flex-col items-end">
+                                                                            <span className="text-lg font-black text-slate-900 tabular-nums leading-none tracking-tighter">
+                                                                                {formatValue(e.price)}
+                                                                            </span>
+                                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">Dinar Tunisien</span>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-6 py-6 text-right" onClick={(ev) => ev.stopPropagation()}>
+                                                                        <div className="flex items-center justify-end gap-2 px-2">
+                                                                            <button
+                                                                                onClick={() => e.invoiceImage && setViewingImage(e.invoiceImage)}
+                                                                                disabled={!e.invoiceImage}
+                                                                                className={`p-2.5 rounded-2xl transition-all duration-300 ${e.invoiceImage ? 'bg-slate-50 text-slate-900 hover:bg-slate-900 hover:text-white shadow-sm' : 'text-slate-200 cursor-not-allowed'}`}
+                                                                            >
+                                                                                <Eye className="h-4 w-4" />
                                                                             </button>
-                                                                        )}
-
-                                                                        {isAdmin && (
-                                                                            <button onClick={() => handleDelete(e.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
-                                                                                <Trash2 className="h-3.5 w-3.5" />
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-
-                                                            {/* Détails Accordion */}
-                                                            {isExpanded && (
-                                                                <tr>
-                                                                    <td colSpan={5} className="px-4 pb-6 pt-0 bg-blue-50/40">
-                                                                        <div className="bg-white border-2 border-blue-100 rounded-2xl overflow-hidden shadow-sm animate-in slide-in-from-top-2 duration-300">
-                                                                            {/* Shared Metadata Header */}
-                                                                            {(e.client || e.lieuLivraison || e.toupie || e.chaufeur || e.pompe || e.heure) && (
-                                                                                <div className="p-4 bg-slate-50 border-b border-slate-100 grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                                                                    {e.client && (
-                                                                                        <div className="space-y-0.5">
-                                                                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Chantier / Client</p>
-                                                                                            <p className="text-[11px] font-black text-slate-900 uppercase">{e.client} {e.codeClient && `(${e.codeClient})`}</p>
-                                                                                        </div>
-                                                                                    )}
-                                                                                    {e.lieuLivraison && (
-                                                                                        <div className="space-y-0.5">
-                                                                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Lieu Livraison</p>
-                                                                                            <p className="text-[11px] font-black text-slate-900 uppercase">{e.lieuLivraison}</p>
-                                                                                        </div>
-                                                                                    )}
-                                                                                    {e.toupie && (
-                                                                                        <div className="space-y-0.5">
-                                                                                            <p className="text-[8px] font-black text-blue-400 uppercase tracking-tighter">Toupie / Camion</p>
-                                                                                            <p className="text-[11px] font-black text-blue-900 uppercase">{e.toupie} {e.chaufeur && `(${e.chaufeur})`}</p>
-                                                                                        </div>
-                                                                                    )}
-                                                                                    {(e.pompe || e.pompiste) && (
-                                                                                        <div className="space-y-0.5">
-                                                                                            <p className="text-[8px] font-black text-emerald-400 uppercase tracking-tighter">Pompe / Pompiste</p>
-                                                                                            <p className="text-[11px] font-black text-emerald-900">{e.pompe || '-'} / {e.pompiste || '-'}</p>
-                                                                                        </div>
-                                                                                    )}
-                                                                                    {(e.heure || e.adjuvant) && (
-                                                                                        <div className="space-y-0.5">
-                                                                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Heure / Adjuvant</p>
-                                                                                            <p className="text-[11px] font-black text-slate-600 font-mono">{e.heure || '-'} | {e.adjuvant || '-'}</p>
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            )}
-
-                                                                            {/* Line Items Table */}
-                                                                            {e.items && e.items.length > 0 && (
-                                                                                <div className="overflow-x-auto">
-                                                                                    <table className="w-full text-left border-collapse">
-                                                                                        <thead className="bg-slate-50 border-b border-slate-100 text-[8px] font-black text-slate-400 uppercase tracking-widest">
-                                                                                            <tr>
-                                                                                                <th className="px-4 py-2 w-8">#</th>
-                                                                                                <th className="px-4 py-2">Désignation</th>
-                                                                                                <th className="px-4 py-2 text-center">Qté</th>
-                                                                                                <th className="px-4 py-2 text-right">Prix Unité</th>
-                                                                                                {e.items?.some(i => i.remise) && <th className="px-4 py-2 text-center text-red-400">Remise</th>}
-                                                                                                <th className="px-4 py-2 text-right">Total TTC</th>
-                                                                                            </tr>
-                                                                                        </thead>
-                                                                                        <tbody className="divide-y divide-slate-50">
-                                                                                            {e.items?.map((item, idx) => (
-                                                                                                <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                                                                                                    <td className="px-4 py-2 text-[9px] font-bold text-slate-300">
-                                                                                                        {idx + 1}
-                                                                                                    </td>
-                                                                                                    <td className="px-4 py-2 font-bold text-slate-700 text-[10px]">{item.designation}</td>
-                                                                                                    <td className="px-4 py-2 text-center font-black text-slate-900 text-[10px]">{item.quantity}</td>
-                                                                                                    <td className="px-4 py-2 text-right text-slate-500 font-mono text-[10px]">{(item.unitPriceHT || item.unitPrice).toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                                                                                                    {e.items?.some(i => i.remise) && (
-                                                                                                        <td className="px-4 py-2 text-center text-red-500 font-black text-[10px]">
-                                                                                                            {item.remise ? `${item.remise}%` : '-'}
-                                                                                                        </td>
-                                                                                                    )}
-                                                                                                    <td className="px-4 py-2 text-right font-black text-blue-900 text-[10px]">{formatValue(item.totalTTC)}</td>
-                                                                                                </tr>
-                                                                                            ))}
-                                                                                        </tbody>
-                                                                                    </table>
+                                                                            {isAdmin && (
+                                                                                <div className="flex items-center gap-1 opacity-20 group-hover:opacity-100 transition-opacity duration-500">
+                                                                                    <button
+                                                                                        onClick={() => handleOpenDocPicker('expense', e.id)}
+                                                                                        className="p-2.5 rounded-2xl bg-slate-50 text-slate-400 hover:bg-amber-500 hover:text-white transition-all shadow-sm"
+                                                                                    >
+                                                                                        <ImageIcon className="h-4 w-4" />
+                                                                                    </button>
+                                                                                    <button
+                                                                                        onClick={() => handleEditExpense(e)}
+                                                                                        className="p-2.5 rounded-2xl bg-slate-50 text-slate-400 hover:bg-blue-500 hover:text-white transition-all shadow-sm"
+                                                                                    >
+                                                                                        <Pencil className="h-4 w-4" />
+                                                                                    </button>
+                                                                                    <button
+                                                                                        onClick={() => handleDelete(e.id)}
+                                                                                        className="p-2.5 rounded-2xl bg-slate-50 text-slate-400 hover:bg-rose-500 hover:text-white transition-all shadow-sm"
+                                                                                    >
+                                                                                        <Trash2 className="h-4 w-4" />
+                                                                                    </button>
                                                                                 </div>
                                                                             )}
                                                                         </div>
                                                                     </td>
                                                                 </tr>
-                                                            )}
-                                                        </React.Fragment>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                                                                {isExpanded && (
+                                                                    <motion.tr
+                                                                        initial={{ opacity: 0, height: 0 }}
+                                                                        animate={{ opacity: 1, height: 'auto' }}
+                                                                        className="bg-slate-50/50"
+                                                                    >
+                                                                        <td colSpan={6} className="px-8 py-0">
+                                                                            <div className="pb-8 pt-2 overflow-hidden">
+                                                                                <div className="bg-white rounded-[2rem] border border-slate-200 shadow-xl p-8 space-y-8 animate-in slide-in-from-top-4 duration-500">
+                                                                                    {/* Detailed Infos Header */}
+                                                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+                                                                                        <div className="space-y-1.5">
+                                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Document Réf.</p>
+                                                                                            <p className="text-[13px] font-black text-slate-900 uppercase tracking-tight">{e.item}</p>
+                                                                                        </div>
+                                                                                        <div className="space-y-1.5">
+                                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date Émission</p>
+                                                                                            <p className="text-[13px] font-black text-slate-900">{e.date}</p>
+                                                                                        </div>
+                                                                                        <div className="space-y-1.5">
+                                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quantité/Volume</p>
+                                                                                            <p className="text-[13px] font-black text-slate-900">{e.quantity || '1.000'}</p>
+                                                                                        </div>
+                                                                                        <div className="space-y-1.5">
+                                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Saisi</p>
+                                                                                            <p className="text-xl font-black text-[#FFB800] tabular-nums leading-none tracking-tighter">{formatValue(e.price)} <span className="text-[10px]">DT</span></p>
+                                                                                        </div>
+                                                                                    </div>
 
-                        {/* Fiche de Dépôts / Acomptes */}
-                        {
-                            currentSupplier?.deposits && (
-                                <div className="space-y-4 mb-20">
-                                    <div
-                                        className="flex items-center justify-between px-3 py-3 rounded-2xl cursor-pointer group hover:bg-emerald-50/50 transition-all border border-transparent hover:border-emerald-100"
-                                        onClick={() => setShowDepositsSection(!showDepositsSection)}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${showDepositsSection ? 'rotate-0' : '-rotate-90'}`} />
-                                            <div className="w-1.5 h-6 bg-emerald-500 rounded-full"></div>
-                                            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Historique Acomptes</h2>
-                                            <span className="text-[10px] font-bold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-100">{currentSupplier?.deposits?.length || 0} paiements</span>
+                                                                                    {/* Specialty Fields (Concrete, etc) */}
+                                                                                    {(e.lieuLivraison || e.toupie || e.pompe || e.heure) && (
+                                                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                                                                                            {e.lieuLivraison && (
+                                                                                                <div className="space-y-1">
+                                                                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Lieu Livraison</p>
+                                                                                                    <p className="text-[11px] font-black text-slate-900 uppercase">{e.lieuLivraison}</p>
+                                                                                                </div>
+                                                                                            )}
+                                                                                            {e.toupie && (
+                                                                                                <div className="space-y-1">
+                                                                                                    <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Toupie / Camion</p>
+                                                                                                    <p className="text-[11px] font-black text-blue-900 uppercase">{e.toupie} {e.chaufeur && `(${e.chaufeur})`}</p>
+                                                                                                </div>
+                                                                                            )}
+                                                                                            {(e.pompe || e.pompiste) && (
+                                                                                                <div className="space-y-1">
+                                                                                                    <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Pompe / Pompiste</p>
+                                                                                                    <p className="text-[11px] font-black text-emerald-900">{e.pompe || '-'} / {e.pompiste || '-'}</p>
+                                                                                                </div>
+                                                                                            )}
+                                                                                            {e.heure && (
+                                                                                                <div className="space-y-1">
+                                                                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Heure / Adjuvant</p>
+                                                                                                    <p className="text-[11px] font-black text-slate-600 font-mono">{e.heure || '-'} | {e.adjuvant || '-'}</p>
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    )}
+
+                                                                                    {/* Line Items Table */}
+                                                                                    {e.items && e.items.length > 0 && (
+                                                                                        <div className="rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+                                                                                            <table className="w-full text-left border-collapse">
+                                                                                                <thead className="bg-[#1e293b] text-white/40 text-[8px] font-black uppercase tracking-[0.2em]">
+                                                                                                    <tr>
+                                                                                                        <th className="px-6 py-4 w-12 text-center">#</th>
+                                                                                                        <th className="px-6 py-4">Nom de l'Article / Désignation</th>
+                                                                                                        <th className="px-6 py-4 text-center">Qté.</th>
+                                                                                                        <th className="px-6 py-4 text-right">P.U TTC</th>
+                                                                                                        <th className="px-6 py-4 text-right">Total TTC</th>
+                                                                                                    </tr>
+                                                                                                </thead>
+                                                                                                <tbody className="divide-y divide-slate-50">
+                                                                                                    {e.items?.map((item, idx) => (
+                                                                                                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                                                                                            <td className="px-6 py-4 text-center text-[9px] font-bold text-slate-300">{idx + 1}</td>
+                                                                                                            <td className="px-6 py-4">
+                                                                                                                <div className="flex flex-col">
+                                                                                                                    <span className="text-[11px] font-black text-slate-900 uppercase tracking-tight">{item.designation}</span>
+                                                                                                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{item.unit || 'UNITÉ'}</span>
+                                                                                                                </div>
+                                                                                                            </td>
+                                                                                                            <td className="px-6 py-4 text-center">
+                                                                                                                <span className="text-[11px] font-black text-slate-900">{item.quantity}</span>
+                                                                                                            </td>
+                                                                                                            <td className="px-6 py-4 text-right">
+                                                                                                                <span className="text-[11px] font-bold text-slate-500 tabular-nums">{(item.unitPriceHT || item.unitPrice).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                                                                                                            </td>
+                                                                                                            <td className="px-6 py-4 text-right">
+                                                                                                                <div className="flex flex-col items-end">
+                                                                                                                    <span className="text-[11px] font-black text-blue-900 tabular-nums leading-none">{formatValue(item.totalTTC)}</span>
+                                                                                                                    {item.remise ? <span className="text-[8px] font-black text-rose-500 uppercase mt-0.5">-{item.remise}% REMISE</span> : null}
+                                                                                                                </div>
+                                                                                                            </td>
+                                                                                                        </tr>
+                                                                                                    ))}
+                                                                                                </tbody>
+                                                                                            </table>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </td>
+                                                                    </motion.tr>
+                                                                )}
+                                                            </React.Fragment>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
                                         </div>
+                                    </div>
+                                )}
+                            </motion.div>
+
+                            {/* Historique Acomptes - Luxury Table */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.2 }}
+                                className="space-y-6 mb-20"
+                            >
+                                <div
+                                    className="flex items-center justify-between px-6 py-4 rounded-3xl cursor-pointer group hover:bg-white transition-all border border-transparent hover:border-slate-200 hover:shadow-xl hover:shadow-slate-200/50"
+                                    onClick={() => setShowDepositsSection(!showDepositsSection)}
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 ${showDepositsSection ? 'bg-[#FFB800] text-slate-900' : 'bg-slate-50 text-slate-400 group-hover:bg-[#FFB800] group-hover:text-slate-900'}`}>
+                                            <TrendingUp className="h-6 w-6" strokeWidth={2} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Historique Acomptes</h2>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{currentSupplier?.deposits?.length || 0} paiements enregistrés</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
                                         {isAdmin && (
                                             <button
                                                 onClick={(e) => {
@@ -3444,120 +3648,103 @@ function ExpensesContentMain() {
                                                     });
                                                     setShowAddDepositModal(true);
                                                 }}
-                                                className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase hover:bg-emerald-500 transition-all flex items-center gap-1 shadow-lg shadow-emerald-500/10"
+                                                className="luxury-button-gold scale-90"
                                             >
-                                                <Plus className="h-3 w-3" /> Nouveau
+                                                <Plus className="h-4 w-4 mr-2" /> NOUVEAU
                                             </button>
                                         )}
+                                        <div className={`p-2 rounded-full border border-slate-100 transition-transform duration-500 ${showDepositsSection ? 'rotate-180' : ''}`}>
+                                            <ChevronDown className="h-5 w-5 text-slate-400" />
+                                        </div>
                                     </div>
+                                </div>
 
-                                    {showDepositsSection && (
-                                        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
-                                            <div className="p-4 bg-emerald-50/20 border-b border-emerald-100/50 flex items-center justify-between">
-                                                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-wider">Paiements Validés</span>
-                                                {isAdmin && (
-                                                    <button
-                                                        onClick={() => {
-                                                            setEditingDepositId(null);
-                                                            setNewDepositData({
-                                                                amount: '',
-                                                                date: new Date().toISOString().split('T')[0],
-                                                                payer: '',
-                                                                commercial: '',
-                                                                ref: ''
-                                                            });
-                                                            setShowAddDepositModal(true);
-                                                        }}
-                                                        className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase hover:bg-emerald-500 transition-all flex items-center gap-1 shadow-lg shadow-emerald-500/10"
-                                                    >
-                                                        <Plus className="h-3 w-3" /> Nouveau
-                                                    </button>
-                                                )}
-                                            </div>
+                                {
+                                    showDepositsSection && (
+                                        <div className="luxury-card bg-white overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500">
                                             <div className="overflow-x-auto">
-                                                <table className="w-full text-left border-collapse min-w-[500px]">
-                                                    <thead className="bg-slate-50/50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                                <table className="w-full text-left border-collapse">
+                                                    <thead className="bg-[#1e293b] text-white/50 text-[9px] font-black uppercase tracking-[0.2em]">
                                                         <tr>
-                                                            <th className="px-4 py-4 text-center w-8">#</th>
-                                                            <th className="px-6 py-4 w-32">Date</th>
-                                                            <th className="px-6 py-4">Référence / Payeur</th>
-                                                            <th className="px-6 py-4 text-right">Montant</th>
-                                                            <th className="px-6 py-4 text-right w-32">Actions</th>
+                                                            <th className="px-6 py-5 text-center w-8 opacity-50 font-medium">#</th>
+                                                            <th className="px-6 py-5 text-left w-24">Date</th>
+                                                            <th className="px-6 py-5 text-left">Référence / Payeur</th>
+                                                            <th className="px-6 py-5 text-right w-48">Montant</th>
+                                                            <th className="px-6 py-5 text-right w-32">Actions</th>
                                                         </tr>
                                                     </thead>
-                                                    <tbody className="divide-y divide-slate-50">
+                                                    <tbody className="divide-y divide-slate-100">
                                                         {currentSupplier?.deposits?.length === 0 ? (
                                                             <tr>
-                                                                <td colSpan={4} className="px-6 py-12 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
-                                                                    Aucun acompte enregistré
+                                                                <td colSpan={5} className="px-6 py-12 text-center">
+                                                                    <div className="flex flex-col items-center gap-4">
+                                                                        <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center">
+                                                                            <Package className="h-8 w-8 text-slate-200" />
+                                                                        </div>
+                                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">
+                                                                            Aucun acompte pour le moment.
+                                                                        </p>
+                                                                    </div>
                                                                 </td>
                                                             </tr>
                                                         ) : (
                                                             currentSupplier?.deposits?.map((d, index) => (
-                                                                <tr key={d.id} className="hover:bg-slate-50/50 transition-colors group">
-                                                                    <td className="px-4 py-4 text-center text-[10px] font-bold text-slate-300">
-                                                                        {index + 1}
-                                                                    </td>
-                                                                    <td className="px-6 py-4 text-xs font-bold text-slate-400 font-mono">
+                                                                <tr key={d.id} className="group hover:bg-slate-50/50 transition-all duration-300">
+                                                                    <td className="px-6 py-6 text-center text-[10px] font-black text-slate-300 group-hover:text-[#FFB800] transition-colors">{index + 1}</td>
+                                                                    <td className="px-6 py-6 text-[11px] font-bold text-slate-400 font-mono tracking-tight uppercase">
                                                                         {d.date}
                                                                     </td>
-                                                                    <td className="px-6 py-4">
-                                                                        <div className="flex flex-col">
-                                                                            {d.ref ? (
-                                                                                <span className="text-xs font-bold text-slate-700">{d.ref}</span>
-                                                                            ) : <span className="text-xs font-bold text-slate-300 italic">Sans réf.</span>}
-                                                                            {(d.payer || d.commercial) && (
-                                                                                <span className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
-                                                                                    {d.payer} {d.commercial && `• ${d.commercial}`}
-                                                                                </span>
-                                                                            )}
+                                                                    <td className="px-6 py-6">
+                                                                        <div className="flex flex-col gap-1">
+                                                                            <span className="text-[13px] font-black text-slate-900 uppercase tracking-tight">
+                                                                                {d.ref || "SANS RÉFÉRENCE"}
+                                                                            </span>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <div className="bg-slate-100 p-0.5 px-1.5 rounded-md">
+                                                                                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{d.payer || d.commercial || 'PROJET'}</span>
+                                                                                </div>
+                                                                            </div>
                                                                         </div>
                                                                     </td>
-                                                                    <td className="px-6 py-4 text-right">
-                                                                        <span className="text-sm font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
-                                                                            {d.amount.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px]">DT</span>
-                                                                        </span>
+                                                                    <td className="px-6 py-6 text-right">
+                                                                        <div className="flex flex-col items-end">
+                                                                            <span className="text-lg font-black text-emerald-600 tabular-nums leading-none tracking-tighter">
+                                                                                {d.amount.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                                                            </span>
+                                                                            <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest mt-1">Dinar Tunisien</span>
+                                                                        </div>
                                                                     </td>
-                                                                    <td className="px-6 py-4 text-right">
-                                                                        <div className="flex items-center justify-end gap-1 opacity-20 group-hover:opacity-100 transition-all">
-                                                                            {/* Eye Icon: Only active if image exists */}
+                                                                    <td className="px-6 py-6 text-right">
+                                                                        <div className="flex items-center justify-end gap-2 px-2">
                                                                             <button
                                                                                 onClick={() => (d.receiptImage || d.id === 'd_cap_1') && setViewingImage(d.receiptImage || 'https://via.placeholder.com/800x1000?text=Recu+476+3900DT')}
                                                                                 disabled={!d.receiptImage && d.id !== 'd_cap_1'}
-                                                                                className={`p-1.5 rounded-lg transition-colors ${(d.receiptImage || d.id === 'd_cap_1') ? 'hover:bg-blue-50 text-blue-500 cursor-pointer' : 'text-slate-200 cursor-not-allowed'}`}
-                                                                                title={(d.receiptImage || d.id === 'd_cap_1') ? 'Voir reçu' : 'Aucun reçu lié'}
+                                                                                className={`p-2.5 rounded-2xl transition-all duration-300 ${(d.receiptImage || d.id === 'd_cap_1') ? 'bg-slate-50 text-slate-900 hover:bg-[#FFB800] hover:text-slate-900 shadow-sm' : 'text-slate-200 cursor-not-allowed'}`}
                                                                             >
                                                                                 <Eye className="h-4 w-4" />
                                                                             </button>
 
-                                                                            {/* Image Icon: Always present for admin to link */}
                                                                             {isAdmin && (
-                                                                                <button
-                                                                                    onClick={() => handleOpenDocPicker('deposit', d.id)}
-                                                                                    className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"
-                                                                                    title="Lier un reçu"
-                                                                                >
-                                                                                    <ImageIcon className="h-4 w-4" />
-                                                                                </button>
-                                                                            )}
-
-                                                                            {isAdmin && (
-                                                                                <>
+                                                                                <div className="flex items-center gap-1 opacity-20 group-hover:opacity-100 transition-all duration-500">
+                                                                                    <button
+                                                                                        onClick={() => handleOpenDocPicker('deposit', d.id)}
+                                                                                        className="p-2.5 rounded-2xl bg-slate-50 text-slate-400 hover:bg-slate-900 hover:text-white transition-all shadow-sm"
+                                                                                    >
+                                                                                        <ImageIcon className="h-4 w-4" />
+                                                                                    </button>
                                                                                     <button
                                                                                         onClick={() => handleEditDeposit(d)}
-                                                                                        className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"
-                                                                                        title="Modifier"
+                                                                                        className="p-2.5 rounded-2xl bg-slate-50 text-slate-400 hover:bg-blue-500 hover:text-white transition-all shadow-sm"
                                                                                     >
                                                                                         <FileText className="h-4 w-4" />
                                                                                     </button>
                                                                                     <button
                                                                                         onClick={() => handleDeleteDeposit(d.id)}
-                                                                                        className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
-                                                                                        title="Supprimer"
+                                                                                        className="p-2.5 rounded-2xl bg-slate-50 text-slate-400 hover:bg-rose-500 hover:text-white transition-all shadow-sm"
                                                                                     >
                                                                                         <Trash2 className="h-4 w-4" />
                                                                                     </button>
-                                                                                </>
+                                                                                </div>
                                                                             )}
                                                                         </div>
                                                                     </td>
@@ -3568,13 +3755,13 @@ function ExpensesContentMain() {
                                                 </table>
                                             </div>
                                         </div>
-                                    )}
-                                </div>
-                            )
-                        }
+                                    )
+                                }
+                            </motion.div >
+                        </motion.div >
                     </div >
-                </div >
-            )}
+                )
+            }
 
             {/* Note Editor Modal */}
             {
@@ -3784,9 +3971,6 @@ function ExpensesContentMain() {
                                     archivedSuppliers.map((s: any) => (
                                         <div key={s.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-blue-200 transition-all">
                                             <div className="flex items-center gap-3">
-                                                <div className={`w-10 h-10 rounded-xl ${s.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
-                                                    {s.name.charAt(0).toUpperCase()}
-                                                </div>
                                                 <div>
                                                     <p className="text-sm font-black text-slate-900 uppercase tracking-tight">{s.name}</p>
                                                     <p className="text-[10px] text-slate-400 font-bold uppercase">ID: {s.id}</p>
@@ -3818,63 +4002,67 @@ function ExpensesContentMain() {
             }
 
             {/* AI Coming Soon Modal */}
-            {showAIComingSoonModal && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                    <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200 text-center relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500"></div>
+            {
+                showAIComingSoonModal && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+                        <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200 text-center relative overflow-hidden">
+                            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500"></div>
 
-                        <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 relative">
-                            <Sparkles className="h-10 w-10 text-blue-500 animate-pulse" />
-                            <div className="absolute inset-0 bg-blue-400/20 rounded-full animate-ping"></div>
+                            <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 relative">
+                                <Sparkles className="h-10 w-10 text-blue-500 animate-pulse" />
+                                <div className="absolute inset-0 bg-blue-400/20 rounded-full animate-ping"></div>
+                            </div>
+
+                            <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-900 mb-2">
+                                L'IA Arrive Bientôt !
+                            </h3>
+                            <p className="text-sm font-medium text-slate-500 mb-8 leading-relaxed">
+                                Notre module d'extraction intelligente est en cours de finalisation.
+                                <br />
+                                Vous pourrez bientôt scanner vos factures et les remplir automatiquement en un clin d'œil.
+                            </p>
+
+                            <button
+                                onClick={() => {
+                                    setShowAIComingSoonModal(false);
+                                    setShowAddInvoiceStep1(true);
+                                }}
+                                className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20"
+                            >
+                                Compris, j'ai hâte !
+                            </button>
                         </div>
-
-                        <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-900 mb-2">
-                            L'IA Arrive Bientôt !
-                        </h3>
-                        <p className="text-sm font-medium text-slate-500 mb-8 leading-relaxed">
-                            Notre module d'extraction intelligente est en cours de finalisation.
-                            <br />
-                            Vous pourrez bientôt scanner vos factures et les remplir automatiquement en un clin d'œil.
-                        </p>
-
-                        <button
-                            onClick={() => {
-                                setShowAIComingSoonModal(false);
-                                setShowAddInvoiceStep1(true);
-                            }}
-                            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20"
-                        >
-                            Compris, j'ai hâte !
-                        </button>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Success Modal */}
-            {showSuccessModal && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                    <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 text-center relative overflow-hidden">
-                        <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 relative">
-                            <CheckCircle2 className="h-10 w-10 text-emerald-500" />
-                            <div className="absolute inset-0 bg-emerald-400/20 rounded-full animate-ping"></div>
+            {
+                showSuccessModal && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+                        <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 text-center relative overflow-hidden">
+                            <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 relative">
+                                <CheckCircle2 className="h-10 w-10 text-emerald-500" />
+                                <div className="absolute inset-0 bg-emerald-400/20 rounded-full animate-ping"></div>
+                            </div>
+
+                            <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-900 mb-2">
+                                Succès !
+                            </h3>
+                            <p className="text-sm font-medium text-slate-500 mb-8 leading-relaxed">
+                                La facture a été enregistrée avec succès.
+                            </p>
+
+                            <button
+                                onClick={() => setShowSuccessModal(false)}
+                                className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20"
+                            >
+                                Parfait
+                            </button>
                         </div>
-
-                        <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-900 mb-2">
-                            Succès !
-                        </h3>
-                        <p className="text-sm font-medium text-slate-500 mb-8 leading-relaxed">
-                            La facture a été enregistrée avec succès.
-                        </p>
-
-                        <button
-                            onClick={() => setShowSuccessModal(false)}
-                            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20"
-                        >
-                            Parfait
-                        </button>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Hidden Input for Replacing Documents */}
             <input
@@ -3891,70 +4079,75 @@ function ExpensesContentMain() {
                 }}
             />
             {/* Undo Toast */}
-            {showUndoToast && lastReplacedDoc && (
-                <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[300] bg-slate-900 border border-slate-800 text-white px-6 py-4 rounded-3xl shadow-2xl flex items-center gap-6 animate-in slide-in-from-bottom-5 duration-300">
-                    <div className="flex flex-col">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 leading-none mb-1">Action effectuée</p>
-                        <p className="text-xs font-bold truncate max-w-[150px]">Document remplacé</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={handleUndoReplace}
-                            className="bg-[#FFB800] text-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-transform"
-                        >
-                            Annuler
-                        </button>
-                        <button
-                            onClick={() => setShowUndoToast(false)}
-                            className="p-2 hover:bg-slate-800 rounded-full transition-colors"
-                        >
-                            <X className="h-4 w-4 text-slate-400" />
-                        </button>
-                    </div>
-                </div>
-            )}
-            {/* Document Delete Confirmation Modal */}
-            {showDocDeleteModal && docToDelete && (
-                <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                    <div className="bg-white rounded-[2rem] w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-                        <div className="bg-red-600 p-8 text-white relative">
-                            <button
-                                onClick={() => { setShowDocDeleteModal(false); setDocToDelete(null); }}
-                                className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-full transition-colors"
-                            >
-                                <X className="h-5 w-5" />
-                            </button>
-                            <div className="h-16 w-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6">
-                                <Trash2 className="h-8 w-8 text-white" />
-                            </div>
-                            <h2 className="text-2xl font-black uppercase tracking-tighter leading-tight">Supprimer ?</h2>
-                            <p className="mt-2 text-red-100 text-sm font-medium">
-                                {docToDelete.id === 'all'
-                                    ? "Êtes-vous sûr de vouloir supprimer TOUS les documents de ce fournisseur ?"
-                                    : `Êtes-vous sûr de vouloir supprimer le document "${docToDelete.fileName}" ?`
-                                }
-                            </p>
+            {
+                showUndoToast && lastReplacedDoc && (
+                    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[300] bg-slate-900 border border-slate-800 text-white px-6 py-4 rounded-3xl shadow-2xl flex items-center gap-6 animate-in slide-in-from-bottom-5 duration-300">
+                        <div className="flex flex-col">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 leading-none mb-1">Action effectuée</p>
+                            <p className="text-xs font-bold truncate max-w-[150px]">Document remplacé</p>
                         </div>
-
-                        <div className="p-8 flex gap-4">
+                        <div className="flex items-center gap-2">
                             <button
-                                onClick={() => { setShowDocDeleteModal(false); setDocToDelete(null); }}
-                                className="flex-1 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors bg-slate-50 rounded-2xl"
+                                onClick={handleUndoReplace}
+                                className="bg-[#FFB800] text-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-transform"
                             >
                                 Annuler
                             </button>
                             <button
-                                onClick={() => handleDeleteUploadedDoc(docToDelete.id)}
-                                disabled={isDeleting}
-                                className="flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all bg-red-600 text-white shadow-xl shadow-red-200 hover:bg-red-700 disabled:bg-slate-100 disabled:text-slate-400"
+                                onClick={() => setShowUndoToast(false)}
+                                className="p-2 hover:bg-slate-800 rounded-full transition-colors"
                             >
-                                {isDeleting ? 'Suppression...' : 'Supprimer'}
+                                <X className="h-4 w-4 text-slate-400" />
                             </button>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+            {/* Document Delete Confirmation Modal */}
+            {
+                showDocDeleteModal && docToDelete && (
+                    <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+                        <div className="bg-white rounded-[2rem] w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+                            <div className="bg-red-600 p-8 text-white relative">
+                                <button
+                                    onClick={() => { setShowDocDeleteModal(false); setDocToDelete(null); }}
+                                    className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-full transition-colors"
+                                >
+                                    <X className="h-5 w-5" />
+                                </button>
+                                <div className="h-16 w-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6">
+                                    <Trash2 className="h-8 w-8 text-white" />
+                                </div>
+                                <h2 className="text-2xl font-black uppercase tracking-tighter leading-tight">Supprimer ?</h2>
+                                <p className="mt-2 text-red-100 text-sm font-medium">
+                                    {docToDelete.id === 'all'
+                                        ? "Êtes-vous sûr de vouloir supprimer TOUS les documents de ce fournisseur ?"
+                                        : `Êtes-vous sûr de vouloir supprimer le document "${docToDelete.fileName}" ?`
+                                    }
+                                </p>
+                            </div>
+
+                            <div className="p-8 flex gap-4">
+                                <button
+                                    onClick={() => { setShowDocDeleteModal(false); setDocToDelete(null); }}
+                                    className="flex-1 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors bg-slate-50 rounded-2xl"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    onClick={() => handleDeleteUploadedDoc(docToDelete.id)}
+                                    disabled={isDeleting}
+                                    className="flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all bg-red-600 text-white shadow-xl shadow-red-200 hover:bg-red-700 disabled:bg-slate-100 disabled:text-slate-400"
+                                >
+                                    {isDeleting ? 'Suppression...' : 'Supprimer'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+        </div >
     );
 }
 

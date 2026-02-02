@@ -9,6 +9,7 @@ import {
     LayoutGrid, List, TrendingDown, Medal, ArrowRightLeft,
     ChevronDown, Trash2
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const MOSTAKBEL_PRICES: Record<string, number> = {
     "FER ROND DE 06/": 2.650,
@@ -484,73 +485,87 @@ export default function ArticlesContent() {
         <div className="max-w-[1600px] mx-auto p-6 space-y-8 pb-32 font-jakarta bg-slate-50 min-h-screen">
 
             {/* Header Section */}
-            <div className="bg-slate-900 rounded-[32px] p-6 md:p-8 text-white relative overflow-hidden shadow-xl">
-                <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#FFB800]/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/3"></div>
+            <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-slate-900 rounded-[2.5rem] p-8 md:p-10 text-white relative overflow-hidden shadow-2xl shadow-slate-900/20"
+            >
+                {/* Premium Background Effects */}
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-br from-[#FFB800]/20 via-transparent to-transparent rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3"></div>
+                <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-blue-500/10 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/4"></div>
 
-                <div className="relative z-10 flex flex-col xl:flex-row justify-between items-center gap-6">
-                    <div className="space-y-2 w-full xl:w-auto text-center xl:text-left">
-                        <div className="flex items-center justify-center xl:justify-start gap-2">
-                            <div className="p-2 bg-white/10 rounded-xl backdrop-blur-sm">
+                <div className="relative z-10 flex flex-col xl:flex-row justify-between items-center gap-8">
+                    <div className="space-y-4 w-full xl:w-auto text-center xl:text-left">
+                        <div className="flex items-center justify-center xl:justify-start gap-3">
+                            <div className="p-2.5 bg-white/10 rounded-2xl backdrop-blur-md border border-white/10 shadow-lg">
                                 <Package className="h-5 w-5 text-[#FFB800]" />
                             </div>
-                            <span className="text-[#FFB800] font-black tracking-widest uppercase text-[10px]">Gestion de Matériaux</span>
+                            <span className="text-[#FFB800] font-black tracking-[0.2em] uppercase text-[10px]">Analytics & Inventaire</span>
                         </div>
-                        <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter leading-none">
-                            Inventaire & <span className="text-[#FFB800]">Market Analytics</span>
+                        <h1 className="text-3xl md:text-4xl lg:text-5xl font-black uppercase tracking-tighter leading-tight">
+                            Catalogue <span className="text-[#FFB800]">Articles</span>
+                            <br />
+                            <span className="text-white/40">& Market Intelligence</span>
                         </h1>
                     </div>
 
-                    <div className="w-full xl:w-auto flex flex-col gap-4 md:gap-6">
-                        {/* Tab Switcher */}
-                        <div className="bg-white/10 p-1.5 rounded-2xl backdrop-blur-md flex flex-col md:flex-row w-full md:w-auto gap-1 md:gap-0">
+                    <div className="w-full xl:w-auto flex flex-col md:flex-row items-center gap-4 lg:gap-6">
+                        {/* Tab Switcher - Luxury Style */}
+                        <div className="bg-white/5 backdrop-blur-xl p-1.5 rounded-[2rem] border border-white/5 flex w-full md:w-auto">
                             <button
                                 onClick={() => setViewMode('inventory')}
                                 className={`
-                                    flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all w-full md:w-auto
-                                    ${viewMode === 'inventory' ? 'bg-[#FFB800] text-slate-900 shadow-md' : 'text-white hover:bg-white/5'}
+                                    flex items-center justify-center gap-3 px-8 py-4 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all duration-500 w-full md:w-auto
+                                    ${viewMode === 'inventory' ? 'bg-[#FFB800] text-slate-900 shadow-xl shadow-amber-500/20 scale-105' : 'text-white/40 hover:text-white hover:bg-white/5'}
                                 `}
                             >
-                                <List className="w-3.5 h-3.5" />
+                                <List className="w-4 h-4" />
                                 Inventaire
                             </button>
                             <button
                                 onClick={() => setViewMode('matrix')}
                                 className={`
-                                    flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all w-full md:w-auto
-                                    ${viewMode === 'matrix' ? 'bg-[#FFB800] text-slate-900 shadow-lg' : 'text-white hover:bg-white/5'}
+                                    flex items-center justify-center gap-3 px-8 py-4 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all duration-500 w-full md:w-auto
+                                    ${viewMode === 'matrix' ? 'bg-[#FFB800] text-slate-900 shadow-xl shadow-amber-500/20 scale-105' : 'text-white/40 hover:text-white hover:bg-white/5'}
                                 `}
                             >
                                 <LayoutGrid className="w-4 h-4" />
-                                Tableau Comparatif
+                                Comparatif
                             </button>
                         </div>
 
-                        {/* Search Bar */}
-                        <div className="relative w-full xl:w-[350px]">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        {/* Search Bar - Luxury Style */}
+                        <div className="relative w-full md:w-[300px] group">
+                            <div className="absolute inset-0 bg-[#FFB800]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-hover:text-[#FFB800] transition-colors" />
                             <input
                                 type="text"
-                                placeholder={viewMode === 'inventory' ? "Rechercher..." : "Comparer un matériau..."}
+                                placeholder="Rechercher un article..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-white text-slate-900 h-12 pl-11 pr-4 rounded-xl font-bold text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/50 transition-all shadow-md"
+                                className="w-full bg-white/10 backdrop-blur-xl border border-white/10 text-white h-14 pl-12 pr-4 rounded-2xl font-bold text-xs placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/30 transition-all"
                             />
                         </div>
                     </div>
                 </div>
-            </div>
+            </motion.div>
 
             {/* Content Area */}
             {viewMode === 'matrix' ? (
-                <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-8">
-                    <div className="flex items-center justify-between px-2">
+                <div className="animate-in fade-in slide-in-from-bottom-6 duration-1000 space-y-8">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 px-2">
                         <div className="space-y-4">
                             <div className="flex items-center gap-4">
-                                <LayoutGrid className="text-[#FFB800] w-6 h-6" />
-                                <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Comparatif Multi-Fournisseurs</h2>
+                                <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-100">
+                                    <LayoutGrid className="text-[#FFB800] w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h2 className="text-2xl lg:text-3xl font-black text-slate-900 uppercase tracking-tight">Comparatif Matériaux</h2>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Analyse des prix du marché en temps réel</p>
+                                </div>
                             </div>
 
-                            {/* Filter Chips */}
+                            {/* Filter Chips - Luxury Pilles */}
                             <div className="flex flex-wrap gap-2">
                                 {[
                                     { label: 'Tous', value: '' },
@@ -565,10 +580,10 @@ export default function ArticlesContent() {
                                             key={chip.label}
                                             onClick={() => setSearchTerm(chip.value)}
                                             className={`
-                                                px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all
+                                                px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300
                                                 ${isActive
-                                                    ? 'bg-[#FFB800] text-slate-900 shadow-lg scale-105'
-                                                    : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-100'
+                                                    ? 'bg-slate-900 text-white shadow-xl shadow-slate-900/10'
+                                                    : 'bg-white text-slate-400 hover:text-slate-900 border border-slate-200/60'
                                                 }
                                             `}
                                         >
@@ -582,42 +597,49 @@ export default function ArticlesContent() {
                         <div className="relative column-settings-container">
                             <button
                                 onClick={() => setShowColumnSettings(!showColumnSettings)}
-                                className={`p-3 md:p-4 rounded-2xl transition-all shadow-xl border flex items-center gap-2 md:gap-3 ${showColumnSettings ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-100 hover:border-[#FFB800]'}`}
+                                className={`luxury-button-secondary gap-3 ${showColumnSettings ? 'bg-slate-900 text-white border-slate-900' : ''}`}
                             >
                                 <LayoutGrid className="w-5 h-5" />
-                                <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Colonnes</span>
+                                <span className="text-[10px] font-black uppercase tracking-widest">Gérer Colonnes</span>
                             </button>
 
                             {showColumnSettings && (
-                                <div className="absolute top-full right-0 mt-4 w-64 md:w-72 bg-white rounded-[32px] shadow-2xl border border-slate-100 p-6 z-[120] animate-in zoom-in-95 duration-200">
-                                    <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-4 px-2">Fournisseurs Affichés</h3>
-                                    <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar">
+                                <motion.div
+                                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                    className="absolute top-full right-0 mt-4 w-72 bg-white rounded-[2.5rem] shadow-2xl border border-slate-100 p-8 z-[120]"
+                                >
+                                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-6">Fournisseurs</h3>
+                                    <div className="space-y-1 max-h-[400px] overflow-y-auto no-scrollbar">
                                         {matrixData.suppliers.map((s) => (
-                                            <label key={s} className="flex items-center gap-3 p-3 hover:bg-slate-50 rounded-2xl cursor-pointer group transition-colors">
+                                            <label key={s} className="flex items-center gap-4 p-3.5 hover:bg-slate-50 rounded-2xl cursor-pointer group transition-all">
+                                                <div className={`w-5 h-5 rounded-lg border-2 transition-all flex items-center justify-center ${visibleColumns.includes(s) ? 'bg-slate-900 border-slate-900' : 'border-slate-200'}`}>
+                                                    {visibleColumns.includes(s) && <div className="w-2 h-2 bg-white rounded-sm" />}
+                                                </div>
                                                 <input
                                                     type="checkbox"
                                                     checked={visibleColumns.includes(s)}
                                                     onChange={() => {
                                                         setVisibleColumns(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
                                                     }}
-                                                    className="w-5 h-5 rounded-lg border-2 border-slate-200 checked:bg-slate-900 checked:border-slate-900 transition-all cursor-pointer"
+                                                    className="hidden"
                                                 />
-                                                <span className="text-sm font-bold text-slate-700 group-hover:text-slate-900">{s}</span>
+                                                <span className={`text-xs font-black uppercase tracking-tight ${visibleColumns.includes(s) ? 'text-slate-900' : 'text-slate-400'}`}>{s}</span>
                                             </label>
                                         ))}
                                     </div>
-                                </div>
+                                </motion.div>
                             )}
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-[32px] border border-slate-100 shadow-xl overflow-hidden">
-                        <div className="overflow-x-auto touch-pan-x pb-2">
+                    <div className="luxury-card bg-white border-none shadow-2xl shadow-slate-200/50">
+                        <div className="overflow-x-auto custom-scrollbar">
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className="bg-slate-900">
-                                        <th className="sticky left-0 z-20 bg-slate-900 px-3 md:px-5 py-3.5 text-[9px] font-black text-[#FFB800] uppercase tracking-[0.2em] border-r border-white/5 min-w-[140px] md:min-w-[200px] shadow-[4px_0_8px_rgb(0,0,0,0.2)]">Article</th>
-                                        {columnOrder.filter(s => visibleColumns.includes(s) && matrixData.suppliers.includes(s)).map((s, idx) => (
+                                        <th className="sticky left-0 z-20 bg-slate-900 px-8 py-6 text-[10px] font-black text-[#FFB800] uppercase tracking-[0.2em] border-r border-white/5 min-w-[240px] shadow-xl">Article / Désignation</th>
+                                        {columnOrder.filter(s => visibleColumns.includes(s) && matrixData.suppliers.includes(s)).map((s) => (
                                             <th
                                                 key={s}
                                                 draggable
@@ -634,10 +656,10 @@ export default function ArticlesContent() {
                                                     newOrder.splice(targetIdx, 0, draggedSup);
                                                     setColumnOrder(newOrder);
                                                 }}
-                                                className="px-3 md:px-4 py-3.5 text-[9px] font-black text-white uppercase tracking-[0.2em] text-center border-r border-white/5 min-w-[110px] md:min-w-[140px] cursor-move hover:bg-slate-800 transition-colors"
+                                                className="px-6 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em] text-center border-r border-white/5 min-w-[160px] cursor-move hover:bg-slate-800 transition-colors"
                                             >
-                                                <div className="flex items-center justify-center gap-1.5">
-                                                    <List className="w-3 h-3 text-slate-500" />
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <span className="w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center text-[8px]">{s.charAt(0)}</span>
                                                     {s}
                                                 </div>
                                             </th>
@@ -646,9 +668,9 @@ export default function ArticlesContent() {
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {matrixData.rows.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase())).map((row) => (
-                                        <tr key={row.name} className="hover:bg-slate-50 transition-colors group">
-                                            <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 transition-colors px-3 md:px-5 py-2.5 border-r border-slate-100 shadow-[4px_0_12px_rgb(0,0,0,0.05)]">
-                                                <span className="text-[10px] md:text-xs font-black text-slate-900 uppercase tracking-tight line-clamp-2 md:line-clamp-1">{row.name}</span>
+                                        <tr key={row.name} className="hover:bg-slate-50 transition-all group">
+                                            <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 transition-colors px-8 py-5 border-r border-slate-100 shadow-xl">
+                                                <span className="text-xs font-black text-slate-900 uppercase tracking-tight group-hover:translate-x-1 transition-transform inline-block">{row.name}</span>
                                             </td>
                                             {columnOrder.filter(s => visibleColumns.includes(s) && matrixData.suppliers.includes(s)).map(sup => {
                                                 const entry = row.prices[sup];
@@ -659,18 +681,25 @@ export default function ArticlesContent() {
                                                 const isBest = price && price === Math.min(...visiblePrices);
 
                                                 return (
-                                                    <td key={sup} className="px-2 md:px-4 py-2.5 text-center border-r border-slate-50">
+                                                    <td key={sup} className="px-6 py-5 text-center border-r border-slate-50">
                                                         {price ? (
-                                                            <div className={`inline-flex flex-col items-center p-1.5 rounded-xl w-full transition-all ${isBest ? 'bg-emerald-50 border border-emerald-100 shadow-sm' : ''}`}>
-                                                                <span className={`text-[10px] md:text-[11px] font-black tabular-nums ${isBest ? 'text-emerald-600' : 'text-slate-600'}`}>
-                                                                    {price.toFixed(3)}
+                                                            <div className={`p-3 rounded-2xl w-full transition-all duration-500 ${isBest ? 'bg-emerald-50 border border-emerald-100 shadow-lg shadow-emerald-500/10' : 'hover:bg-slate-100'}`}>
+                                                                <span className={`text-base font-black tabular-nums tracking-tighter ${isBest ? 'text-emerald-600 scale-110' : 'text-slate-600'}`}>
+                                                                    {price.toLocaleString(undefined, { minimumFractionDigits: 3 })}
                                                                 </span>
-                                                                <span className={`text-[6px] md:text-[7px] font-black uppercase mt-0.5 ${isBest ? 'text-emerald-400' : entry?.isRef ? 'text-blue-500' : 'text-slate-300'}`}>
-                                                                    {entry?.isRef ? 'CMD' : isBest ? 'MIN' : 'DER'}
-                                                                </span>
+                                                                <div className="flex items-center justify-center gap-1.5 mt-1">
+                                                                    <span className={`text-[7px] font-black uppercase tracking-widest ${isBest ? 'text-emerald-400' : 'text-slate-300'}`}>
+                                                                        DT
+                                                                    </span>
+                                                                    <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded-md ${isBest ? 'bg-emerald-500 text-white' : entry?.isRef ? 'bg-blue-100 text-blue-600' : 'bg-slate-200 text-slate-500'}`}>
+                                                                        {entry?.isRef ? 'CMD' : isBest ? 'BEST' : 'ACT'}
+                                                                    </span>
+                                                                </div>
                                                             </div>
                                                         ) : (
-                                                            <span className="text-slate-200 font-bold text-[10px] md:text-[10px]">---</span>
+                                                            <div className="h-8 flex items-center justify-center">
+                                                                <div className="w-4 h-[1px] bg-slate-200" />
+                                                            </div>
                                                         )}
                                                     </td>
                                                 );
@@ -683,107 +712,130 @@ export default function ArticlesContent() {
                     </div>
                 </div>
             ) : (
-                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    <div className="flex justify-between items-center px-2">
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-1000">
+                    <div className="flex justify-between items-center px-4">
                         <div className="flex items-center gap-4">
-                            <LayoutGrid className="text-slate-400 w-6 h-6" />
-                            <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Liste Fournisseurs</h2>
+                            <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <Package className="text-slate-900 w-6 h-6" />
+                            </div>
+                            <div>
+                                <h2 className="text-2xl lg:text-3xl font-black text-slate-900 uppercase tracking-tight">Inventaire Matériaux</h2>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Liste chronologique de vos achats</p>
+                            </div>
                         </div>
                         {isAdmin && (
                             <button
                                 onClick={openAdd}
-                                className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center gap-2 text-xs font-black uppercase tracking-widest transform hover:scale-105"
+                                className="luxury-button-gold shadow-2xl"
                             >
-                                <Plus className="h-4 w-4" />
-                                Nouvel Article
+                                <Plus className="h-5 w-5 mr-2" />
+                                NOUVEAU
                             </button>
                         )}
                     </div>
 
-                    {supplierGroups.map((group) => {
-                        const isExpanded = expandedSuppliers[group.name];
-                        return (
-                            <div key={group.name} className="bg-white rounded-[24px] p-0.5 shadow-sm border border-slate-100 overflow-hidden transition-all duration-300">
-                                <div
-                                    onClick={() => toggleSupplier(group.name)}
-                                    className={`
-                                        p-4 flex items-center justify-between cursor-pointer rounded-[20px] transition-all
-                                        ${isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50'}
-                                    `}
+                    <div className="space-y-6">
+                        {supplierGroups.map((group) => {
+                            const isExpanded = expandedSuppliers[group.name];
+                            return (
+                                <motion.div
+                                    layout
+                                    key={group.name}
+                                    className="luxury-card border-none bg-white p-2 shadow-2xl shadow-slate-200/50"
                                 >
-                                    <div className="flex items-center gap-4">
-                                        <div className={`w-10 h-10 rounded-xl ${group.color} flex items-center justify-center text-white shadow-md text-base font-black`}>
-                                            {group.name.charAt(0).toUpperCase()}
+                                    <div
+                                        onClick={() => toggleSupplier(group.name)}
+                                        className={`
+                                            p-6 flex flex-col md:flex-row items-center justify-between cursor-pointer rounded-3xl transition-all duration-500
+                                            ${isExpanded ? 'bg-slate-50 shadow-inner' : 'hover:bg-slate-50'}
+                                        `}
+                                    >
+                                        <div className="flex items-center gap-6 w-full md:w-auto">
+                                            <div className={`w-16 h-16 rounded-2xl ${group.color} flex items-center justify-center text-white shadow-2xl text-2xl font-black transform group-hover:scale-110 transition-transform`}>
+                                                {group.name.charAt(0).toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">{group.name}</h2>
+                                                <div className="flex items-center gap-3 mt-1">
+                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] bg-white px-2 py-1 rounded-lg border border-slate-100">
+                                                        {group.rows.length} ARTICLES
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h2 className="text-base font-black text-slate-900 uppercase tracking-tight">{group.name}</h2>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
-                                                    {group.rows.length} Matériaux
+
+                                        <div className="flex items-center gap-8 mt-6 md:mt-0 w-full md:w-auto justify-between md:justify-end">
+                                            <div className="flex flex-col items-end">
+                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Dépense Totale (TTC)</span>
+                                                <span className="text-2xl font-black text-slate-900 tabular-nums leading-none tracking-tighter">
+                                                    {group.total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs text-[#FFB800] uppercase font-black ml-1">DT</span>
                                                 </span>
                                             </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-6">
-                                        <div className="hidden sm:flex flex-col items-end">
-                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Total</span>
-                                            <span className="text-lg font-black text-slate-900 tabular-nums leading-none">
-                                                {group.total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-400 font-bold">DT</span>
-                                            </span>
-                                        </div>
-                                        <div className={`p-2 rounded-full border transition-all duration-300 ${isExpanded ? 'bg-slate-900 text-white border-slate-900 rotate-180' : 'bg-white text-slate-400 border-slate-200'}`}>
-                                            <ChevronDown className="h-4 w-4" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {isExpanded && (
-                                    <div className="p-1.5 animate-in slide-in-from-top-2 duration-300">
-                                        <div className="bg-white rounded-[16px] border border-slate-100 overflow-hidden">
-                                            <div className="overflow-x-auto touch-pan-x pb-2">
-                                                <table className="w-full text-left border-collapse min-w-[700px] md:min-w-0">
-                                                    <thead className="bg-slate-50 border-b border-slate-100">
-                                                        <tr>
-                                                            <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-28">Date</th>
-                                                            <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Désignation</th>
-                                                            <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-20 text-center">Qté</th>
-                                                            <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-32 text-right">P.U</th>
-                                                            <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-32 text-right">Total</th>
-                                                            {isAdmin && <th className="px-5 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest w-16 text-center"></th>}
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-slate-50">
-                                                        {group.rows.map((row) => (
-                                                            <tr key={row.id} className="hover:bg-blue-50/20 transition-colors group">
-                                                                <td className="px-5 py-3">
-                                                                    <div className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-[9px] font-bold text-slate-600">{row.date}</div>
-                                                                </td>
-                                                                <td className="px-5 py-3 text-xs font-black text-slate-800 uppercase line-clamp-1">{normalizeArticleName(row.designation)}</td>
-                                                                <td className="px-5 py-3 text-center">
-                                                                    <span className="text-[10px] font-bold text-slate-600 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">{row.quantity}</span>
-                                                                </td>
-                                                                <td className="px-5 py-3 text-right font-bold text-slate-500 tabular-nums text-xs">{row.unitPrice.toFixed(3)}</td>
-                                                                <td className="px-5 py-3 text-right font-black text-slate-900 tabular-nums text-xs">{row.totalPrice.toFixed(3)}</td>
-                                                                {isAdmin && (
-                                                                    <td className="px-5 py-3 text-center">
-                                                                        <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                                                                            <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="p-1.5 hover:bg-blue-50 rounded-lg text-slate-300 hover:text-blue-600 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                                                                            <button onClick={(e) => { e.stopPropagation(); handleDelete(row); }} className="p-1.5 hover:bg-red-50 rounded-lg text-slate-300 hover:text-red-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
-                                                                        </div>
-                                                                    </td>
-                                                                )}
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
+                                            <div className={`p-3 rounded-full border-2 transition-all duration-500 ${isExpanded ? 'bg-slate-900 text-white border-slate-900 rotate-180 shadow-lg' : 'bg-white text-slate-200 border-slate-100 hover:border-slate-900 hover:text-slate-900'}`}>
+                                                <ChevronDown className="h-6 w-6" />
                                             </div>
                                         </div>
                                     </div>
-                                )}
-                            </div>
-                        );
-                    })}
+
+                                    {isExpanded && (
+                                        <motion.div
+                                            initial={{ opacity: 0, height: 0 }}
+                                            animate={{ opacity: 1, height: 'auto' }}
+                                            className="p-4"
+                                        >
+                                            <div className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm">
+                                                <div className="overflow-x-auto no-scrollbar">
+                                                    <table className="w-full text-left border-collapse">
+                                                        <thead>
+                                                            <tr className="bg-slate-950 text-white/40">
+                                                                <th className="px-8 py-5 text-[9px] font-black uppercase tracking-[0.2em] w-32">Émission</th>
+                                                                <th className="px-8 py-5 text-[9px] font-black uppercase tracking-[0.2em]">Désignation / Article</th>
+                                                                <th className="px-8 py-5 text-[9px] font-black uppercase tracking-[0.2em] w-24 text-center">Qté</th>
+                                                                <th className="px-8 py-5 text-[9px] font-black uppercase tracking-[0.2em] w-40 text-right">Unit. TTC</th>
+                                                                <th className="px-8 py-5 text-[9px] font-black uppercase tracking-[0.2em] w-40 text-right">Total TTC</th>
+                                                                {isAdmin && <th className="px-8 py-5 text-[9px] font-black uppercase tracking-[0.2em] w-28"></th>}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-50">
+                                                            {group.rows.map((row) => (
+                                                                <tr key={row.id} className="hover:bg-slate-50 transition-all group">
+                                                                    <td className="px-8 py-5">
+                                                                        <div className="flex flex-col">
+                                                                            <span className="text-[11px] font-black text-slate-900 font-mono tracking-tighter">{row.date}</span>
+                                                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Valide</span>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-8 py-5">
+                                                                        <div className="flex flex-col">
+                                                                            <span className="text-xs font-black text-slate-900 uppercase tracking-tight group-hover:text-[#FFB800] transition-colors">{normalizeArticleName(row.designation)}</span>
+                                                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 truncate max-w-[200px]">{row.reference}</span>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-8 py-5 text-center">
+                                                                        <span className="text-xs font-black text-slate-900 bg-slate-100 px-3 py-1.5 rounded-xl">{row.quantity}</span>
+                                                                    </td>
+                                                                    <td className="px-8 py-5 text-right font-bold text-slate-500 tabular-nums text-xs">{row.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                                                                    <td className="px-8 py-5 text-right font-black text-slate-900 tabular-nums text-sm group-hover:scale-105 transition-transform">{row.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                                                                    {isAdmin && (
+                                                                        <td className="px-8 py-5 text-center">
+                                                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                                                                                <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="p-2.5 bg-slate-50 hover:bg-slate-900 hover:text-white rounded-xl text-slate-400 transition-all shadow-sm"><Pencil className="h-4 w-4" /></button>
+                                                                                <button onClick={(e) => { e.stopPropagation(); handleDelete(row); }} className="p-2.5 bg-slate-50 hover:bg-rose-500 hover:text-white rounded-xl text-slate-400 transition-all shadow-sm"><Trash2 className="h-4 w-4" /></button>
+                                                                            </div>
+                                                                        </td>
+                                                                    )}
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </motion.div>
+                            );
+                        })}
+                    </div>
 
                     {articles.length === 0 && (
                         <div className="text-center py-20 opacity-50">

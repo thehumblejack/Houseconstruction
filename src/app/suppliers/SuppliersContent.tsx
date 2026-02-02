@@ -6,6 +6,7 @@ import { Search, Loader2, User, Phone, MapPin, Package, TrendingUp, TrendingDown
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
 import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface SupplierStats {
     id: string;
@@ -202,151 +203,186 @@ export default function SuppliersContent() {
     }
 
     return (
-        <div className="max-w-7xl mx-auto p-4 space-y-4 pb-20 font-jakarta">
-            {/* Minimal Header */}
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                <div className="flex items-center gap-4">
-                    <div className="bg-slate-900 text-white p-3 rounded-2xl shadow-lg shadow-slate-200">
-                        <User className="h-6 w-6" />
-                    </div>
-                    <div>
-                        <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight leading-none">Fournisseurs</h1>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest">Base de données & Comparaison</p>
-                    </div>
-                </div>
+        <div className="max-w-[1600px] mx-auto p-6 space-y-8 pb-32 font-jakarta bg-slate-50 min-h-screen">
+            {/* Premium Header */}
+            <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-slate-900 rounded-[2.5rem] p-8 md:p-10 text-white relative overflow-hidden shadow-2xl shadow-slate-900/20"
+            >
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-br from-blue-400/20 via-transparent to-transparent rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3"></div>
+                <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-purple-500/10 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/4"></div>
 
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                    <div className="relative flex-1 md:w-80">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                        <input
-                            type="text"
-                            placeholder="RECHERCHER..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full bg-slate-50 border-slate-100 border rounded-2xl py-3 pl-10 pr-4 text-xs font-black text-slate-900 placeholder:text-slate-300 focus:ring-4 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all uppercase"
-                        />
+                <div className="relative z-10 flex flex-col xl:flex-row justify-between items-center gap-8">
+                    <div className="space-y-4 w-full xl:w-auto text-center xl:text-left">
+                        <div className="flex items-center justify-center xl:justify-start gap-3">
+                            <div className="p-2.5 bg-white/10 rounded-2xl backdrop-blur-md border border-white/10 shadow-lg">
+                                <User className="h-5 w-5 text-blue-400" />
+                            </div>
+                            <span className="text-blue-400 font-black tracking-[0.2em] uppercase text-[10px]">Annuaire Partenaires</span>
+                        </div>
+                        <h1 className="text-3xl md:text-4xl lg:text-5xl font-black uppercase tracking-tighter leading-tight">
+                            Gestion <span className="text-blue-400">Fournisseurs</span>
+                            <br />
+                            <span className="text-white/40">& Relations Commerciales</span>
+                        </h1>
                     </div>
-                    {isAdmin && (
-                        <button
-                            onClick={() => setShowDeleted(!showDeleted)}
-                            className={`p-3 rounded-2xl transition-all shadow-lg ${showDeleted ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-400'}`}
-                            title={showDeleted ? 'Voir Actifs' : 'Voir Corbeille'}
-                        >
-                            <Clock className="h-5 w-5" />
-                        </button>
-                    )}
-                    {isAdmin && (
-                        <Link href="/expenses" className="bg-slate-900 hover:bg-slate-800 text-white p-3 rounded-2xl shadow-lg transition-all">
-                            <Plus className="h-5 w-5" />
-                        </Link>
-                    )}
+
+                    <div className="w-full xl:w-auto flex flex-col md:flex-row items-center gap-4 lg:gap-6">
+                        <div className="relative w-full md:w-[400px] group">
+                            <div className="absolute inset-0 bg-blue-400/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-hover:text-blue-400 transition-colors" />
+                            <input
+                                type="text"
+                                placeholder="Rechercher un partenaire..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full bg-white/10 backdrop-blur-xl border border-white/10 text-white h-14 pl-12 pr-4 rounded-2xl font-bold text-xs placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-400/30 transition-all uppercase"
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            {isAdmin && (
+                                <button
+                                    onClick={() => setShowDeleted(!showDeleted)}
+                                    className={`p-4 rounded-2xl backdrop-blur-md border transition-all duration-500 ${showDeleted ? 'bg-rose-500 text-white border-rose-400' : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10 hover:text-white'}`}
+                                >
+                                    <Trash2 className="h-5 w-5" />
+                                </button>
+                            )}
+                            {isAdmin && (
+                                <Link href="/expenses" className="bg-white text-slate-900 px-8 py-4 rounded-2xl font-black text-[10px] tracking-widest uppercase hover:bg-slate-100 transition-all shadow-xl shadow-white/5 active:scale-95 flex items-center gap-2">
+                                    <Plus className="h-4 w-4" /> NOUVEAU
+                                </Link>
+                            )}
+                        </div>
+                    </div>
                 </div>
+            </motion.div>
+
+            {/* Premium Quick Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {[
+                    { label: 'Engagé Global', value: stats.reduce((sum, s) => sum + s.totalCost, 0), unit: 'DT', color: 'slate', icon: Hash },
+                    { label: 'Total Payé', value: stats.reduce((sum, s) => sum + s.totalPaid, 0), unit: 'DT', color: 'emerald', icon: CheckCircle2 },
+                    { label: 'Dette Restante', value: Math.abs(stats.reduce((sum, s) => sum + (s.remaining < 0 ? s.remaining : 0), 0)), unit: 'DT', color: 'rose', icon: AlertCircle },
+                    { label: 'Partenaires Actifs', value: stats.filter(s => s.isSelected).length, total: stats.length, color: 'blue', icon: User }
+                ].map((stat, idx) => (
+                    <motion.div
+                        key={idx}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.1 }}
+                        className={`luxury-card bg-white p-6 border-none shadow-xl shadow-slate-200/40 group overflow-hidden relative`}
+                    >
+                        <div className={`absolute top-0 right-0 w-24 h-24 bg-${stat.color}-500/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2`}></div>
+                        <div className="flex items-center justify-between mb-4">
+                            <div className={`p-3 rounded-xl bg-${stat.color}-50 text-${stat.color}-600`}>
+                                <stat.icon className="h-5 w-5" />
+                            </div>
+                            <TrendingUp className="h-4 w-4 text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{stat.label}</p>
+                        <p className={`text-2xl font-black text-slate-900 tracking-tighter`}>
+                            {stat.value.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                            {stat.unit && <span className="text-xs text-slate-300 ml-1.5">{stat.unit}</span>}
+                            {stat.total && <span className="text-xs text-slate-300 ml-1.5">/ {stat.total}</span>}
+                        </p>
+                    </motion.div>
+                ))}
             </div>
 
-            {/* Quick Stats Banner - Very Compact */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="bg-slate-900 text-white p-4 rounded-2xl">
-                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Engagé Global</p>
-                    <p className="text-lg font-black">{stats.reduce((sum, s) => sum + s.totalCost, 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] opacity-40">DT</span></p>
-                </div>
-                <div className="bg-white border border-slate-200 p-4 rounded-2xl">
-                    <p className="text-[8px] font-black text-emerald-500 uppercase tracking-widest mb-1">Total Payé</p>
-                    <p className="text-lg font-black text-slate-900">{stats.reduce((sum, s) => sum + s.totalPaid, 0).toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
-                </div>
-                <div className="bg-white border border-slate-200 p-4 rounded-2xl">
-                    <p className="text-[8px] font-black text-red-500 uppercase tracking-widest mb-1">Dette Totale</p>
-                    <p className="text-lg font-black text-red-600">
-                        {Math.abs(stats.reduce((sum, s) => sum + (s.remaining < 0 ? s.remaining : 0), 0)).toLocaleString(undefined, { minimumFractionDigits: 3 })}
-                    </p>
-                </div>
-                <div className="bg-blue-600 text-white p-4 rounded-2xl">
-                    <p className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1">Fournisseurs Actifs</p>
-                    <p className="text-lg font-black">{stats.filter(s => s.isSelected).length} / {stats.length}</p>
-                </div>
-            </div>
-
-            {/* Compact Table View */}
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
+            {/* Premium Supplier Table */}
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="luxury-card bg-white border-none shadow-2xl shadow-slate-200/50 overflow-hidden"
+            >
+                <div className="overflow-x-auto custom-scrollbar">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="bg-slate-50/50 border-b border-slate-100">
-                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest w-12 text-center">In</th>
-                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Fournisseur</th>
-                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Catégorie</th>
-                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Rating Prix</th>
-                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Dépensé</th>
-                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Solde</th>
-                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                            <tr className="bg-slate-900">
+                                <th className="px-8 py-6 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] w-20 text-center">Status</th>
+                                <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em]">Partenaire</th>
+                                <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em]">Secteur d'Activité</th>
+                                <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em] text-center">Performance Prix</th>
+                                <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em] text-right">Dépenses TTC</th>
+                                <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em] text-right">Solde Actuel</th>
+                                <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em] text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
+                        <tbody className="divide-y divide-slate-100">
                             {filteredSuppliers.map(s => {
                                 const category = {
-                                    beton: 'BÉTON / BPE',
-                                    fer: 'MATÉRIAUX / FER',
-                                    ahmed: 'MATÉRIAUX / DIVERS',
-                                    ali: 'MAIN D\'OEUVRE',
-                                    default: 'GÉNÉRAL'
-                                }[s.id as string] || 'GÉNÉRAL';
+                                    beton: 'BÉTON PRESTIGE',
+                                    fer: 'ACIERS & ARMATEURS',
+                                    ahmed: 'QUINCAILLERIE GENERALE',
+                                    ali: 'MAÎTRISE D\'OEUVRE',
+                                    default: 'GÉNÉRAL PROJET'
+                                }[s.id as string] || 'GÉNÉRAL PROJET';
 
                                 return (
-                                    <tr key={s.id} className={`hover:bg-slate-50/50 transition-colors group ${!s.isSelected ? 'opacity-60' : ''}`}>
-                                        <td className="px-6 py-4 text-center">
-                                            <div className={`w-5 h-5 rounded-md border-2 mx-auto flex items-center justify-center transition-all ${s.isSelected ? 'bg-slate-900 border-slate-900 text-white' : 'border-slate-200'}`}>
-                                                {s.isSelected && <CheckCircle2 className="h-3 w-3" />}
+                                    <tr key={s.id} className={`hover:bg-slate-50 transition-all duration-300 group ${!s.isSelected ? 'opacity-40 grayscale-[0.5]' : ''}`}>
+                                        <td className="px-8 py-6 text-center">
+                                            <div className={`w-6 h-6 rounded-lg border-2 mx-auto flex items-center justify-center transition-all duration-500 ${s.isSelected ? 'bg-slate-900 border-slate-900 text-white shadow-lg' : 'border-slate-200 group-hover:border-slate-400'}`}>
+                                                {s.isSelected && <CheckCircle2 className="h-3.5 w-3.5" />}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-10 h-10 rounded-xl ${s.color} flex items-center justify-center text-white text-xs font-black shadow-sm group-hover:scale-110 transition-transform`}>
+                                        <td className="px-8 py-6">
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-14 h-14 rounded-2xl ${s.color} flex items-center justify-center text-white text-lg font-black shadow-2xl transform group-hover:scale-110 group-hover:rotate-3 transition-all duration-500`}>
                                                     {s.name.charAt(0).toUpperCase()}
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-black text-slate-900 uppercase tracking-tight">{s.name}</p>
-                                                    <div className="flex items-center gap-2 mt-0.5 text-[10px] font-bold text-slate-400 uppercase">
-                                                        <span>{s.id}</span>
+                                                    <p className="text-base font-black text-slate-900 uppercase tracking-tighter group-hover:text-blue-600 transition-colors uppercase">{s.name}</p>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{s.id}</span>
                                                     </div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <span className="text-[9px] font-black text-slate-400 border border-slate-100 px-2 py-1 rounded bg-slate-50 whitespace-nowrap">{category}</span>
+                                        <td className="px-8 py-6">
+                                            <div className="inline-flex items-center px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-100 transition-colors group-hover:bg-blue-50 group-hover:border-blue-100">
+                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest group-hover:text-blue-500">{category}</span>
+                                            </div>
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center justify-center gap-1">
+                                        <td className="px-8 py-6">
+                                            <div className="flex items-center justify-center gap-1.5">
                                                 {[1, 2, 3].map((star) => (
                                                     <div
                                                         key={star}
-                                                        className={`w-4 h-1.5 rounded-full transition-all ${s.bestPriceCount >= (star * 2) ? 'bg-emerald-500' : 'bg-slate-100'}`}
+                                                        className={`w-6 h-1.5 rounded-full transition-all duration-700 ${s.bestPriceCount >= (star * 2) ? 'bg-emerald-500 shadow-sm shadow-emerald-500/20' : 'bg-slate-100 group-hover:bg-slate-200'}`}
                                                         title={s.bestPriceCount > 0 ? `${s.bestPriceCount} articles au meilleur prix` : 'Pas d\'articles comparés'}
                                                     />
                                                 ))}
                                                 {s.bestPriceCount > 0 && (
-                                                    <span className="ml-2 text-[10px] font-black text-emerald-600 bg-emerald-50 px-1.5 rounded uppercase">TOP</span>
+                                                    <span className="ml-2 text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg uppercase tracking-tighter">PREMIUM</span>
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <p className="text-[13px] font-black text-slate-900 tabular-nums">
-                                                {s.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}
-                                            </p>
-                                            <p className="text-[10px] font-bold text-slate-300 uppercase">{s.articleCount} arts.</p>
+                                        <td className="px-8 py-6 text-right">
+                                            <div className="flex flex-col items-end">
+                                                <p className="text-base font-black text-slate-900 tabular-nums tracking-tighter">
+                                                    {s.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                                </p>
+                                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{s.articleCount} ARTICLES</p>
+                                            </div>
                                         </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <span className={`text-[13px] font-black tabular-nums px-2 py-1 rounded-lg ${s.remaining < 0
-                                                ? 'text-red-600 bg-red-50'
-                                                : s.remaining > 0 ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 bg-slate-50'
+                                        <td className="px-8 py-6 text-right">
+                                            <span className={`text-base font-black tabular-nums px-4 py-2 rounded-2xl tracking-tighter transition-all duration-500 ${s.remaining < 0
+                                                ? 'text-rose-600 bg-rose-50 group-hover:bg-rose-100'
+                                                : s.remaining > 0 ? 'text-emerald-600 bg-emerald-50 group-hover:bg-emerald-100' : 'text-slate-400 bg-slate-50'
                                                 }`}>
                                                 {s.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex items-center justify-end gap-1">
+                                        <td className="px-8 py-6 text-right">
+                                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all duration-500">
                                                 <Link
                                                     href={`/expenses?tab=${s.id}`}
-                                                    className="p-2 hover:bg-slate-900 hover:text-white text-slate-400 rounded-xl transition-all"
-                                                    title="Voir Détails"
+                                                    className="p-3 bg-slate-50 hover:bg-slate-900 hover:text-white text-slate-400 rounded-xl transition-all shadow-sm"
+                                                    title="Détails"
                                                 >
                                                     <ChevronRight className="h-4 w-4" />
                                                 </Link>
@@ -356,7 +392,7 @@ export default function SuppliersContent() {
                                                             setEditingNotesId(s.id);
                                                             setNotesValue(s.notes || '');
                                                         }}
-                                                        className="p-2 hover:bg-slate-100 text-slate-400 rounded-xl transition-all"
+                                                        className="p-3 bg-slate-50 hover:bg-blue-500 hover:text-white text-slate-400 rounded-xl transition-all shadow-sm"
                                                         title="Notes"
                                                     >
                                                         <FileText className="h-4 w-4" />
@@ -369,7 +405,7 @@ export default function SuppliersContent() {
                                                             setShowDeleteConfirmModal(true);
                                                             setDeleteConfirmInput('');
                                                         }}
-                                                        className="p-2 hover:bg-red-50 hover:text-red-500 text-slate-400 rounded-xl transition-all"
+                                                        className="p-3 bg-slate-50 hover:bg-rose-500 hover:text-white text-slate-400 rounded-xl transition-all shadow-sm"
                                                         title="Supprimer"
                                                     >
                                                         <Trash2 className="h-4 w-4" />
@@ -378,10 +414,9 @@ export default function SuppliersContent() {
                                                 {isAdmin && showDeleted && (
                                                     <button
                                                         onClick={() => handleRestoreGlobalSupplier(s.id)}
-                                                        className="px-3 py-1.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center gap-2"
+                                                        className="luxury-button-secondary scale-90"
                                                     >
-                                                        <Clock className="h-3.5 w-3.5" />
-                                                        Restaurer
+                                                        RESTAURER
                                                     </button>
                                                 )}
                                             </div>
@@ -392,47 +427,62 @@ export default function SuppliersContent() {
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </motion.div>
 
             {/* Notes Editing Modal */}
-            {editingNotesId && (
-                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                    <div className="bg-white p-8 rounded-[2rem] w-full max-w-md shadow-2xl animate-in zoom-in-95">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-black uppercase tracking-tighter">Éditer Notes</h3>
-                            <button onClick={() => setEditingNotesId(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400">
-                                <X className="h-6 w-6" />
-                            </button>
-                        </div>
-                        <textarea
-                            className="w-full h-40 bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl text-sm font-medium text-slate-700 focus:border-slate-900 outline-none transition-all resize-none"
-                            placeholder="Écrivez vos notes ici..."
-                            value={notesValue}
-                            onChange={(e) => setNotesValue(e.target.value)}
-                        />
-                        <div className="mt-6 flex gap-3">
-                            <button
-                                onClick={() => setEditingNotesId(null)}
-                                className="flex-1 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors bg-slate-50 rounded-2xl"
-                            >
-                                Annuler
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    const { error } = await supabase.from('suppliers').update({ notes: notesValue }).eq('id', editingNotesId);
-                                    if (!error) {
-                                        fetchData();
-                                        setEditingNotesId(null);
-                                    }
-                                }}
-                                className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-slate-200 transition-all"
-                            >
-                                Enregistrer
-                            </button>
-                        </div>
+            <AnimatePresence>
+                {editingNotesId && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="bg-white p-8 rounded-[3rem] w-full max-w-lg shadow-2xl border border-slate-100"
+                        >
+                            <div className="flex justify-between items-center mb-8">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+                                        <FileText className="h-6 w-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black uppercase tracking-tighter">Notes Partenaire</h3>
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Édition des informations confidentielles</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setEditingNotesId(null)} className="p-3 hover:bg-slate-50 rounded-2xl transition-colors text-slate-300 hover:text-slate-900">
+                                    <X className="h-6 w-6" />
+                                </button>
+                            </div>
+                            <textarea
+                                className="w-full h-60 bg-slate-50 border-2 border-slate-100 p-6 rounded-[2rem] text-sm font-medium text-slate-700 focus:border-slate-900 outline-none transition-all resize-none shadow-inner"
+                                placeholder="Saisissez vos remarques sur ce fournisseur ici..."
+                                value={notesValue}
+                                onChange={(e) => setNotesValue(e.target.value)}
+                            />
+                            <div className="mt-8 flex gap-4">
+                                <button
+                                    onClick={() => setEditingNotesId(null)}
+                                    className="flex-1 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:bg-slate-50 rounded-2xl transition-all"
+                                >
+                                    Fermer
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        const { error } = await supabase.from('suppliers').update({ notes: notesValue }).eq('id', editingNotesId);
+                                        if (!error) {
+                                            fetchData();
+                                            setEditingNotesId(null);
+                                        }
+                                    }}
+                                    className="flex-1 py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-slate-900/20 active:scale-95 transition-all"
+                                >
+                                    Mettre à jour
+                                </button>
+                            </div>
+                        </motion.div>
                     </div>
-                </div>
-            )}
+                )}
+            </AnimatePresence>
 
             {filteredSuppliers.length === 0 && (
                 <div className="text-center py-20 bg-white rounded-[3rem] border-2 border-dashed border-slate-100">

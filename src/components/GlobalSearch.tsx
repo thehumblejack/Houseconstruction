@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Search, X, Loader2, Receipt, ShoppingCart, User, ArrowRight, Wallet } from 'lucide-react';
+import { Search, X, Loader2, Receipt, ShoppingCart, User, ArrowRight, Wallet, Command, History, Star } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
 
 type SearchResult = {
     id: string;
@@ -26,10 +27,8 @@ export default function GlobalSearch() {
     const inputRef = useRef<HTMLInputElement>(null);
     const supabase = createClient();
 
-    // Toggle logic
     const toggleSearch = () => setIsOpen(!isOpen);
 
-    // Close on Escape
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
@@ -43,14 +42,12 @@ export default function GlobalSearch() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
-    // Focus input on open
     useEffect(() => {
         if (isOpen) {
             setTimeout(() => inputRef.current?.focus(), 100);
         }
     }, [isOpen]);
 
-    // Search Logic
     useEffect(() => {
         const h = setTimeout(async () => {
             if (!query || query.length < 2) {
@@ -63,7 +60,6 @@ export default function GlobalSearch() {
                 const searchResults: SearchResult[] = [];
                 const searchTerm = `%${query}%`;
 
-                // 1. Search Suppliers
                 const { data: suppliers } = await supabase
                     .from('suppliers')
                     .select('id, name, description')
@@ -76,13 +72,10 @@ export default function GlobalSearch() {
                         type: 'supplier',
                         title: s.name,
                         subtitle: s.description || 'Fournisseur',
-                        url: `/expenses?tab=${s.id}`, // Open specific tab
+                        url: `/expenses?tab=${s.id}`,
                     }));
                 }
 
-                // 2. Search Expenses (Invoices)
-                // We assume there is a relationship or we search raw expenses
-                // Ideally join with supplier name if needed, but for now raw search
                 const { data: expenses } = await supabase
                     .from('expenses')
                     .select('id, item, price, date, supplier_id, status')
@@ -101,7 +94,6 @@ export default function GlobalSearch() {
                     }));
                 }
 
-                // 3. Search Orders
                 const { data: orders } = await supabase
                     .from('orders')
                     .select('id, supplier_name, date, status, items')
@@ -120,9 +112,6 @@ export default function GlobalSearch() {
                     }));
                 }
 
-                // 4. Search Deposits (Money paid)
-                // Use implicit join or raw query if possible, or just amount/ref
-                // Checking text fields like 'ref', 'payer'
                 const { data: deposits } = await supabase
                     .from('deposits')
                     .select('id, amount, date, ref, payer')
@@ -141,118 +130,184 @@ export default function GlobalSearch() {
                 }
 
                 setResults(searchResults);
-
             } catch (error) {
                 console.error("Search error", error);
             } finally {
                 setLoading(false);
             }
-        }, 300); // Debounce
+        }, 300);
 
         return () => clearTimeout(h);
     }, [query, supabase]);
 
+    if (!mounted) return null;
 
-    if (!isOpen || !mounted) {
-        return (
+    return (
+        <>
             <button
                 onClick={toggleSearch}
-                className="p-2 md:px-4 md:py-2 md:bg-white/10 md:hover:bg-white/20 rounded-full text-slate-400 hover:text-white transition-all flex items-center gap-2 group border border-transparent md:border-white/5"
+                className="group flex items-center gap-3 px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-full transition-all duration-300"
             >
-                <Search className="h-5 w-5 group-hover:scale-110 transition-transform" />
-                <span className="hidden md:block text-xs font-bold opacity-60">Rechercher... (⌘K)</span>
+                <Search className="h-4 w-4 text-slate-400 group-hover:text-[#FFB800] transition-colors" />
+                <span className="hidden lg:block text-[10px] font-black tracking-widest text-slate-400 group-hover:text-slate-200 transition-colors uppercase">RECHERCHER...</span>
+                <div className="hidden lg:flex items-center gap-1.5 pl-2 border-l border-white/10 ml-1">
+                    <Command className="h-3 w-3 text-slate-500" strokeWidth={3} />
+                    <span className="text-[10px] font-black text-slate-500">K</span>
+                </div>
             </button>
-        );
-    }
 
-    return createPortal(
-        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] px-4 font-jakarta">
-            {/* Backdrop */}
-            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xl animate-in fade-in duration-300" onClick={toggleSearch} />
+            {createPortal(
+                <AnimatePresence>
+                    {isOpen && (
+                        <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[15vh] px-4 md:px-6 font-jakarta">
+                            {/* Backdrop */}
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                onClick={toggleSearch}
+                                className="absolute inset-0 bg-slate-950/60 backdrop-blur-2xl"
+                            />
 
-            {/* Modal */}
-            <div className="relative bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                {/* Header Input */}
-                <div className="flex items-center gap-3 p-4 border-b border-slate-100">
-                    <Search className="h-5 w-5 text-slate-400" />
-                    <input
-                        ref={inputRef}
-                        className="flex-1 text-lg font-medium outline-none placeholder:text-slate-300 text-slate-800 bg-transparent"
-                        placeholder="Chercher factures, commandes, montants..."
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                    />
-                    {loading ? (
-                        <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
-                    ) : (
-                        <button onClick={toggleSearch} className="p-1 hover:bg-slate-100 rounded-full transition-colors">
-                            <X className="h-5 w-5 text-slate-400" />
-                        </button>
-                    )}
-                </div>
-
-                {/* Results List */}
-                <div className="max-h-[60vh] overflow-y-auto p-2 bg-slate-50/50">
-                    {results.length === 0 && query.length > 1 && !loading && (
-                        <div className="p-8 text-center text-slate-400">
-                            <p className="text-sm font-bold">Aucun résultat trouvé pour "{query}"</p>
-                        </div>
-                    )}
-
-                    {results.length === 0 && query.length < 2 && (
-                        <div className="p-8 text-center text-slate-400">
-                            <p className="text-xs font-bold uppercase tracking-widest opacity-50">Commencez à taper pour chercher</p>
-                        </div>
-                    )}
-
-                    <div className="space-y-1">
-                        {results.map((result) => (
-                            <Link
-                                key={result.id}
-                                href={result.url}
-                                onClick={() => setIsOpen(false)}
-                                className="flex items-center gap-4 p-3 rounded-xl hover:bg-white hover:shadow-sm border border-transparent hover:border-slate-100 group transition-all"
+                            {/* Modal Container */}
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                className="relative bg-[#F8FAFC] w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden border border-white/20"
                             >
-                                <div className={`
-                                    p-2 rounded-lg 
-                                    ${result.type === 'expense' ? 'bg-amber-100 text-amber-600' : ''}
-                                    ${result.type === 'order' ? 'bg-blue-100 text-blue-600' : ''}
-                                    ${result.type === 'supplier' ? 'bg-slate-100 text-slate-600' : ''}
-                                    ${result.type === 'deposit' ? 'bg-emerald-100 text-emerald-600' : ''}
-                                `}>
-                                    {result.type === 'expense' && <Receipt className="h-5 w-5" />}
-                                    {result.type === 'order' && <ShoppingCart className="h-5 w-5" />}
-                                    {result.type === 'supplier' && <User className="h-5 w-5" />}
-                                    {result.type === 'deposit' && <Wallet className="h-5 w-5" />}
+                                {/* Header / Search Input */}
+                                <div className="p-6 pb-0 relative">
+                                    <div className="flex items-center gap-6 p-2 relative bg-white rounded-2xl shadow-sm border border-slate-100 group focus-within:ring-2 focus-within:ring-[#FFB800]/20 transition-all duration-300">
+                                        <div className={`p-2.5 rounded-xl transition-colors ${loading ? 'bg-blue-50 text-blue-500' : 'bg-slate-50 text-slate-400 group-focus-within:bg-[#FFB800]/10 group-focus-within:text-[#FFB800]'}`}>
+                                            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
+                                        </div>
+                                        <input
+                                            ref={inputRef}
+                                            className="flex-1 text-lg font-bold outline-none placeholder:text-slate-300 text-slate-900 bg-transparent min-w-0"
+                                            placeholder="Cherchez n'importe quoi..."
+                                            value={query}
+                                            onChange={(e) => setQuery(e.target.value)}
+                                        />
+                                        <button
+                                            onClick={toggleSearch}
+                                            className="p-2 hover:bg-slate-100 rounded-xl transition-all group/close"
+                                        >
+                                            <X className="h-5 w-5 text-slate-300 group-hover/close:text-slate-600 group-hover/close:rotate-90 transition-all duration-300" />
+                                        </button>
+                                    </div>
+
+                                    {/* Shortcuts / Quick Filters */}
+                                    <div className="flex items-center gap-2 mt-6 pb-2 overflow-x-auto no-scrollbar">
+                                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-100 rounded-lg whitespace-nowrap">
+                                            <History className="h-3 w-3 text-slate-400" />
+                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">RÉCENT</span>
+                                        </div>
+                                        {['Factures', 'Commandes', 'Fournisseurs', 'Acomptes'].map((cat) => (
+                                            <button key={cat} className="px-3 py-1.5 hover:bg-[#FFB800]/10 text-slate-400 hover:text-[#FFB800] border border-transparent rounded-lg text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap">
+                                                {cat}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
 
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between">
-                                        <h4 className="text-sm font-bold text-slate-800 truncate">{result.title}</h4>
-                                        {result.date && <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{result.date}</span>}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <p className="text-xs text-slate-500 truncate">{result.subtitle}</p>
-                                        {result.status && (
-                                            <span className={`text-[8px] font-black uppercase px-1.5 rounded-sm ${result.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                                                {result.status}
-                                            </span>
-                                        )}
+                                {/* Results Area */}
+                                <div className="max-h-[50vh] overflow-y-auto mt-4 px-6 pb-6 custom-scrollbar">
+                                    {results.length === 0 && query.length > 1 && !loading && (
+                                        <div className="py-20 text-center bg-white/50 rounded-3xl border border-dashed border-slate-200">
+                                            <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                                <X className="h-8 w-8 text-slate-200" />
+                                            </div>
+                                            <p className="text-sm font-black text-slate-900 uppercase tracking-tight">Aucun résultat</p>
+                                            <p className="text-xs text-slate-400 mt-1 font-medium">Recherchez avec d'autres mots-clés.</p>
+                                        </div>
+                                    )}
+
+                                    {results.length === 0 && query.length < 2 && (
+                                        <div className="py-12 px-4 space-y-6">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
+                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Suggestions</span>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                {['Dernières dépenses', 'Fournisseurs actifs', 'Commandes en cours'].map(s => (
+                                                    <div key={s} className="p-4 bg-white border border-slate-100 rounded-2xl flex items-center justify-between hover:border-[#FFB800]/30 hover:shadow-lg hover:shadow-[#FFB800]/5 cursor-pointer transition-all duration-300 group">
+                                                        <span className="text-[11px] font-bold text-slate-600 group-hover:text-slate-900">{s}</span>
+                                                        <ArrowRight className="h-3.5 w-3.5 text-slate-200 group-hover:text-[#FFB800] transition-colors" />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-2">
+                                        <AnimatePresence mode='popLayout'>
+                                            {results.map((result, i) => (
+                                                <motion.div
+                                                    key={result.id}
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    transition={{ delay: i * 0.05 }}
+                                                >
+                                                    <Link
+                                                        href={result.url}
+                                                        onClick={() => setIsOpen(false)}
+                                                        className="flex items-center gap-5 p-4 bg-white rounded-2xl border border-slate-100 hover:border-[#FFB800]/50 hover:shadow-xl hover:shadow-[#FFB800]/5 group transition-all duration-300 relative overflow-hidden"
+                                                    >
+                                                        <div className={`
+                                                            p-3 rounded-xl transition-colors duration-300
+                                                            ${result.type === 'expense' ? 'bg-amber-50 text-amber-500 group-hover:bg-amber-500 group-hover:text-white' : ''}
+                                                            ${result.type === 'order' ? 'bg-blue-50 text-blue-500 group-hover:bg-blue-500 group-hover:text-white' : ''}
+                                                            ${result.type === 'supplier' ? 'bg-slate-50 text-slate-400 group-hover:bg-slate-900 group-hover:text-white' : ''}
+                                                            ${result.type === 'deposit' ? 'bg-emerald-50 text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white' : ''}
+                                                        `}>
+                                                            {result.type === 'expense' && <Receipt className="h-5 w-5" />}
+                                                            {result.type === 'order' && <ShoppingCart className="h-5 w-5" />}
+                                                            {result.type === 'supplier' && <User className="h-5 w-5" />}
+                                                            {result.type === 'deposit' && <Wallet className="h-5 w-5" />}
+                                                        </div>
+
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between mb-0.5">
+                                                                <h4 className="text-sm font-black text-slate-900 truncate group-hover:text-[#FFB800] transition-colors">{result.title}</h4>
+                                                                {result.date && <span className="text-[9px] font-black text-slate-400 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-100">{result.date}</span>}
+                                                            </div>
+                                                            <div className="flex items-center gap-3">
+                                                                <p className="text-[11px] text-slate-500 font-medium truncate uppercase tracking-widest opacity-60">{result.subtitle}</p>
+                                                                {result.status && (
+                                                                    <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${result.status === 'paid' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
+                                                                        {result.status}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="w-10 h-10 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 group-hover:bg-[#FFB800]/10 transition-all duration-500">
+                                                            <ArrowRight className="h-4 w-4 text-[#FFB800]" />
+                                                        </div>
+                                                    </Link>
+                                                </motion.div>
+                                            ))}
+                                        </AnimatePresence>
                                     </div>
                                 </div>
 
-                                <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100" />
-                            </Link>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="p-2 bg-slate-50 border-t border-slate-100 text-[10px] font-bold text-slate-400 uppercase text-center flex justify-between px-4">
-                    <span>Recherche Intelligente</span>
-                    <span>ESC pour fermer</span>
-                </div>
-            </div>
-        </div>,
-        document.body
+                                {/* Footer Info */}
+                                <div className="p-4 bg-slate-900 border-t border-white/5 flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-8">
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-1.5">
+                                            <kbd className="bg-white/10 px-1.5 py-0.5 rounded text-white border border-white/5 font-mono">ESC</kbd>
+                                            <span>Fermer</span>
+                                        </div>
+                                    </div>
+                                    <span className="text-[#FFB800] opacity-80">Recherche Premium HE</span>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
+        </>
     );
 }

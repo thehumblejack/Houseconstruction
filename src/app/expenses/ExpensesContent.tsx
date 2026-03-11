@@ -20,6 +20,28 @@ import autoTable from 'jspdf-autotable';
 // --- Types ---
 type PaymentStatus = 'paid' | 'pending';
 
+const MOSTAKBEL_PRICES: Record<string, number> = {
+    "FER ROND DE 06/": 2.650,
+    "FER ROND DE 08/": 13.000,
+    "FER ROND DE 10/": 18.000,
+    "FER ROND DE 12/": 25.000,
+    "FER ROND DE 14/": 36.000,
+    "FER ROND DE 16/": 48.000,
+    "BRIQUE 12": 0.680,
+    "BRIQUE 8": 0.650,
+    "OM SABLE": 120.000,
+    "OM GRAVIER": 140.000,
+    "BERLIET - SABLE SUPER M3 (1m3)": 350.000,
+    "BERLIET - GRAVIER 04/15 (1m3)": 370.000
+};
+
+const BEN_HDEYA_PRICES: Record<string, number> = {
+    "FER 08": 13.000,
+    "FER 16": 48.000,
+    "OM SABLE": 90.000,
+    "OM GRAVIER": 110.000
+};
+
 interface InvoiceItem {
     code: string;
     designation: string;
@@ -321,6 +343,87 @@ function ExpensesContentMain() {
     const searchParams = useSearchParams();
     const supabase = useMemo(() => createClient(), []);
 
+    const availableArticles = useMemo(() => {
+        const articlesMap = new Map<string, { name: string, price: number, supplier: string, isOfficial: boolean }>();
+        
+        // 1. Helper to normalize names (copied from ArticlesContent for consistency)
+        const normalize = (n: string) => {
+            const upper = n.toUpperCase().trim();
+            // Expanded normalization rules for better matching
+            if (upper.includes("SABLE") && (upper.includes("OM") || upper === "SABLE")) return "OM SABLE";
+            if (upper.includes("GRAVIER") && (upper.includes("OM") || upper === "GRAVIER")) return "OM GRAVIER";
+            return upper;
+        };
+
+        // 2. Inject Virtual Official Prices (Mostakbel)
+        Object.entries(MOSTAKBEL_PRICES).forEach(([designation, price]) => {
+            const name = normalize(designation);
+            // Unique key to avoid collisions, but group by name/supplier
+            const key = `${name}|STE MOSTAKBEL|OFFICIAL`;
+            articlesMap.set(key, { name, price, supplier: 'STE MOSTAKBEL', isOfficial: true });
+        });
+
+        // 3. Inject Virtual Official Prices (Ben Hdeya)
+        Object.entries(BEN_HDEYA_PRICES).forEach(([designation, price]) => {
+            const name = normalize(designation);
+            const key = `${name}|AHMED BEN HDYA|OFFICIAL`;
+            articlesMap.set(key, { name, price, supplier: 'AHMED BEN HDYA', isOfficial: true });
+        });
+
+        // 4. Collect from all historical data (suppliers state)
+        Object.values(suppliers).forEach(s => {
+            const supplierName = s.name.toUpperCase();
+            
+            s.expenses?.forEach(e => {
+                // Detailed items
+                if (e.items && e.items.length > 0) {
+                    e.items.forEach(i => {
+                        if (i.designation) {
+                            const name = normalize(i.designation);
+                            const key = `${name}|${supplierName}|REAL`;
+                            // Don't overwrite if we already have it from this supplier (prefer latest/existing)
+                            if (!articlesMap.has(key)) {
+                                articlesMap.set(key, { name, price: i.unitPrice, supplier: supplierName, isOfficial: false });
+                            }
+                        }
+                    });
+                } 
+                
+                // Main field (if items is empty)
+                if ((!e.items || e.items.length === 0) && e.item && e.item.length > 2 && 
+                    !e.item.toUpperCase().includes('FACT') && 
+                    !e.item.toUpperCase().includes('BON') &&
+                    !e.item.toUpperCase().includes('DEBOUR') &&
+                    !e.item.toUpperCase().includes('AVANCE')) {
+                    
+                    const name = normalize(e.item);
+                    const qty = parseFloat(e.quantity) || 1;
+                    const pricePerUnit = e.price / qty;
+                    const key = `${name}|${supplierName}|REAL`;
+                    
+                    if (!articlesMap.has(key)) {
+                        articlesMap.set(key, { name, price: pricePerUnit, supplier: supplierName, isOfficial: false });
+                    }
+                }
+            });
+        });
+
+        return Array.from(articlesMap.values())
+            .filter((a: any) => a.name.length >= 1)
+            .sort((a, b) => {
+                // 1. Official ones strictly first
+                if (a.isOfficial && !b.isOfficial) return -1;
+                if (!a.isOfficial && b.isOfficial) return 1;
+                // 2. Then alphabetical by name
+                const nameComp = a.name.localeCompare(b.name);
+                if (nameComp !== 0) return nameComp;
+                // 3. Then alphabetical by supplier
+                return a.supplier.localeCompare(b.supplier);
+            });
+    }, [suppliers]);
+
+    const [activeArticleSearchIdx, setActiveArticleSearchIdx] = useState<number | null>(null);
+
     // Sync URL params to State
     useEffect(() => {
         if (!loading && Object.keys(suppliers).length > 0) {
@@ -350,6 +453,10 @@ function ExpensesContentMain() {
     useEffect(() => {
         setSessionLinkedSuppliers(new Set());
     }, [currentProject?.id]);
+
+    useEffect(() => {
+        setSelectedExpenseIds(new Set());
+    }, [activeTab]);
 
     const fetchData = useCallback(async () => {
         if (!currentProject) {
@@ -566,6 +673,7 @@ function ExpensesContentMain() {
     }, [fetchData, supabase]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(new Set());
     const [showBreakdown, setShowBreakdown] = useState(false);
     const [showAllPending, setShowAllPending] = useState(false);
     const [showAllPaid, setShowAllPaid] = useState(false);
@@ -1019,6 +1127,31 @@ function ExpensesContentMain() {
     const totalRemainingGlobal = supplierStats.reduce((sum, s) => sum + s.remaining, 0);
 
     const currentSupplier = suppliers[activeTab];
+
+    const selectedTotal = useMemo(() => {
+        if (!currentSupplier) return 0;
+        return currentSupplier.expenses
+            .filter(e => selectedExpenseIds.has(e.id))
+            .reduce((sum, e) => sum + e.price, 0);
+    }, [currentSupplier, selectedExpenseIds]);
+
+    const toggleSelectExpense = (id: string) => {
+        setSelectedExpenseIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (!currentSupplier) return;
+        if (selectedExpenseIds.size === currentSupplier.expenses.length) {
+            setSelectedExpenseIds(new Set());
+        } else {
+            setSelectedExpenseIds(new Set(currentSupplier.expenses.map(e => e.id)));
+        }
+    };
 
     const handleSort = (key: 'date' | 'price') => {
         setSortConfig(current => ({
@@ -1503,6 +1636,8 @@ function ExpensesContentMain() {
             status: 'pending',
             quantity: '1'
         });
+        setInvoiceItems([]);
+        setActiveArticleSearchIdx(null);
     };
 
     const handleSaveExpense = async () => {
@@ -1519,11 +1654,10 @@ function ExpensesContentMain() {
         }
 
         try {
-            // Format date from YYYY-MM-DD to DD/MM/YYYY if needed, 
-            // but the table seems to expect DD/MM/YYYY strings based on previous code.
-            // Let's check how dates are stored.
             const dateObj = new Date(newExpenseData.date);
             const formattedDate = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth() + 1).toString().padStart(2, '0')}/${dateObj.getFullYear()}`;
+
+            let expenseId = editingExpenseId;
 
             if (editingExpenseId) {
                 const { error } = await supabase.from('expenses').update({
@@ -1534,8 +1668,11 @@ function ExpensesContentMain() {
                     quantity: newExpenseData.quantity
                 }).eq('id', editingExpenseId);
                 if (error) throw error;
+
+                // Sync Items: Simplest is Delete then Insert
+                await supabase.from('invoice_items').delete().eq('expense_id', editingExpenseId);
             } else {
-                const { error } = await supabase.from('expenses').insert({
+                const { data: newExp, error } = await supabase.from('expenses').insert({
                     project_id: project.id,
                     supplier_id: activeTab,
                     item: newExpenseData.item,
@@ -1543,8 +1680,28 @@ function ExpensesContentMain() {
                     date: formattedDate,
                     status: newExpenseData.status,
                     quantity: newExpenseData.quantity
-                });
+                }).select().single();
                 if (error) throw error;
+                expenseId = newExp?.id;
+            }
+
+            // Insert new items if any
+            if (expenseId && invoiceItems.length > 0) {
+                const finalItems = invoiceItems
+                    .filter(i => i.designation.trim() !== '')
+                    .map(i => ({
+                        project_id: project.id,
+                        expense_id: expenseId,
+                        designation: i.designation.toUpperCase(),
+                        quantity: i.quantity,
+                        unit: i.unit || 'U',
+                        unit_price: i.unitPrice,
+                        total_ttc: i.totalTTC
+                    }));
+                if (finalItems.length > 0) {
+                    const { error: itemsError } = await supabase.from('invoice_items').insert(finalItems);
+                    if (itemsError) throw itemsError;
+                }
             }
 
             closeExpenseModal();
@@ -1567,6 +1724,7 @@ function ExpensesContentMain() {
             status: expense.status,
             quantity: expense.quantity || '1'
         });
+        setInvoiceItems(expense.items || []);
         setEditingExpenseId(expense.id);
         setShowAddExpenseModal(true);
     };
@@ -1656,8 +1814,19 @@ function ExpensesContentMain() {
 
         // Final Global Totals
         tableData.push([{ content: '', colSpan: 5, styles: { fillColor: [255, 255, 255] } }]);
+        
         tableData.push([
-            { content: 'BILAN GÉNÉRAL DU CHANTIER', colSpan: 3, styles: { fillColor: [44, 62, 80], textColor: 255, fontStyle: 'bold', halign: 'right' } },
+            { content: 'TOTAL CHANTIER (TOUS LES FOURNISSEURS)', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right', fillColor: [245, 247, 250] } },
+            { content: grandTotal.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT', colSpan: 2, styles: { fontStyle: 'bold', fillColor: [245, 247, 250] } }
+        ]);
+
+        tableData.push([
+            { content: 'TOTAL PAYE (AVANCES + RÉGLEMENTS)', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right', textColor: [39, 174, 96], fillColor: [245, 247, 250] } },
+            { content: totalPaidGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT', colSpan: 2, styles: { fontStyle: 'bold', textColor: [39, 174, 96], fillColor: [245, 247, 250] } }
+        ]);
+
+        tableData.push([
+            { content: 'SOLDE RESTANT (GLOBAL)', colSpan: 3, styles: { fillColor: [44, 62, 80], textColor: 255, fontStyle: 'bold', halign: 'right' } },
             { content: totalRemainingGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT', colSpan: 2, styles: { fillColor: [44, 62, 80], textColor: 255, fontStyle: 'bold' } }
         ]);
 
@@ -2009,17 +2178,80 @@ function ExpensesContentMain() {
                                         </div>
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="md:col-span-2">
+                                            <div className="md:col-span-2 relative">
                                                 <input
-                                                    placeholder="DÉSIGNATION..."
-                                                    className="w-full bg-white border-none p-4 rounded-xl font-black text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none text-sm uppercase"
+                                                    placeholder="DÉSIGNATION ARTICLE (RECHERCHER...)"
+                                                    className="w-full bg-white border-none p-4 rounded-xl font-black text-slate-900 focus:ring-2 focus:ring-[#FFB800] outline-none text-sm uppercase"
                                                     value={item.designation}
+                                                    onFocus={() => setActiveArticleSearchIdx(idx)}
                                                     onChange={(e) => {
                                                         const updated = [...invoiceItems];
-                                                        updated[idx].designation = e.target.value;
+                                                        updated[idx].designation = e.target.value.toUpperCase();
                                                         setInvoiceItems(updated);
+                                                        setActiveArticleSearchIdx(idx);
                                                     }}
                                                 />
+                                                {activeArticleSearchIdx === idx && (
+                                                    <div className="absolute left-0 top-full z-[150] w-full bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden mt-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                        <div className="max-h-[250px] overflow-y-auto no-scrollbar pb-2">
+                                                            {availableArticles
+                                                                .filter((a: any) => {
+                                                                    const search = item.designation.toUpperCase().trim();
+                                                                    if (search === '') return true;
+                                                                    return a.name.toUpperCase().includes(search) || a.supplier.toUpperCase().includes(search);
+                                                                })
+                                                                .slice(0, 30)
+                                                                .map((article: any, aIdx) => (
+                                                                    <button
+                                                                        key={aIdx}
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const updated = [...invoiceItems];
+                                                                            updated[idx].designation = article.name;
+                                                                            updated[idx].unitPrice = article.price;
+                                                                            updated[idx].totalTTC = updated[idx].quantity * article.price;
+                                                                            setInvoiceItems(updated);
+                                                                            setActiveArticleSearchIdx(null);
+                                                                        }}
+                                                                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors group"
+                                                                    >
+                                                                        <div className="flex flex-col items-start gap-1">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="text-[10px] font-black text-slate-900 group-hover:text-[#FFB800] transition-colors">{article.name}</span>
+                                                                                {article.isOfficial && (
+                                                                                    <span className="text-[7px] bg-[#FFB800]/10 text-[#FFB800] px-1.5 py-0.5 rounded-md font-black tracking-tighter uppercase whitespace-nowrap">Officiel</span>
+                                                                                )}
+                                                                            </div>
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <Store className="h-2.5 w-2.5 text-slate-400" />
+                                                                                <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wider">{article.supplier}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex flex-col items-end">
+                                                                            <span className="text-[11px] font-black text-slate-900">{article.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                                                                            <span className="text-[9px] font-black text-[#FFB800]">DT</span>
+                                                                        </div>
+                                                                    </button>
+                                                                ))
+                                                            }
+                                                            {availableArticles.filter((a: any) => {
+                                                                const s = item.designation.toUpperCase().trim();
+                                                                return a.name.toUpperCase().includes(s) || a.supplier.toUpperCase().includes(s);
+                                                            }).length === 0 && (
+                                                                <div className="px-4 py-4 text-center text-[10px] font-black text-slate-300 uppercase italic">
+                                                                    Nouvelle Désignation...
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => setActiveArticleSearchIdx(null)}
+                                                            className="w-full bg-slate-50 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors"
+                                                        >
+                                                            Fermer
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="grid grid-cols-3 gap-3 md:col-span-2">
                                                 <div>
@@ -2525,74 +2757,274 @@ function ExpensesContentMain() {
             {/* Add Expense Modal */}
             {
                 showAddExpenseModal && (
-                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                        <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
-                            <h3 className="text-lg font-black mb-4 text-slate-900 uppercase tracking-tight">
-                                {editingExpenseId ? 'Modifier Facture/Bon' : 'Nouvelle Facture/Bon'}
-                            </h3>
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 no-scrollbar overflow-y-auto">
+                        <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-2xl shadow-2xl animate-in zoom-in-95 my-auto flex flex-col max-h-[90vh] relative">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
+                                    {editingExpenseId ? 'Modifier Facture/Bon' : 'Nouvelle Facture/Bon'}
+                                </h3>
+                                <button onClick={closeExpenseModal} className="p-2 hover:bg-slate-50 rounded-full transition-colors">
+                                    <X className="h-6 w-6 text-slate-400" />
+                                </button>
+                            </div>
 
-                            <div className="space-y-3">
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Désignation (Num Facture/Bon)</label>
-                                    <input
-                                        type="text"
-                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold uppercase"
-                                        placeholder="Ex: Facture 123..."
-                                        value={newExpenseData.item}
-                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, item: e.target.value })}
-                                    />
-                                </div>
+                            <div className="overflow-y-auto pr-2 no-scrollbar flex-1">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 block tracking-widest ml-1">Désignation (N° Facture/Bon)</label>
+                                            <input
+                                                type="text"
+                                                className="w-full border-2 border-slate-100 p-3 rounded-2xl text-sm font-black uppercase focus:border-slate-900 transition-all outline-none"
+                                                placeholder="Ex: Facture 123..."
+                                                value={newExpenseData.item}
+                                                onChange={(e) => setNewExpenseData({ ...newExpenseData, item: e.target.value })}
+                                            />
+                                        </div>
 
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Montant (DT)</label>
-                                    <input
-                                        type="number"
-                                        step="0.001"
-                                        className="w-full border border-slate-200 p-3 rounded-xl text-lg font-black text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
-                                        placeholder="0.000"
-                                        value={newExpenseData.price}
-                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, price: e.target.value })}
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Date</label>
-                                        <input
-                                            type="date"
-                                            className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
-                                            value={newExpenseData.date}
-                                            onChange={(e) => setNewExpenseData({ ...newExpenseData, date: e.target.value })}
-                                        />
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 block tracking-widest ml-1">Date</label>
+                                                <input
+                                                    type="date"
+                                                    className="w-full border-2 border-slate-100 p-3 rounded-2xl text-sm font-black focus:border-slate-900 transition-all outline-none"
+                                                    value={newExpenseData.date}
+                                                    onChange={(e) => setNewExpenseData({ ...newExpenseData, date: e.target.value })}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 block tracking-widest ml-1">Quantité Totale</label>
+                                                <input
+                                                    type="text"
+                                                    className="w-full border-2 border-slate-100 p-3 rounded-2xl text-sm font-black focus:border-slate-900 transition-all outline-none"
+                                                    placeholder="Ex: 1"
+                                                    value={newExpenseData.quantity}
+                                                    onChange={(e) => setNewExpenseData({ ...newExpenseData, quantity: e.target.value })}
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Quantité</label>
-                                        <input
-                                            type="text"
-                                            className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
-                                            placeholder="Ex: 1"
-                                            value={newExpenseData.quantity}
-                                            onChange={(e) => setNewExpenseData({ ...newExpenseData, quantity: e.target.value })}
-                                        />
+
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 block tracking-widest ml-1">Montant Global (DT)</label>
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    step="0.001"
+                                                    className="w-full border-2 border-slate-100 p-3 pl-12 rounded-2xl text-xl font-black text-slate-900 focus:border-slate-900 transition-all outline-none"
+                                                    placeholder="0.000"
+                                                    value={newExpenseData.price}
+                                                    onChange={(e) => setNewExpenseData({ ...newExpenseData, price: e.target.value })}
+                                                />
+                                                <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#FFB800]" />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 block tracking-widest ml-1">État du Paiement</label>
+                                            <select
+                                                value={newExpenseData.status}
+                                                onChange={(e) => setNewExpenseData({ ...newExpenseData, status: e.target.value as PaymentStatus })}
+                                                className="w-full border-2 border-slate-100 p-3 rounded-2xl text-sm font-black bg-white focus:border-slate-900 transition-all outline-none uppercase"
+                                            >
+                                                <option value="pending">🟡 EN ATTENTE</option>
+                                                <option value="paid">🟢 PAYÉ</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">État du Paiement</label>
-                                    <select
-                                        value={newExpenseData.status}
-                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, status: e.target.value as PaymentStatus })}
-                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold bg-white"
-                                    >
-                                        <option value="pending">ATTENTE</option>
-                                        <option value="paid">PAYÉ</option>
-                                    </select>
+                                <div className="space-y-4 pt-4 border-t-2 border-slate-50">
+                                    <div className="flex justify-between items-center">
+                                        <div className="flex items-center gap-2">
+                                            <Package className="h-4 w-4 text-[#FFB800]" />
+                                            <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-900">Articles / Désignations</h4>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                const newItem: InvoiceItem = {
+                                                    code: '',
+                                                    designation: '',
+                                                    unit: 'U',
+                                                    quantity: 1,
+                                                    unitPrice: 0,
+                                                    totalTTC: 0
+                                                };
+                                                setInvoiceItems([...invoiceItems, newItem]);
+                                            }}
+                                            className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center gap-2 shadow-lg shadow-slate-900/10"
+                                        >
+                                            <Plus className="h-3 w-3" />
+                                            Ajouter Article
+                                        </button>
+                                    </div>
+
+                                    <div className="rounded-2xl border-2 border-slate-50">
+                                        <table className="w-full border-collapse">
+                                            <thead className="bg-slate-50 text-[8px] font-black uppercase tracking-widest text-slate-400">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-left">Article</th>
+                                                    <th className="px-4 py-3 text-center w-20">Qté</th>
+                                                    <th className="px-4 py-3 text-right w-32">P.U TTC</th>
+                                                    <th className="px-4 py-3 text-right w-32">Total</th>
+                                                    <th className="px-4 py-3 w-12"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-50">
+                                                {invoiceItems.map((item, idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                                        <td className="px-3 py-2 relative">
+                                                            <input
+                                                                className="w-full bg-transparent border-b-2 border-transparent focus:border-[#FFB800] p-1 text-[11px] font-black uppercase outline-none"
+                                                                value={item.designation}
+                                                                onFocus={() => setActiveArticleSearchIdx(idx)}
+                                                                onChange={(e) => {
+                                                                    const updated = [...invoiceItems];
+                                                                    updated[idx].designation = e.target.value.toUpperCase();
+                                                                    setInvoiceItems(updated);
+                                                                    setActiveArticleSearchIdx(idx);
+                                                                }}
+                                                                placeholder="RECHERCHER ARTICLE..."
+                                                            />
+                                                            {activeArticleSearchIdx === idx && (
+                                                                <div className="absolute left-0 top-full z-[150] w-[350px] bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden mt-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                                    <div className="max-h-[250px] overflow-y-auto no-scrollbar pb-2">
+                                                                        {availableArticles
+                                                                            .filter((a: any) => {
+                                                                                const search = item.designation.toUpperCase().trim();
+                                                                                if (search === '') return true;
+                                                                                return a.name.toUpperCase().includes(search) || a.supplier.toUpperCase().includes(search);
+                                                                            })
+                                                                            .slice(0, 30)
+                                                                            .map((article: any, aIdx) => (
+                                                                                <button
+                                                                                    key={aIdx}
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        const updated = [...invoiceItems];
+                                                                                        updated[idx].designation = article.name;
+                                                                                        updated[idx].unitPrice = article.price;
+                                                                                        updated[idx].totalTTC = updated[idx].quantity * article.price;
+                                                                                        setInvoiceItems(updated);
+                                                                                        setActiveArticleSearchIdx(null);
+                                                                                    }}
+                                                                                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors group"
+                                                                                >
+                                                                                    <div className="flex flex-col items-start gap-1">
+                                                                                        <div className="flex items-center gap-2">
+                                                                                            <span className="text-[10px] font-black text-slate-900 group-hover:text-[#FFB800] transition-colors">{article.name}</span>
+                                                                                            {article.isOfficial && (
+                                                                                                <span className="text-[7px] bg-[#FFB800]/10 text-[#FFB800] px-1.5 py-0.5 rounded-md font-black tracking-tighter uppercase whitespace-nowrap">Officiel</span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                        <div className="flex items-center gap-1.5">
+                                                                                            <Store className="h-2.5 w-2.5 text-slate-400" />
+                                                                                            <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wider">{article.supplier}</span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="flex flex-col items-end">
+                                                                                        <span className="text-[11px] font-black text-slate-900">{article.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                                                                                        <span className="text-[9px] font-black text-[#FFB800]">DT</span>
+                                                                                    </div>
+                                                                                </button>
+                                                                            ))
+                                                                        }
+                                                                        {availableArticles.filter((a: any) => {
+                                                                            const s = item.designation.toUpperCase().trim();
+                                                                            return a.name.toUpperCase().includes(s) || a.supplier.toUpperCase().includes(s);
+                                                                        }).length === 0 && (
+                                                                            <div className="px-4 py-4 text-center text-[10px] font-black text-slate-300 uppercase italic">
+                                                                                Nouvel Article...
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => setActiveArticleSearchIdx(null)}
+                                                                        className="w-full bg-slate-50 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors"
+                                                                    >
+                                                                        Fermer
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-2">
+                                                            <input
+                                                                type="number"
+                                                                className="w-full text-center bg-transparent border-b-2 border-transparent focus:border-[#FFB800] p-1 text-[11px] font-black outline-none"
+                                                                value={item.quantity}
+                                                                onChange={(e) => {
+                                                                    const updated = [...invoiceItems];
+                                                                    updated[idx].quantity = parseFloat(e.target.value) || 0;
+                                                                    updated[idx].totalTTC = updated[idx].quantity * updated[idx].unitPrice;
+                                                                    setInvoiceItems(updated);
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        <td className="px-3 py-2">
+                                                            <input
+                                                                type="number"
+                                                                step="0.001"
+                                                                className="w-full text-right bg-transparent border-b-2 border-transparent focus:border-[#FFB800] p-1 text-[11px] font-black outline-none"
+                                                                value={item.unitPrice}
+                                                                onChange={(e) => {
+                                                                    const updated = [...invoiceItems];
+                                                                    updated[idx].unitPrice = parseFloat(e.target.value) || 0;
+                                                                    updated[idx].totalTTC = updated[idx].quantity * updated[idx].unitPrice;
+                                                                    setInvoiceItems(updated);
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right">
+                                                            <span className="text-[11px] font-black text-slate-900">{item.totalTTC.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                                                        </td>
+                                                        <td className="px-3 py-2 text-center">
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const updated = invoiceItems.filter((_, i) => i !== idx);
+                                                                    setInvoiceItems(updated);
+                                                                }}
+                                                                className="p-1.5 text-slate-300 hover:text-rose-500 transition-colors"
+                                                            >
+                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {invoiceItems.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan={5} className="py-8 text-center text-[10px] font-black text-slate-300 uppercase tracking-widest italic">
+                                                            Aucun article détaillé
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Auto-sum feature */}
+                                    {invoiceItems.length > 0 && (
+                                        <div className="flex justify-end p-2 pb-32">
+                                            <button 
+                                                type="button"
+                                                onClick={() => {
+                                                    const total = invoiceItems.reduce((sum, item) => sum + item.totalTTC, 0);
+                                                    setNewExpenseData({ ...newExpenseData, price: total.toFixed(3) });
+                                                }}
+                                                className="text-[9px] font-black text-[#FFB800] uppercase hover:underline"
+                                            >
+                                                Appliquer le total des articles ({invoiceItems.reduce((sum, item) => sum + item.totalTTC, 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} DT)
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
-                            <div className="flex justify-end gap-2 mt-6">
-                                <button onClick={closeExpenseModal} className="text-xs font-bold px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Annuler</button>
-                                <button onClick={handleSaveExpense} className="text-xs font-bold px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-200 transition-all flex items-center gap-2">
+                            <div className="flex justify-end gap-3 mt-8 pt-6 border-t-2 border-slate-50">
+                                <button onClick={closeExpenseModal} className="text-[10px] font-black uppercase tracking-widest px-6 py-4 text-slate-400 hover:text-slate-900 transition-colors">Annuler</button>
+                                <button onClick={handleSaveExpense} className="text-[10px] font-black uppercase tracking-widest px-10 py-4 bg-slate-900 text-white rounded-2xl shadow-xl shadow-slate-900/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3">
                                     <CheckCircle2 className="h-4 w-4" />
                                     {editingExpenseId ? 'Enregistrer' : 'Confirmer'}
                                 </button>
@@ -3408,7 +3840,15 @@ function ExpensesContentMain() {
                                             <table className="w-full text-left border-collapse">
                                                 <thead className="bg-[#1e293b] text-white/50 text-[9px] font-black uppercase tracking-[0.2em]">
                                                     <tr>
-                                                        <th className="px-6 py-5 text-left w-8 opacity-50 font-medium">#</th>
+                                                        <th className="px-4 py-5 w-12 text-center">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="rounded border-slate-700 bg-slate-900 focus:ring-[#FFB800] ring-offset-slate-900"
+                                                                checked={currentSupplier?.expenses.length > 0 && selectedExpenseIds.size === currentSupplier.expenses.length}
+                                                                onChange={toggleSelectAll}
+                                                            />
+                                                        </th>
+                                                        <th className="px-4 py-5 text-left w-8 opacity-50 font-medium">#</th>
                                                         <th className="px-2 py-5 text-center w-8"></th>
                                                         <th className="px-6 py-5 text-left">Désignation / Date</th>
                                                         <th className="px-6 py-5 text-center w-32">État du Paiement</th>
@@ -3425,7 +3865,15 @@ function ExpensesContentMain() {
                                                                     className={`group transition-all duration-500 cursor-pointer ${isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50/50'}`}
                                                                     onClick={() => toggleRow(e.id)}
                                                                 >
-                                                                    <td className="px-6 py-6 text-left text-[10px] font-black text-slate-300 group-hover:text-[#FFB800] transition-colors">{index + 1}</td>
+                                                                    <td className="px-4 py-6 text-center" onClick={(ev) => ev.stopPropagation()}>
+                                                                        <input 
+                                                                            type="checkbox" 
+                                                                            className="rounded border-slate-200 text-[#FFB800] focus:ring-[#FFB800]"
+                                                                            checked={selectedExpenseIds.has(e.id)}
+                                                                            onChange={() => toggleSelectExpense(e.id)}
+                                                                        />
+                                                                    </td>
+                                                                    <td className="px-4 py-6 text-left text-[10px] font-black text-slate-300 group-hover:text-[#FFB800] transition-colors">{index + 1}</td>
                                                                     <td className="px-2 py-6">
                                                                         <div className={`p-1.5 rounded-lg transition-all duration-500 ${isExpanded ? 'bg-slate-900 text-white rotate-180' : 'text-slate-300 group-hover:text-slate-900'}`}>
                                                                             <ChevronDown className="h-4 w-4" />
@@ -3504,7 +3952,7 @@ function ExpensesContentMain() {
                                                                         animate={{ opacity: 1, height: 'auto' }}
                                                                         className="bg-slate-50/50"
                                                                     >
-                                                                        <td colSpan={6} className="px-8 py-0">
+                                                                        <td colSpan={7} className="px-8 py-0">
                                                                             <div className="pb-8 pt-2 overflow-hidden">
                                                                                 <div className="bg-white rounded-[2rem] border border-slate-200 shadow-xl p-8 space-y-8 animate-in slide-in-from-top-4 duration-500">
                                                                                     {/* Detailed Infos Header */}
@@ -4147,6 +4595,41 @@ function ExpensesContentMain() {
                 )
             }
 
+
+            {/* Selection Summary Floating Bar */}
+            {selectedExpenseIds.size > 0 && (
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] w-[95%] max-w-2xl bg-slate-900 text-white p-4 rounded-[2rem] shadow-2xl animate-in slide-in-from-bottom-8 duration-500 border border-white/10 backdrop-blur-md">
+                    <div className="flex items-center justify-between px-4">
+                        <div className="flex items-center gap-4">
+                            <div className="flex -space-x-2">
+                                <div className="h-10 w-10 rounded-full bg-blue-500 flex items-center justify-center border-2 border-slate-900 shadow-lg">
+                                    <ClipboardList className="h-5 w-5" />
+                                </div>
+                            </div>
+                            <div>
+                                <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest leading-none mb-1">Articles Sélectionnés</h4>
+                                <p className="text-sm font-black text-white">{selectedExpenseIds.size} facture{selectedExpenseIds.size > 1 ? 's' : ''}</p>
+                            </div>
+                        </div>
+
+                        <div className="h-10 w-px bg-white/10" />
+
+                        <div className="text-right">
+                            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest leading-none mb-1">Somme Totale</h4>
+                            <p className="text-xl font-black text-[#FFB800] tabular-nums leading-none tracking-tighter">
+                                {selectedTotal.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px]">DT</span>
+                            </p>
+                        </div>
+
+                        <button 
+                            onClick={() => setSelectedExpenseIds(new Set())}
+                            className="bg-white/10 hover:bg-white/20 p-2.5 rounded-2xl transition-all ml-4"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                    </div>
+                </div>
+            )}
         </div >
     );
 }

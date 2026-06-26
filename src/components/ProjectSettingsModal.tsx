@@ -28,8 +28,10 @@ interface Invitation {
 }
 
 export default function ProjectSettingsModal({ onClose }: { onClose: () => void }) {
-    const { currentProject } = useProject();
-    const { user } = useAuth();
+    const { currentProject, userRole } = useProject();
+    const { user, isAdmin: isGlobalAdmin } = useAuth();
+    // Only project admins (or the app owner) can manage the team. Viewers/editors are read-only.
+    const canManageTeam = userRole === 'admin' || isGlobalAdmin;
     const [activeTab, setActiveTab] = useState<'members' | 'invites'>('members');
     const [members, setMembers] = useState<Member[]>([]);
     const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -97,6 +99,7 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
     };
 
     const handleInvite = async () => {
+        if (!canManageTeam) return;
         if (!inviteEmail || !currentProject) return;
         setIsInviting(true);
         try {
@@ -144,6 +147,7 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
     };
 
     const deleteInvitation = async (inviteId: string) => {
+        if (!canManageTeam) return;
         if (!confirm('Êtes-vous sûr de vouloir supprimer cette invitation ?')) return;
 
         setDeletingInvite(inviteId);
@@ -243,7 +247,14 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
                 </div>
             ) : (
                 <div className="space-y-5">
-                    {/* Invite form */}
+                    {/* Invite form (project admins only) */}
+                    {!canManageTeam && (
+                        <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                            <Mail className="h-4 w-4 text-slate-400 shrink-0" />
+                            Seuls les administrateurs du projet peuvent inviter ou gérer les membres.
+                        </div>
+                    )}
+                    {canManageTeam && (
                     <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
                         <div className="flex items-center gap-2.5 mb-4">
                             <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-900 text-white">
@@ -390,6 +401,7 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
                             </div>
                         )}
                     </div>
+                    )}
 
                     {/* Pending list */}
                     <div className="space-y-2.5">
@@ -419,14 +431,16 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
                                                 </div>
                                             </div>
                                         </div>
-                                        <button
-                                            onClick={() => deleteInvitation(inv.id)}
-                                            disabled={deletingInvite === inv.id}
-                                            className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors disabled:opacity-50 shrink-0"
-                                            title="Supprimer l'invitation"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </button>
+                                        {canManageTeam && (
+                                            <button
+                                                onClick={() => deleteInvitation(inv.id)}
+                                                disabled={deletingInvite === inv.id}
+                                                className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors disabled:opacity-50 shrink-0"
+                                                title="Supprimer l'invitation"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        )}
                                     </div>
                                 ))}
                             </div>

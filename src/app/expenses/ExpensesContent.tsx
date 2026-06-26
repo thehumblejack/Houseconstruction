@@ -159,7 +159,7 @@ const SupplierList = ({
     setDeleteConfirmInput
 }: any) => {
     return (
-        <Reorder.Group axis="y" values={orderedSuppliers} onReorder={handleReorder} className="flex lg:flex-col gap-2 lg:gap-2.5 overflow-x-auto lg:overflow-visible no-scrollbar snap-x snap-mandatory -mx-4 px-4 lg:mx-0 lg:px-0 pb-1 lg:pb-0">
+        <Reorder.Group axis="y" values={orderedSuppliers} onReorder={handleReorder} className="flex lg:flex-col gap-2 lg:gap-2.5 overflow-x-auto lg:overflow-visible no-scrollbar snap-x snap-mandatory -mx-3 px-3 lg:mx-0 lg:px-0 pb-1 lg:pb-0 lg:max-h-[55vh] lg:overflow-y-auto">
             {orderedSuppliers.map((sup: any) => (
                 <SupplierListItem
                     key={sup.id}
@@ -193,7 +193,7 @@ const SupplierListItem = ({
             dragControls={controls}
             dragListener={false}
             className={`
-                group snap-start shrink-0 lg:shrink flex items-center gap-2.5 pl-2 pr-3 py-2 lg:py-2.5 rounded-xl cursor-pointer transition-colors border
+                group snap-start shrink-0 lg:shrink lg:w-full flex items-center gap-2.5 pl-2 pr-3 py-2 rounded-xl cursor-pointer transition-colors border
                 ${activeTab === sup.id
                     ? 'bg-slate-900 text-white border-slate-900'
                     : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'}
@@ -237,12 +237,13 @@ const SupplierListItem = ({
 };
 
 function ExpensesContentMain() {
-    const { isAdmin: isGlobalAdmin, user } = useAuth();
+    const { user } = useAuth();
     const { currentProject, userRole, loading: projectLoading } = useProject();
 
-    // Permission check: Global admins OR project admins/editors can edit
-    const isAdmin = isGlobalAdmin || userRole === 'admin' || userRole === 'editor';
-    const canManageProject = isGlobalAdmin || userRole === 'admin';
+    // Write permission is the PROJECT role only — an Observateur (viewer) is read-only.
+    // This mirrors the database RLS (which has no global-admin override).
+    const isAdmin = userRole === 'admin' || userRole === 'editor';
+    const canManageProject = userRole === 'admin';
 
     const [activeTab, setActiveTab] = useState<SupplierType>('beton');
     const [viewingImage, setViewingImage] = useState<string | null>(null);
@@ -347,7 +348,8 @@ function ExpensesContentMain() {
     const [showNoteModal, setShowNoteModal] = useState(false);
     const [noteEditorType, setNoteEditorType] = useState<'supplier' | 'general'>('supplier');
     const [tempNoteValue, setTempNoteValue] = useState('');
-    const [generalNote, setGeneralNote] = useState('');
+    const [memos, setMemos] = useState<Array<{ id: string; content: string; createdAt: string; updatedAt?: string }>>([]);
+    const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [replacingDocId, setReplacingDocId] = useState<string | null>(null);
     const [lastReplacedDoc, setLastReplacedDoc] = useState<{ id: string, oldUrl: string, oldFileName: string } | null>(null);
@@ -366,6 +368,7 @@ function ExpensesContentMain() {
     const [showTrashModal, setShowTrashModal] = useState(false);
     const [archivedSuppliers, setArchivedSuppliers] = useState<any[]>([]);
     const [orderedSuppliers, setOrderedSuppliers] = useState<SupplierData[]>([]);
+    const [supplierSearch, setSupplierSearch] = useState('');
 
     // Document Picker State
     const [showDocPicker, setShowDocPicker] = useState(false);
@@ -549,8 +552,22 @@ function ExpensesContentMain() {
             });
 
             if (settingsData) {
-                const note = settingsData.find((s: any) => s.key === 'general_note')?.value || '';
-                setGeneralNote(note);
+                const raw = settingsData.find((s: any) => s.key === 'general_note')?.value || '';
+                let parsed: Array<{ id: string; content: string; createdAt: string; updatedAt?: string }> = [];
+                if (raw) {
+                    try {
+                        const j = JSON.parse(raw);
+                        if (Array.isArray(j)) {
+                            parsed = j;
+                        } else if (typeof j === 'string' && j.trim()) {
+                            parsed = [{ id: 'legacy', content: j, createdAt: new Date(0).toISOString() }];
+                        }
+                    } catch {
+                        // Legacy plain-text note → migrate to a single memo.
+                        if (raw.trim()) parsed = [{ id: 'legacy', content: raw, createdAt: new Date(0).toISOString() }];
+                    }
+                }
+                setMemos(parsed);
             }
 
             // Load uploaded documents
@@ -1323,12 +1340,24 @@ function ExpensesContentMain() {
                 const project = currentProject;
                 if (!project) return;
 
-                // Upsert to handle projects that don't have a general_note yet
+                // General memos are stored as a JSON array under the 'general_note' key.
+                const now = new Date().toISOString();
+                let next: typeof memos;
+                if (editingMemoId) {
+                    next = memos.map(m => m.id === editingMemoId ? { ...m, content: tempNoteValue, updatedAt: now } : m);
+                } else {
+                    if (!tempNoteValue.trim()) { setEditingMemoId(null); setShowNoteModal(false); return; }
+                    const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+                    next = [{ id, content: tempNoteValue, createdAt: now }, ...memos];
+                }
+                setMemos(next);
+                setEditingMemoId(null);
+
                 const { error } = await supabase.from('project_settings')
                     .upsert({
                         project_id: project.id,
                         key: 'general_note',
-                        value: tempNoteValue
+                        value: JSON.stringify(next)
                     }, {
                         onConflict: 'project_id,key'
                     });
@@ -1344,6 +1373,35 @@ function ExpensesContentMain() {
         }
     };
 
+    const openNewMemo = () => {
+        if (!isAdmin) return;
+        setNoteEditorType('general');
+        setEditingMemoId(null);
+        setTempNoteValue('');
+        setShowNoteModal(true);
+    };
+
+    const openEditMemo = (memo: { id: string; content: string }) => {
+        if (!isAdmin) return;
+        setNoteEditorType('general');
+        setEditingMemoId(memo.id);
+        setTempNoteValue(memo.content);
+        setShowNoteModal(true);
+    };
+
+    const deleteMemo = async (id: string) => {
+        if (!isAdmin || !currentProject) return;
+        if (!confirm('Supprimer ce mémo ?')) return;
+        const next = memos.filter(m => m.id !== id);
+        setMemos(next);
+        try {
+            const { error } = await supabase.from('project_settings')
+                .upsert({ project_id: currentProject.id, key: 'general_note', value: JSON.stringify(next) }, { onConflict: 'project_id,key' });
+            if (error) throw error;
+        } catch (e) {
+            console.error('Error deleting memo:', e);
+        }
+    };
 
     const handleAddSupplier = async () => {
         if (!isAdmin) return;
@@ -1482,6 +1540,8 @@ function ExpensesContentMain() {
 
     const handleReorder = async (newOrder: SupplierData[]) => {
         if (!isAdmin) return;
+        // Ignore reorders while the list is filtered by search (partial list would corrupt order).
+        if (newOrder.length !== orderedSuppliers.length) return;
         setOrderedSuppliers(newOrder);
         if (!currentProject) return;
 
@@ -3393,69 +3453,103 @@ function ExpensesContentMain() {
             {/* Layout Main */}
             {
                 !isEmpty && (
-                    <div className="flex flex-col lg:flex-row gap-4">
-                        {/* Tabs / Supplier Sidebar */}
-                        <motion.div
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="w-full lg:w-72 flex-shrink-0"
-                        >
-                            <div className="bg-white rounded-2xl border border-slate-200 p-3 flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible no-scrollbar">
-                                <div className="hidden lg:flex items-center justify-between mb-1 px-1">
-                                    <span className="text-xs font-medium text-slate-500">Partenaires</span>
+                    <div className="space-y-4">
+                        {/* Mémos — multiple dated notes (below insights) */}
+                        {(isAdmin || memos.length > 0) && (
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between px-1">
+                                    <span className="text-xs font-medium text-slate-500 flex items-center gap-2">
+                                        <FileText className="h-3.5 w-3.5" /> Mémos
+                                        {memos.length > 0 && <span className="text-slate-400">· {memos.length}</span>}
+                                    </span>
                                     {isAdmin && (
                                         <button
-                                            onClick={() => setShowAddSupplierModal(true)}
-                                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                            onClick={openNewMemo}
+                                            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-slate-600 hover:bg-slate-100 text-sm font-medium transition-colors"
                                         >
-                                            <Plus className="h-4 w-4" />
+                                            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Ajouter</span>
                                         </button>
                                     )}
                                 </div>
-                                <SupplierList
-                                    orderedSuppliers={orderedSuppliers}
-                                    activeTab={activeTab}
-                                    setActiveTab={setActiveTab}
-                                    handleReorder={handleReorder}
-                                    isAdmin={isAdmin}
-                                    setSupplierToDelete={setSupplierToDelete}
-                                    setShowDeleteConfirmModal={setShowDeleteConfirmModal}
-                                    setDeleteConfirmInput={setDeleteConfirmInput}
-                                />
-                                {isAdmin && (
-                                    <button
-                                        onClick={() => setShowAddSupplierModal(true)}
-                                        className="lg:hidden shrink-0 inline-flex items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-white border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors"
-                                    >
-                                        <Plus className="h-4 w-4" /> Ajouter
-                                    </button>
+                                {memos.length === 0 ? (
+                                    <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-400">
+                                        Aucun mémo. Cliquez sur « Ajouter » pour en créer un.
+                                    </div>
+                                ) : (
+                                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                        {memos.map((memo) => (
+                                            <div key={memo.id} className="group rounded-xl border border-slate-200 bg-white p-3 flex flex-col">
+                                                <div className="flex items-center justify-between gap-2 mb-1.5">
+                                                    <span className="text-[11px] text-slate-400 tabular-nums">
+                                                        {new Date(memo.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                        {memo.updatedAt && <span className="text-slate-300"> · modifié</span>}
+                                                    </span>
+                                                    {isAdmin && (
+                                                        <div className="flex items-center gap-0.5 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity shrink-0">
+                                                            <button onClick={() => openEditMemo(memo)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors">
+                                                                <Pencil className="h-3.5 w-3.5" />
+                                                            </button>
+                                                            <button onClick={() => deleteMemo(memo.id)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors">
+                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <p className="text-[13px] text-slate-600 leading-relaxed whitespace-pre-wrap line-clamp-4">{memo.content}</p>
+                                            </div>
+                                        ))}
+                                    </div>
                                 )}
                             </div>
+                        )}
 
-                            {/* General Note Sidebar Section (Desktop) */}
-                            {isAdmin && (
-                                <div
-                                    className="mt-4 hidden lg:block bg-white rounded-2xl border border-slate-200 overflow-hidden cursor-pointer hover:bg-slate-50 transition-colors"
-                                    onClick={() => {
-                                        setNoteEditorType('general');
-                                        setTempNoteValue(generalNote);
-                                        setShowNoteModal(true);
-                                    }}
-                                >
-                                    <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center">
-                                        <span className="text-xs font-medium text-slate-500 flex items-center gap-2">
-                                            <FileText className="h-3.5 w-3.5" />
-                                            Mémo général
-                                        </span>
-                                        <Pencil className="h-3 w-3 text-slate-400" />
+                        {/* Two-column: Partenaires sidebar + supplier detail */}
+                        <div className="flex flex-col lg:flex-row gap-4">
+                            <motion.div
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                className="w-full lg:w-72 flex-shrink-0"
+                            >
+                                <div className="bg-white rounded-2xl border border-slate-200 p-3 space-y-2.5">
+                                    <div className="flex items-center justify-between px-1">
+                                        <span className="text-xs font-medium text-slate-500">Partenaires</span>
+                                        {isAdmin && (
+                                            <button
+                                                onClick={() => setShowAddSupplierModal(true)}
+                                                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                            >
+                                                <Plus className="h-4 w-4" />
+                                            </button>
+                                        )}
                                     </div>
-                                    <div className="p-4">
-                                        <p className="text-[13px] text-slate-600 leading-relaxed whitespace-pre-wrap">
-                                            {generalNote || "Aucune note générale..."}
-                                        </p>
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                        <input
+                                            value={supplierSearch}
+                                            onChange={(e) => setSupplierSearch(e.target.value)}
+                                            placeholder="Rechercher…"
+                                            className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                        />
                                     </div>
-                                </div>
-                            )}
+                                {(() => {
+                                    const q = supplierSearch.trim().toLowerCase();
+                                    const filtered = q ? orderedSuppliers.filter(s => (s.name || '').toLowerCase().includes(q)) : orderedSuppliers;
+                                    return filtered.length === 0 ? (
+                                        <p className="px-1 py-2 text-sm text-slate-400">Aucun partenaire trouvé.</p>
+                                    ) : (
+                                        <SupplierList
+                                            orderedSuppliers={filtered}
+                                            activeTab={activeTab}
+                                            setActiveTab={setActiveTab}
+                                            handleReorder={handleReorder}
+                                            isAdmin={isAdmin}
+                                            setSupplierToDelete={setSupplierToDelete}
+                                            setShowDeleteConfirmModal={setShowDeleteConfirmModal}
+                                            setDeleteConfirmInput={setDeleteConfirmInput}
+                                        />
+                                    );
+                                })()}
+                            </div>
                         </motion.div>
 
                         <motion.div
@@ -3537,32 +3631,8 @@ function ExpensesContentMain() {
                                 </div>
                             )}
 
-                            {/* General Note (Mobile Only - below supplier header) */}
+                            {/* Notes tab — supplier notes (the general memo is its own full-width card above) */}
                             {currentSupplier && panelTab === 'notes' && (<>
-                            {isAdmin && (
-                                <div
-                                    className="lg:hidden bg-white border border-slate-200 rounded-2xl overflow-hidden cursor-pointer hover:bg-slate-50 transition-colors"
-                                    onClick={() => {
-                                        setNoteEditorType('general');
-                                        setTempNoteValue(generalNote);
-                                        setShowNoteModal(true);
-                                    }}
-                                >
-                                    <div className="px-4 py-2.5 border-b border-slate-100 flex justify-between items-center">
-                                        <span className="text-xs font-medium text-slate-500 flex items-center gap-2">
-                                            <FileText className="h-3.5 w-3.5" />
-                                            Note générale
-                                        </span>
-                                        <Pencil className="h-3 w-3 text-slate-400" />
-                                    </div>
-                                    <div className="p-4 max-h-[150px] overflow-y-auto">
-                                        <p className="text-[13px] text-slate-600 leading-relaxed whitespace-pre-wrap">
-                                            {generalNote || "Aucune note générale pour le moment..."}
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-
                             {/* Notes Section */}
                             {isAdmin && (
                                 <div
@@ -4417,6 +4487,7 @@ function ExpensesContentMain() {
                             </div>
                             )}
                         </motion.div >
+                        </div>
                     </div >
                 )
             }
@@ -4424,9 +4495,9 @@ function ExpensesContentMain() {
             {/* Note Editor Modal */}
             <Modal
                 open={showNoteModal}
-                onClose={() => setShowNoteModal(false)}
-                title={noteEditorType === 'supplier' ? `Notes: ${currentSupplier?.name || ''}` : 'Note générale du projet'}
-                description="Observations et consignes"
+                onClose={() => { setShowNoteModal(false); setEditingMemoId(null); }}
+                title={noteEditorType === 'supplier' ? `Notes: ${currentSupplier?.name || ''}` : (editingMemoId ? 'Modifier le mémo' : 'Nouveau mémo')}
+                description={noteEditorType === 'supplier' ? 'Observations et consignes' : 'Mémo daté du projet'}
                 size="lg"
                 footer={<>
                     <button

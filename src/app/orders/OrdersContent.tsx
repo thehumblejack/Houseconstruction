@@ -77,8 +77,10 @@ export default function OrdersContent() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [isAdmin, setIsAdmin] = useState(false);
     const { isAdmin: authIsAdmin } = useAuth();
-    // Write permission is driven by the PROJECT role. Viewers ("Observateur") are read-only.
-    const canEdit = authIsAdmin || userRole === 'admin' || userRole === 'editor';
+    // Write permission is the PROJECT role only — viewers ("Observateur") are read-only.
+    // Mirrors the database RLS (no global-admin override).
+    const canEdit = userRole === 'admin' || userRole === 'editor';
+    const canDelete = userRole === 'admin';
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -477,7 +479,7 @@ export default function OrdersContent() {
     };
 
     const handleDeleteSelected = async () => {
-        if (!authIsAdmin) return;
+        if (!canDelete) return;
         if (selectedOrders.length === 0) {
             alert("Aucune commande sélectionnée");
             return;
@@ -524,7 +526,7 @@ export default function OrdersContent() {
                         <p className="text-sm text-slate-500 mt-0.5">Suivi des approvisionnements et livraisons</p>
                     </div>
                     <div className="flex items-center gap-2">
-                        {authIsAdmin && selectedOrders.length > 0 && (
+                        {canDelete && selectedOrders.length > 0 && (
                             <button
                                 onClick={handleDeleteSelected}
                                 className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 active:scale-[0.99] transition-colors"
@@ -624,7 +626,7 @@ export default function OrdersContent() {
                                         <div key={order.id} className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col">
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="flex items-start gap-3 min-w-0 flex-1">
-                                                    {authIsAdmin && (
+                                                    {canDelete && (
                                                         <input
                                                             type="checkbox"
                                                             checked={selectedOrders.includes(order.id)}
@@ -703,7 +705,7 @@ export default function OrdersContent() {
                                         <table className="w-full text-left border-collapse">
                                             <thead>
                                                 <tr className="bg-slate-50">
-                                                    {authIsAdmin && <th className="px-4 py-3 text-xs font-medium text-slate-500 w-12"></th>}
+                                                    {canDelete && <th className="px-4 py-3 text-xs font-medium text-slate-500 w-12"></th>}
                                                     <th className="px-4 py-3 text-xs font-medium text-slate-500">Partenaire</th>
                                                     <th className="px-4 py-3 text-xs font-medium text-slate-500">Date de réception</th>
                                                     <th className="px-4 py-3 text-xs font-medium text-slate-500">Contenu</th>
@@ -714,7 +716,7 @@ export default function OrdersContent() {
                                             <tbody>
                                                 {deliveredOrders.map(order => (
                                                     <tr key={order.id} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
-                                                        {authIsAdmin && (
+                                                        {canDelete && (
                                                             <td className="px-4 py-3 text-center">
                                                                 <input
                                                                     type="checkbox"
@@ -757,7 +759,7 @@ export default function OrdersContent() {
                                             <div key={order.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div className="flex items-start gap-3 min-w-0 flex-1">
-                                                        {authIsAdmin && (
+                                                        {canDelete && (
                                                             <input
                                                                 type="checkbox"
                                                                 checked={selectedOrders.includes(order.id)}

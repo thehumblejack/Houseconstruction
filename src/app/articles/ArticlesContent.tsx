@@ -3,7 +3,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
-import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
 import {
     Plus, Search, Pencil, Save, Loader2, Package,
@@ -59,8 +58,9 @@ interface ArticleRow {
 }
 
 export default function ArticlesContent() {
-    const { isAdmin } = useAuth();
-    const { currentProject } = useProject();
+    const { currentProject, userRole } = useProject();
+    // Write permission = project role; viewers ("Observateur") are read-only.
+    const isAdmin = userRole === 'admin' || userRole === 'editor';
     const [loading, setLoading] = useState(true);
     const [articles, setArticles] = useState<ArticleRow[]>([]);
     const [searchTerm, setSearchTerm] = useState('');

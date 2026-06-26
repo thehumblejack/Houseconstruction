@@ -3,7 +3,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Search, User, Trash2, Plus, FileText, ChevronRight, Hash, CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
 import Link from 'next/link';
 import { Modal } from '@/components/ui';
@@ -24,8 +23,9 @@ interface SupplierStats {
 }
 
 export default function SuppliersContent() {
-    const { isAdmin } = useAuth();
-    const { currentProject } = useProject();
+    const { currentProject, userRole } = useProject();
+    // Write permission = project role; viewers ("Observateur") are read-only.
+    const isAdmin = userRole === 'admin' || userRole === 'editor';
     const [loading, setLoading] = useState(true);
     const [suppliers, setSuppliers] = useState<any[]>([]);
     const [expenses, setExpenses] = useState<any[]>([]);

@@ -112,7 +112,7 @@ export default function AcceptInvitePage() {
                 // session changed listener will eventually trigger acceptInviteFlow but let's just trigger it manually too
                 await acceptInviteFlow();
             } else {
-                const { error } = await supabase.auth.signUp({
+                const { data, error } = await supabase.auth.signUp({
                     email,
                     password,
                     options: {
@@ -120,8 +120,23 @@ export default function AcceptInvitePage() {
                     },
                 });
                 if (error) throw error;
-                setStatus('loading');
-                setMessage('Vérifiez vos e-mails pour le lien de confirmation.');
+
+                // Email already registered: Supabase returns a user with no identities
+                // (and sends no email). Tell them to sign in instead.
+                if (data.user && (data.user.identities?.length ?? 0) === 0) {
+                    setAuthMode('signin');
+                    setAuthError('Un compte existe déjà avec cet e-mail. Connectez-vous pour accepter l\'invitation.');
+                    return;
+                }
+
+                if (data.session) {
+                    // Email confirmation is disabled → we already have a session, accept now.
+                    await acceptInviteFlow();
+                } else {
+                    // Email confirmation is required → user must click the link Supabase sends.
+                    setStatus('loading');
+                    setMessage("Vérifiez vos e-mails pour le lien de confirmation. Si rien n'arrive, l'administrateur doit désactiver la confirmation d'e-mail dans Supabase (Auth → Providers → Email) ou configurer un service SMTP.");
+                }
             }
         } catch (err: any) {
             setAuthError(err.message);

@@ -14,10 +14,6 @@ import { createClient } from '@/lib/supabase';
 export default function Navbar() {
     const pathname = usePathname();
     const { signOut, isAdmin, user, isApproved } = useAuth();
-
-    // Hide navbar on invite acceptance page
-    if (pathname === '/invite/accept') return null;
-
     const { projects, currentProject, setCurrentProject, createProject, deleteProject, userRole } = useProject();
     const [pendingCount, setPendingCount] = useState(0);
     const [isMoreOpen, setIsMoreOpen] = useState(false);
@@ -79,7 +75,9 @@ export default function Navbar() {
         }
     }, [isAdmin, supabase]);
 
-    // Don't show navbar on auth related pages, root landing page, or project case studies
+    // Don't show navbar on auth related pages, root landing page, or project case studies.
+    // (All hooks above must run unconditionally — keep these early returns AFTER them.)
+    if (pathname === '/invite/accept') return null;
     if (pathname === '/login' || pathname?.startsWith('/auth/')) return null;
     if (pathname === '/') return null; // Root is landing page
     if (pathname?.startsWith('/projets/')) return null;

@@ -144,6 +144,20 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
         }
     }, [user, fetchProjects]);
 
+    // Re-sync membership/role when the user returns to the tab, so an admin's role
+    // change (e.g. demoting someone to Observateur) takes effect in an already-open
+    // session without needing a full reload.
+    useEffect(() => {
+        if (!user) return;
+        const resync = () => { if (document.visibilityState === 'visible') fetchProjects(); };
+        document.addEventListener('visibilitychange', resync);
+        window.addEventListener('focus', resync);
+        return () => {
+            document.removeEventListener('visibilitychange', resync);
+            window.removeEventListener('focus', resync);
+        };
+    }, [user, fetchProjects]);
+
     const setCurrentProject = (project: Project) => {
         setCurrentProjectState(project);
         localStorage.setItem('selectedProjectId', project.id);

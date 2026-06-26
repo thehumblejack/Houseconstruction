@@ -2,11 +2,11 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { createClient } from '@/lib/supabase';
-import { Search, Loader2, User, Phone, MapPin, Package, TrendingUp, TrendingDown, Plus, Pencil, Trash2, ArrowRight, ChevronRight, Hash, FileText, X, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { Search, User, Trash2, Plus, FileText, ChevronRight, Hash, CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Modal } from '@/components/ui';
 
 interface SupplierStats {
     id: string;
@@ -34,7 +34,6 @@ export default function SuppliersContent() {
     const [searchTerm, setSearchTerm] = useState('');
     const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
     const [notesValue, setNotesValue] = useState('');
-    const [viewMode, setViewMode] = useState<'list' | 'compact'>('compact');
     const [showDeleted, setShowDeleted] = useState(false);
     const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set());
 
@@ -68,8 +67,8 @@ export default function SuppliersContent() {
             setDeposits(deps.data || []);
             setItems(its.data || []);
 
-            // Pass linked IDs to stats calculation if needed by storing in state, 
-            // OR just rely on re-calc. Since stats is a useMemo on [suppliers, expenses...], 
+            // Pass linked IDs to stats calculation if needed by storing in state,
+            // OR just rely on re-calc. Since stats is a useMemo on [suppliers, expenses...],
             // we should probably store linkedIds in state if we want to use them in useMemo.
             // Let's create a state for it or just inline the logic if we move stats calculation.
             // Actually, best to store 'linkedSupplierIds' in a state to use it in useMemo.
@@ -86,6 +85,7 @@ export default function SuppliersContent() {
     }, [supabase, fetchData]);
 
     const handleGlobalDeleteSupplier = async () => {
+        if (!isAdmin) return;
         if (!supplierToDelete) return;
         if (deleteConfirmInput.trim().toUpperCase() !== supplierToDelete.name.trim().toUpperCase()) {
             alert('Le nom saisi ne correspond pas exactement.');
@@ -111,6 +111,7 @@ export default function SuppliersContent() {
     };
 
     const handleRestoreGlobalSupplier = async (id: string) => {
+        if (!isAdmin) return;
         try {
             const { error } = await supabase.from('suppliers').update({ deleted_at: null }).eq('id', id);
             if (error) throw error;
@@ -191,197 +192,170 @@ export default function SuppliersContent() {
         s.id.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const categoryFor = (id: string) => ({
+        beton: 'Béton prestige',
+        fer: 'Aciers & armateurs',
+        ahmed: 'Quincaillerie générale',
+        ali: 'Maîtrise d\'oeuvre',
+        default: 'Général projet'
+    }[id] || 'Général projet');
+
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50/50 backdrop-blur-sm">
+            <div className="min-h-screen flex items-center justify-center bg-slate-50">
                 <div className="flex flex-col items-center gap-4">
                     <div className="h-12 w-12 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin"></div>
-                    <p className="text-slate-500 font-black uppercase text-[10px] tracking-widest animate-pulse">Chargement...</p>
+                    <p className="text-slate-500 text-sm">Chargement...</p>
                 </div>
             </div>
         );
     }
 
+    const deleteMatches = supplierToDelete
+        ? deleteConfirmInput.trim().toUpperCase() === supplierToDelete.name.trim().toUpperCase()
+        : false;
+
     return (
-        <div className="max-w-[1600px] mx-auto p-6 space-y-8 pb-32 font-jakarta bg-slate-50 min-h-screen">
-            {/* Premium Header */}
-            <motion.div
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-slate-900 rounded-[2.5rem] p-8 md:p-10 text-white relative overflow-hidden shadow-2xl shadow-slate-900/20"
-            >
-                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-br from-blue-400/20 via-transparent to-transparent rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3"></div>
-                <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-purple-500/10 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/4"></div>
-
-                <div className="relative z-10 flex flex-col xl:flex-row justify-between items-center gap-8">
-                    <div className="space-y-4 w-full xl:w-auto text-center xl:text-left">
-                        <div className="flex items-center justify-center xl:justify-start gap-3">
-                            <div className="p-2.5 bg-white/10 rounded-2xl backdrop-blur-md border border-white/10 shadow-lg">
-                                <User className="h-5 w-5 text-blue-400" />
-                            </div>
-                            <span className="text-blue-400 font-black tracking-[0.2em] uppercase text-[10px]">Annuaire Partenaires</span>
+        <div className="min-h-screen font-jakarta">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5">
+                {/* Page header */}
+                <div className="flex flex-col gap-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">Fournisseurs</h1>
+                            <p className="text-sm text-slate-500 mt-0.5">Annuaire des partenaires et suivi des soldes.</p>
                         </div>
-                        <h1 className="text-3xl md:text-4xl lg:text-5xl font-black uppercase tracking-tighter leading-tight">
-                            Gestion <span className="text-blue-400">Fournisseurs</span>
-                            <br />
-                            <span className="text-white/40">& Relations Commerciales</span>
-                        </h1>
-                    </div>
-
-                    <div className="w-full xl:w-auto flex flex-col md:flex-row items-center gap-4 lg:gap-6">
-                        <div className="relative w-full md:w-[400px] group">
-                            <div className="absolute inset-0 bg-blue-400/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-hover:text-blue-400 transition-colors" />
-                            <input
-                                type="text"
-                                placeholder="Rechercher un partenaire..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-white/10 backdrop-blur-xl border border-white/10 text-white h-14 pl-12 pr-4 rounded-2xl font-bold text-xs placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-400/30 transition-all uppercase"
-                            />
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                            {isAdmin && (
+                        {isAdmin && (
+                            <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => setShowDeleted(!showDeleted)}
-                                    className={`p-4 rounded-2xl backdrop-blur-md border transition-all duration-500 ${showDeleted ? 'bg-rose-500 text-white border-rose-400' : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10 hover:text-white'}`}
+                                    className={`inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border text-sm font-medium transition-colors ${showDeleted
+                                        ? 'bg-rose-50 border-rose-200 text-rose-700'
+                                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
                                 >
-                                    <Trash2 className="h-5 w-5" />
+                                    <Trash2 className="h-4 w-4" />
+                                    <span className="hidden sm:inline">{showDeleted ? 'Masquer supprimés' : 'Supprimés'}</span>
                                 </button>
-                            )}
-                            {isAdmin && (
-                                <Link href="/expenses" className="bg-white text-slate-900 px-8 py-4 rounded-2xl font-black text-[10px] tracking-widest uppercase hover:bg-slate-100 transition-all shadow-xl shadow-white/5 active:scale-95 flex items-center gap-2">
-                                    <Plus className="h-4 w-4" /> NOUVEAU
+                                <Link
+                                    href="/expenses"
+                                    className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors"
+                                >
+                                    <Plus className="h-4 w-4" /> Nouveau
                                 </Link>
-                            )}
-                        </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Search input */}
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Rechercher un partenaire..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300"
+                        />
                     </div>
                 </div>
-            </motion.div>
 
-            {/* Premium Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {[
-                    { label: 'Engagé Global', value: stats.reduce((sum, s) => sum + s.totalCost, 0), unit: 'DT', color: 'slate', icon: Hash },
-                    { label: 'Total Payé', value: stats.reduce((sum, s) => sum + s.totalPaid, 0), unit: 'DT', color: 'emerald', icon: CheckCircle2 },
-                    { label: 'Dette Restante', value: Math.abs(stats.reduce((sum, s) => sum + (s.remaining < 0 ? s.remaining : 0), 0)), unit: 'DT', color: 'rose', icon: AlertCircle },
-                    { label: 'Partenaires Actifs', value: stats.filter(s => s.isSelected).length, total: stats.length, color: 'blue', icon: User }
-                ].map((stat, idx) => (
-                    <motion.div
-                        key={idx}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.1 }}
-                        className={`luxury-card bg-white p-6 border-none shadow-xl shadow-slate-200/40 group overflow-hidden relative`}
-                    >
-                        <div className={`absolute top-0 right-0 w-24 h-24 bg-${stat.color}-500/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2`}></div>
-                        <div className="flex items-center justify-between mb-4">
-                            <div className={`p-3 rounded-xl bg-${stat.color}-50 text-${stat.color}-600`}>
-                                <stat.icon className="h-5 w-5" />
+                {/* Stat cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {[
+                        { label: 'Engagé global', value: stats.reduce((sum, s) => sum + s.totalCost, 0), unit: 'DT', tone: 'bg-slate-100 text-slate-600', icon: Hash },
+                        { label: 'Total payé', value: stats.reduce((sum, s) => sum + s.totalPaid, 0), unit: 'DT', tone: 'bg-emerald-50 text-emerald-600', icon: CheckCircle2 },
+                        { label: 'Dette restante', value: Math.abs(stats.reduce((sum, s) => sum + (s.remaining < 0 ? s.remaining : 0), 0)), unit: 'DT', tone: 'bg-rose-50 text-rose-600', icon: AlertCircle },
+                        { label: 'Partenaires actifs', value: stats.filter(s => s.isSelected).length, total: stats.length, tone: 'bg-blue-50 text-blue-600', icon: User }
+                    ].map((stat, idx) => (
+                        <div key={idx} className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                            <div className="flex items-start justify-between">
+                                <p className="text-xs text-slate-500">{stat.label}</p>
+                                <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg ${stat.tone}`}>
+                                    <stat.icon className="h-4 w-4" />
+                                </span>
                             </div>
-                            <TrendingUp className="h-4 w-4 text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            <p className="text-xl sm:text-2xl font-semibold text-slate-900 tabular-nums mt-1">
+                                {stat.value.toLocaleString(undefined, { minimumFractionDigits: stat.unit ? 3 : 0 })}
+                                {stat.unit && <span className="text-xs font-medium text-slate-400 ml-1.5">{stat.unit}</span>}
+                                {stat.total !== undefined && <span className="text-xs font-medium text-slate-400 ml-1.5">/ {stat.total}</span>}
+                            </p>
                         </div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{stat.label}</p>
-                        <p className={`text-2xl font-black text-slate-900 tracking-tighter`}>
-                            {stat.value.toLocaleString(undefined, { minimumFractionDigits: 3 })}
-                            {stat.unit && <span className="text-xs text-slate-300 ml-1.5">{stat.unit}</span>}
-                            {stat.total && <span className="text-xs text-slate-300 ml-1.5">/ {stat.total}</span>}
-                        </p>
-                    </motion.div>
-                ))}
-            </div>
+                    ))}
+                </div>
 
-            {/* Premium Supplier Table */}
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-                className="luxury-card bg-white border-none shadow-2xl shadow-slate-200/50 overflow-hidden"
-            >
-                <div className="overflow-x-auto custom-scrollbar">
+                {/* Desktop table */}
+                <div className="hidden md:block rounded-2xl border border-slate-200 overflow-hidden bg-white">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="bg-slate-900">
-                                <th className="px-8 py-6 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] w-20 text-center">Status</th>
-                                <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em]">Partenaire</th>
-                                <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em]">Secteur d'Activité</th>
-                                <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em] text-center">Performance Prix</th>
-                                <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em] text-right">Dépenses TTC</th>
-                                <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em] text-right">Solde Actuel</th>
-                                <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em] text-right">Actions</th>
+                            <tr className="bg-slate-50 text-xs font-medium text-slate-500">
+                                <th className="px-4 py-3 w-16 text-center">Statut</th>
+                                <th className="px-4 py-3">Partenaire</th>
+                                <th className="px-4 py-3">Secteur d'activité</th>
+                                <th className="px-4 py-3 text-center">Meilleurs prix</th>
+                                <th className="px-4 py-3 text-right">Dépenses TTC</th>
+                                <th className="px-4 py-3 text-right">Solde actuel</th>
+                                <th className="px-4 py-3 text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
+                        <tbody>
                             {filteredSuppliers.map(s => {
-                                const category = {
-                                    beton: 'BÉTON PRESTIGE',
-                                    fer: 'ACIERS & ARMATEURS',
-                                    ahmed: 'QUINCAILLERIE GENERALE',
-                                    ali: 'MAÎTRISE D\'OEUVRE',
-                                    default: 'GÉNÉRAL PROJET'
-                                }[s.id as string] || 'GÉNÉRAL PROJET';
-
+                                const category = categoryFor(s.id);
                                 return (
-                                    <tr key={s.id} className={`hover:bg-slate-50 transition-all duration-300 group ${!s.isSelected ? 'opacity-40 grayscale-[0.5]' : ''}`}>
-                                        <td className="px-8 py-6 text-center">
-                                            <div className={`w-6 h-6 rounded-lg border-2 mx-auto flex items-center justify-center transition-all duration-500 ${s.isSelected ? 'bg-slate-900 border-slate-900 text-white shadow-lg' : 'border-slate-200 group-hover:border-slate-400'}`}>
-                                                {s.isSelected && <CheckCircle2 className="h-3.5 w-3.5" />}
+                                    <tr key={s.id} className={`border-t border-slate-100 hover:bg-slate-50 transition-colors ${!s.isSelected ? 'opacity-50' : ''}`}>
+                                        <td className="px-4 py-3 text-center">
+                                            <div className={`w-5 h-5 rounded-md border mx-auto flex items-center justify-center ${s.isSelected ? 'bg-slate-900 border-slate-900 text-white' : 'border-slate-200'}`}>
+                                                {s.isSelected && <CheckCircle2 className="h-3 w-3" />}
                                             </div>
                                         </td>
-                                        <td className="px-8 py-6">
-                                            <div className="flex items-center gap-4">
-                                                <div className={`w-14 h-14 rounded-2xl ${s.color} flex items-center justify-center text-white text-lg font-black shadow-2xl transform group-hover:scale-110 group-hover:rotate-3 transition-all duration-500`}>
+                                        <td className="px-4 py-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-9 h-9 rounded-full ${s.color} flex items-center justify-center text-white text-sm font-semibold shrink-0`}>
                                                     {s.name.charAt(0).toUpperCase()}
                                                 </div>
-                                                <div>
-                                                    <p className="text-base font-black text-slate-900 uppercase tracking-tighter group-hover:text-blue-600 transition-colors uppercase">{s.name}</p>
-                                                    <div className="flex items-center gap-2 mt-1">
-                                                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{s.id}</span>
-                                                    </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-medium text-slate-900 truncate">{s.name}</p>
+                                                    <p className="text-xs text-slate-400">{s.id}</p>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-8 py-6">
-                                            <div className="inline-flex items-center px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-100 transition-colors group-hover:bg-blue-50 group-hover:border-blue-100">
-                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest group-hover:text-blue-500">{category}</span>
-                                            </div>
+                                        <td className="px-4 py-3">
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                                                {category}
+                                            </span>
                                         </td>
-                                        <td className="px-8 py-6">
+                                        <td className="px-4 py-3">
                                             <div className="flex items-center justify-center gap-1.5">
                                                 {[1, 2, 3].map((star) => (
                                                     <div
                                                         key={star}
-                                                        className={`w-6 h-1.5 rounded-full transition-all duration-700 ${s.bestPriceCount >= (star * 2) ? 'bg-emerald-500 shadow-sm shadow-emerald-500/20' : 'bg-slate-100 group-hover:bg-slate-200'}`}
+                                                        className={`w-5 h-1.5 rounded-full ${s.bestPriceCount >= (star * 2) ? 'bg-emerald-500' : 'bg-slate-100'}`}
                                                         title={s.bestPriceCount > 0 ? `${s.bestPriceCount} articles au meilleur prix` : 'Pas d\'articles comparés'}
                                                     />
                                                 ))}
                                                 {s.bestPriceCount > 0 && (
-                                                    <span className="ml-2 text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg uppercase tracking-tighter">PREMIUM</span>
+                                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">Premium</span>
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-8 py-6 text-right">
-                                            <div className="flex flex-col items-end">
-                                                <p className="text-base font-black text-slate-900 tabular-nums tracking-tighter">
-                                                    {s.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}
-                                                </p>
-                                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{s.articleCount} ARTICLES</p>
-                                            </div>
+                                        <td className="px-4 py-3 text-right">
+                                            <p className="text-sm font-medium text-slate-900 tabular-nums">
+                                                {s.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                            </p>
+                                            <p className="text-xs text-slate-400">{s.articleCount} articles</p>
                                         </td>
-                                        <td className="px-8 py-6 text-right">
-                                            <span className={`text-base font-black tabular-nums px-4 py-2 rounded-2xl tracking-tighter transition-all duration-500 ${s.remaining < 0
-                                                ? 'text-rose-600 bg-rose-50 group-hover:bg-rose-100'
-                                                : s.remaining > 0 ? 'text-emerald-600 bg-emerald-50 group-hover:bg-emerald-100' : 'text-slate-400 bg-slate-50'
+                                        <td className="px-4 py-3 text-right">
+                                            <span className={`inline-flex text-sm font-medium tabular-nums px-2.5 py-1 rounded-full ${s.remaining < 0
+                                                ? 'text-rose-700 bg-rose-50'
+                                                : s.remaining > 0 ? 'text-emerald-700 bg-emerald-50' : 'text-slate-500 bg-slate-100'
                                                 }`}>
                                                 {s.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}
                                             </span>
                                         </td>
-                                        <td className="px-8 py-6 text-right">
-                                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all duration-500">
+                                        <td className="px-4 py-3">
+                                            <div className="flex items-center justify-end gap-1">
                                                 <Link
                                                     href={`/expenses?tab=${s.id}`}
-                                                    className="p-3 bg-slate-50 hover:bg-slate-900 hover:text-white text-slate-400 rounded-xl transition-all shadow-sm"
+                                                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
                                                     title="Détails"
                                                 >
                                                     <ChevronRight className="h-4 w-4" />
@@ -392,7 +366,7 @@ export default function SuppliersContent() {
                                                             setEditingNotesId(s.id);
                                                             setNotesValue(s.notes || '');
                                                         }}
-                                                        className="p-3 bg-slate-50 hover:bg-blue-500 hover:text-white text-slate-400 rounded-xl transition-all shadow-sm"
+                                                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-colors"
                                                         title="Notes"
                                                     >
                                                         <FileText className="h-4 w-4" />
@@ -405,7 +379,7 @@ export default function SuppliersContent() {
                                                             setShowDeleteConfirmModal(true);
                                                             setDeleteConfirmInput('');
                                                         }}
-                                                        className="p-3 bg-slate-50 hover:bg-rose-500 hover:text-white text-slate-400 rounded-xl transition-all shadow-sm"
+                                                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
                                                         title="Supprimer"
                                                     >
                                                         <Trash2 className="h-4 w-4" />
@@ -414,9 +388,9 @@ export default function SuppliersContent() {
                                                 {isAdmin && showDeleted && (
                                                     <button
                                                         onClick={() => handleRestoreGlobalSupplier(s.id)}
-                                                        className="luxury-button-secondary scale-90"
+                                                        className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
                                                     >
-                                                        RESTAURER
+                                                        <RotateCcw className="h-4 w-4" /> Restaurer
                                                     </button>
                                                 )}
                                             </div>
@@ -427,134 +401,201 @@ export default function SuppliersContent() {
                         </tbody>
                     </table>
                 </div>
-            </motion.div>
 
-            {/* Notes Editing Modal */}
-            <AnimatePresence>
-                {editingNotesId && (
-                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4">
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="bg-white p-8 rounded-[3rem] w-full max-w-lg shadow-2xl border border-slate-100"
-                        >
-                            <div className="flex justify-between items-center mb-8">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
-                                        <FileText className="h-6 w-6" />
+                {/* Mobile card list */}
+                <div className="md:hidden space-y-3">
+                    {filteredSuppliers.map(s => {
+                        const category = categoryFor(s.id);
+                        return (
+                            <div key={s.id} className={`rounded-2xl border border-slate-200 bg-white p-4 ${!s.isSelected ? 'opacity-60' : ''}`}>
+                                <div className="flex items-start gap-3">
+                                    <div className={`w-10 h-10 rounded-full ${s.color} flex items-center justify-center text-white text-sm font-semibold shrink-0`}>
+                                        {s.name.charAt(0).toUpperCase()}
                                     </div>
-                                    <div>
-                                        <h3 className="text-xl font-black uppercase tracking-tighter">Notes Partenaire</h3>
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Édition des informations confidentielles</p>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-sm font-medium text-slate-900 truncate">{s.name}</p>
+                                            {s.isSelected && <CheckCircle2 className="h-3.5 w-3.5 text-slate-900 shrink-0" />}
+                                        </div>
+                                        <p className="text-xs text-slate-400">{s.id}</p>
+                                        <span className="mt-1.5 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                                            {category}
+                                        </span>
                                     </div>
                                 </div>
-                                <button onClick={() => setEditingNotesId(null)} className="p-3 hover:bg-slate-50 rounded-2xl transition-colors text-slate-300 hover:text-slate-900">
-                                    <X className="h-6 w-6" />
-                                </button>
+
+                                <div className="mt-3 grid grid-cols-2 gap-3">
+                                    <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                        <p className="text-xs text-slate-500">Dépenses TTC</p>
+                                        <p className="text-sm font-medium text-slate-900 tabular-nums">
+                                            {s.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                        </p>
+                                        <p className="text-xs text-slate-400">{s.articleCount} articles</p>
+                                    </div>
+                                    <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                        <p className="text-xs text-slate-500">Solde</p>
+                                        <p className={`text-sm font-medium tabular-nums ${s.remaining < 0 ? 'text-rose-700' : s.remaining > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                            {s.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="mt-3 flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5">
+                                        {[1, 2, 3].map((star) => (
+                                            <div
+                                                key={star}
+                                                className={`w-5 h-1.5 rounded-full ${s.bestPriceCount >= (star * 2) ? 'bg-emerald-500' : 'bg-slate-100'}`}
+                                                title={s.bestPriceCount > 0 ? `${s.bestPriceCount} articles au meilleur prix` : 'Pas d\'articles comparés'}
+                                            />
+                                        ))}
+                                        {s.bestPriceCount > 0 && (
+                                            <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">Premium</span>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center gap-1">
+                                        <Link
+                                            href={`/expenses?tab=${s.id}`}
+                                            className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                            title="Détails"
+                                        >
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Link>
+                                        {isAdmin && !showDeleted && (
+                                            <button
+                                                onClick={() => {
+                                                    setEditingNotesId(s.id);
+                                                    setNotesValue(s.notes || '');
+                                                }}
+                                                className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                                title="Notes"
+                                            >
+                                                <FileText className="h-4 w-4" />
+                                            </button>
+                                        )}
+                                        {isAdmin && !showDeleted && (
+                                            <button
+                                                onClick={() => {
+                                                    setSupplierToDelete({ id: s.id, name: s.name });
+                                                    setShowDeleteConfirmModal(true);
+                                                    setDeleteConfirmInput('');
+                                                }}
+                                                className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                                                title="Supprimer"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        )}
+                                        {isAdmin && showDeleted && (
+                                            <button
+                                                onClick={() => handleRestoreGlobalSupplier(s.id)}
+                                                className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
+                                            >
+                                                <RotateCcw className="h-4 w-4" /> Restaurer
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-                            <textarea
-                                className="w-full h-60 bg-slate-50 border-2 border-slate-100 p-6 rounded-[2rem] text-sm font-medium text-slate-700 focus:border-slate-900 outline-none transition-all resize-none shadow-inner"
-                                placeholder="Saisissez vos remarques sur ce fournisseur ici..."
-                                value={notesValue}
-                                onChange={(e) => setNotesValue(e.target.value)}
-                            />
-                            <div className="mt-8 flex gap-4">
-                                <button
-                                    onClick={() => setEditingNotesId(null)}
-                                    className="flex-1 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:bg-slate-50 rounded-2xl transition-all"
-                                >
-                                    Fermer
-                                </button>
-                                <button
-                                    onClick={async () => {
-                                        const { error } = await supabase.from('suppliers').update({ notes: notesValue }).eq('id', editingNotesId);
-                                        if (!error) {
-                                            fetchData();
-                                            setEditingNotesId(null);
-                                        }
-                                    }}
-                                    className="flex-1 py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-slate-900/20 active:scale-95 transition-all"
-                                >
-                                    Mettre à jour
-                                </button>
-                            </div>
-                        </motion.div>
+                        );
+                    })}
+                </div>
+
+                {/* Empty state */}
+                {filteredSuppliers.length === 0 && (
+                    <div className="flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-slate-200 bg-white py-16">
+                        <User className="h-10 w-10 mb-3 text-slate-300" />
+                        <p className="text-sm text-slate-500">Aucun fournisseur trouvé</p>
                     </div>
                 )}
-            </AnimatePresence>
+            </div>
 
-            {filteredSuppliers.length === 0 && (
-                <div className="text-center py-20 bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
-                    <User className="h-16 w-16 mx-auto mb-4 text-slate-100" />
-                    <p className="uppercase font-black tracking-widest text-slate-400">Aucun fournisseur trouvé</p>
-                </div>
-            )}
+            {/* Notes Editing Modal */}
+            <Modal
+                open={editingNotesId !== null}
+                onClose={() => setEditingNotesId(null)}
+                title="Notes partenaire"
+                description="Édition des informations confidentielles"
+                size="lg"
+                footer={<>
+                    <button
+                        onClick={() => setEditingNotesId(null)}
+                        className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 active:scale-[0.99] transition-colors"
+                    >
+                        Fermer
+                    </button>
+                    <button
+                        onClick={async () => {
+                            if (!isAdmin) return;
+                            const { error } = await supabase.from('suppliers').update({ notes: notesValue }).eq('id', editingNotesId);
+                            if (!error) {
+                                fetchData();
+                                setEditingNotesId(null);
+                            }
+                        }}
+                        className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors"
+                    >
+                        Mettre à jour
+                    </button>
+                </>}
+            >
+                <textarea
+                    className="w-full px-3 py-2.5 min-h-[160px] rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition resize-none"
+                    placeholder="Saisissez vos remarques sur ce fournisseur ici..."
+                    value={notesValue}
+                    onChange={(e) => setNotesValue(e.target.value)}
+                />
+            </Modal>
 
             {/* Delete Confirmation Modal */}
-            {showDeleteConfirmModal && supplierToDelete && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                    <div className="bg-white rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-                        <div className="bg-red-600 p-8 text-white relative">
-                            <button
-                                onClick={() => setShowDeleteConfirmModal(false)}
-                                className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-full transition-colors"
-                            >
-                                <X className="h-5 w-5" />
-                            </button>
-                            <div className="h-16 w-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6">
-                                <AlertCircle className="h-8 w-8 text-white" />
-                            </div>
-                            <h2 className="text-2xl font-black uppercase tracking-tighter leading-tight">Suppression Globale</h2>
-                            <p className="mt-2 text-red-100 text-sm font-medium">
-                                Attention ! Vous allez supprimer <span className="font-black underline">{supplierToDelete.name}</span> de la base de données.
-                                Cette action supprimera ses données dans <span className="font-black uppercase">Tous les projets</span>.
-                            </p>
-                        </div>
-
-                        <div className="p-8 space-y-6">
-                            <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 text-center">
-                                    Veuillez taper <span className="text-red-600">"{supplierToDelete.name}"</span> pour confirmer
-                                </label>
-                                <input
-                                    type="text"
-                                    value={deleteConfirmInput}
-                                    onChange={(e) => setDeleteConfirmInput(e.target.value)}
-                                    placeholder="NOM DU FOURNISSEUR..."
-                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 px-6 text-center text-sm font-black text-slate-900 focus:border-red-600 outline-none transition-all uppercase placeholder:text-slate-200"
-                                    autoFocus
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && !isDeleting && deleteConfirmInput.trim().toUpperCase() === supplierToDelete.name.trim().toUpperCase()) {
-                                            handleGlobalDeleteSupplier();
-                                        }
-                                    }}
-                                />
-                            </div>
-
-                            <div className="flex gap-4">
-                                <button
-                                    onClick={() => setShowDeleteConfirmModal(false)}
-                                    className="flex-1 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors bg-slate-50 rounded-2xl"
-                                >
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={handleGlobalDeleteSupplier}
-                                    disabled={isDeleting || deleteConfirmInput.trim().toUpperCase() !== supplierToDelete.name.trim().toUpperCase()}
-                                    className={`flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all ${deleteConfirmInput.trim().toUpperCase() === supplierToDelete.name.trim().toUpperCase()
-                                        ? 'bg-red-600 text-white shadow-xl shadow-red-200 hover:bg-red-700'
-                                        : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                        }`}
-                                >
-                                    {isDeleting ? 'Suppression...' : 'Supprimer Partout'}
-                                </button>
-                            </div>
-                        </div>
+            <Modal
+                open={showDeleteConfirmModal && supplierToDelete !== null}
+                onClose={() => setShowDeleteConfirmModal(false)}
+                size="md"
+                persistent
+                icon={<span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-red-50 text-red-600"><AlertCircle className="h-5 w-5" /></span>}
+                title="Suppression globale"
+                description={supplierToDelete
+                    ? `Vous allez supprimer ${supplierToDelete.name} de la base de données. Cette action supprimera ses données dans tous les projets.`
+                    : undefined}
+                footer={<>
+                    <button
+                        onClick={() => setShowDeleteConfirmModal(false)}
+                        className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 active:scale-[0.99] transition-colors"
+                    >
+                        Annuler
+                    </button>
+                    <button
+                        onClick={handleGlobalDeleteSupplier}
+                        disabled={isDeleting || !deleteMatches}
+                        className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    >
+                        {isDeleting ? 'Suppression...' : 'Supprimer partout'}
+                    </button>
+                </>}
+            >
+                {supplierToDelete && (
+                    <div className="space-y-2">
+                        <label className="block text-[13px] font-medium text-slate-700 mb-1.5">
+                            Veuillez taper <span className="text-red-600 font-semibold">"{supplierToDelete.name}"</span> pour confirmer
+                        </label>
+                        <input
+                            type="text"
+                            value={deleteConfirmInput}
+                            onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                            placeholder="Nom du fournisseur..."
+                            className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-300 transition"
+                            autoFocus
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !isDeleting && deleteConfirmInput.trim().toUpperCase() === supplierToDelete.name.trim().toUpperCase()) {
+                                    handleGlobalDeleteSupplier();
+                                }
+                            }}
+                        />
                     </div>
-                </div>
-            )}
+                )}
+            </Modal>
         </div>
     );
 }
-

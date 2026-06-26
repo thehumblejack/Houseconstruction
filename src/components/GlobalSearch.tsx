@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { Search, X, Loader2, Receipt, ShoppingCart, User, ArrowRight, Wallet, Command, History, Star } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Search, X, Loader2, Receipt, ShoppingCart, User, Wallet, Command, Package, CornerDownLeft, ArrowUp, ArrowDown, Clock } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import { createPortal } from 'react-dom';
-import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useRouter } from 'next/navigation';
+
+type ResultType = 'expense' | 'order' | 'supplier' | 'deposit';
 
 type SearchResult = {
     id: string;
-    type: 'expense' | 'order' | 'supplier' | 'deposit';
+    type: ResultType;
     title: string;
     subtitle: string;
     date?: string;
@@ -18,294 +19,300 @@ type SearchResult = {
     status?: string;
 };
 
+const TYPE_META: Record<ResultType, { label: string; icon: any; chip: string }> = {
+    supplier: { label: 'Fournisseurs', icon: User, chip: 'bg-slate-100 text-slate-600' },
+    expense: { label: 'Factures & bons', icon: Receipt, chip: 'bg-amber-50 text-amber-600' },
+    order: { label: 'Commandes', icon: ShoppingCart, chip: 'bg-blue-50 text-blue-600' },
+    deposit: { label: 'Acomptes', icon: Wallet, chip: 'bg-emerald-50 text-emerald-600' },
+};
+const TYPE_ORDER: ResultType[] = ['supplier', 'expense', 'order', 'deposit'];
+
+const QUICK_ACTIONS = [
+    { id: 'qa-exp', icon: Receipt, label: 'Dépenses', subtitle: 'Factures, bons & acomptes', url: '/expenses' },
+    { id: 'qa-sup', icon: User, label: 'Fournisseurs', subtitle: 'Annuaire & soldes', url: '/suppliers' },
+    { id: 'qa-art', icon: Package, label: 'Articles', subtitle: 'Comparateur de prix', url: '/articles' },
+    { id: 'qa-ord', icon: ShoppingCart, label: 'Commandes', subtitle: 'Livraisons & réceptions', url: '/orders' },
+];
+
+function highlight(text: string, q: string) {
+    if (!q) return text;
+    const i = text.toLowerCase().indexOf(q.toLowerCase());
+    if (i === -1) return text;
+    return (
+        <>
+            {text.slice(0, i)}
+            <mark className="bg-amber-100 text-slate-900 rounded px-0.5">{text.slice(i, i + q.length)}</mark>
+            {text.slice(i + q.length)}
+        </>
+    );
+}
+
 export default function GlobalSearch() {
+    const router = useRouter();
     const [isOpen, setIsOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<SearchResult[]>([]);
     const [loading, setLoading] = useState(false);
     const [mounted, setMounted] = useState(false);
+    const [activeIndex, setActiveIndex] = useState(0);
+    const [recent, setRecent] = useState<string[]>([]);
     const inputRef = useRef<HTMLInputElement>(null);
-    const supabase = createClient();
+    const listRef = useRef<HTMLDivElement>(null);
+    const supabase = useMemo(() => createClient(), []);
 
-    const toggleSearch = () => setIsOpen(!isOpen);
+    const close = useCallback(() => setIsOpen(false), []);
 
+    // Recent searches (localStorage)
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                setIsOpen(true);
-            }
-            if (e.key === 'Escape') setIsOpen(false);
+        try {
+            const r = JSON.parse(localStorage.getItem('he_recent_searches') || '[]');
+            if (Array.isArray(r)) setRecent(r.slice(0, 5));
+        } catch { /* ignore */ }
+    }, []);
+    const pushRecent = useCallback((term: string) => {
+        const t = term.trim();
+        if (t.length < 2) return;
+        setRecent(prev => {
+            const next = [t, ...prev.filter(x => x.toLowerCase() !== t.toLowerCase())].slice(0, 5);
+            try { localStorage.setItem('he_recent_searches', JSON.stringify(next)); } catch { /* ignore */ }
+            return next;
+        });
+    }, []);
+
+    // Sorted/grouped results — flat order matches render order (for keyboard nav)
+    const sortedResults = useMemo(
+        () => [...results].sort((a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type)),
+        [results]
+    );
+    const isSearching = query.trim().length >= 2;
+    const navigable: { url: string }[] = isSearching ? sortedResults : QUICK_ACTIONS;
+
+    const go = useCallback((url: string) => {
+        if (isSearching) pushRecent(query);
+        close();
+        router.push(url);
+    }, [isSearching, query, pushRecent, close, router]);
+
+    // Open / global shortcuts + body scroll lock
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'k' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setIsOpen(v => !v); }
         };
-        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keydown', onKey);
         setMounted(true);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', onKey);
     }, []);
 
     useEffect(() => {
-        if (isOpen) {
-            setTimeout(() => inputRef.current?.focus(), 100);
-        }
+        if (!isOpen) return;
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        setTimeout(() => inputRef.current?.focus(), 60);
+        return () => { document.body.style.overflow = prev; };
     }, [isOpen]);
 
+    // Reset selection when the list changes
+    useEffect(() => { setActiveIndex(0); }, [query, results.length, isOpen]);
+
+    // Keep the active row in view
+    useEffect(() => {
+        const el = listRef.current?.querySelector(`[data-idx="${activeIndex}"]`);
+        el?.scrollIntoView({ block: 'nearest' });
+    }, [activeIndex]);
+
+    // In-modal keyboard nav
+    const onModalKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+        if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIndex(i => Math.min(i + 1, navigable.length - 1)); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIndex(i => Math.max(i - 1, 0)); }
+        else if (e.key === 'Enter') {
+            e.preventDefault();
+            const item = navigable[activeIndex];
+            if (item) go(item.url);
+        }
+    };
+
+    // Debounced fetch
     useEffect(() => {
         const h = setTimeout(async () => {
-            if (!query || query.length < 2) {
-                setResults([]);
-                return;
-            }
-
+            if (!isSearching) { setResults([]); setLoading(false); return; }
             setLoading(true);
             try {
-                const searchResults: SearchResult[] = [];
-                const searchTerm = `%${query}%`;
+                const out: SearchResult[] = [];
+                const term = `%${query}%`;
 
-                const { data: suppliers } = await supabase
-                    .from('suppliers')
-                    .select('id, name, description')
-                    .ilike('name', searchTerm)
-                    .limit(3);
+                const { data: suppliers } = await supabase.from('suppliers').select('id, name, description').ilike('name', term).limit(4);
+                suppliers?.forEach((s: any) => out.push({ id: s.id, type: 'supplier', title: s.name, subtitle: s.description || 'Fournisseur', url: `/expenses?tab=${s.id}` }));
 
-                if (suppliers) {
-                    suppliers.forEach((s: any) => searchResults.push({
-                        id: s.id,
-                        type: 'supplier',
-                        title: s.name,
-                        subtitle: s.description || 'Fournisseur',
-                        url: `/expenses?tab=${s.id}`,
-                    }));
-                }
+                const { data: expenses } = await supabase.from('expenses').select('id, item, price, date, supplier_id, status').or(`item.ilike.${term},date.ilike.${term}`).limit(6);
+                expenses?.forEach((e: any) => out.push({ id: e.id, type: 'expense', title: e.item || 'Facture', subtitle: `${e.price?.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT`, date: e.date, status: e.status, url: `/expenses?tab=${e.supplier_id}&highlight=${e.id}` }));
 
-                const { data: expenses } = await supabase
-                    .from('expenses')
-                    .select('id, item, price, date, supplier_id, status')
-                    .or(`item.ilike.${searchTerm},date.ilike.${searchTerm}`)
-                    .limit(5);
+                const { data: orders } = await supabase.from('orders').select('id, supplier_name, date, status, items').or(`supplier_name.ilike.${term}`).limit(5);
+                orders?.forEach((o: any) => out.push({ id: o.id, type: 'order', title: o.supplier_name || 'Commande', subtitle: `${(o.items || []).length} article${(o.items || []).length > 1 ? 's' : ''}`, date: o.date, status: o.status, url: '/orders' }));
 
-                if (expenses) {
-                    expenses.forEach((e: any) => searchResults.push({
-                        id: e.id,
-                        type: 'expense',
-                        title: `Facture: ${e.item}`,
-                        subtitle: `${e.price?.toLocaleString()} DT`,
-                        date: e.date,
-                        status: e.status,
-                        url: `/expenses?tab=${e.supplier_id}&highlight=${e.id}`
-                    }));
-                }
+                const { data: deposits } = await supabase.from('deposits').select('id, amount, date, ref, payer').or(`ref.ilike.${term},payer.ilike.${term}`).limit(5);
+                deposits?.forEach((d: any) => out.push({ id: d.id, type: 'deposit', title: `Acompte ${d.amount?.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT`, subtitle: `${d.payer || 'Inconnu'} · Réf ${d.ref || '—'}`, date: d.date, url: '/expenses' }));
 
-                const { data: orders } = await supabase
-                    .from('orders')
-                    .select('id, supplier_name, date, status, items')
-                    .or(`supplier_name.ilike.${searchTerm}`)
-                    .limit(5);
-
-                if (orders) {
-                    orders.forEach((o: any) => searchResults.push({
-                        id: o.id,
-                        type: 'order',
-                        title: `Commande: ${o.supplier_name}`,
-                        subtitle: `${(o.items || []).length} articles`,
-                        date: o.date,
-                        status: o.status,
-                        url: '/orders'
-                    }));
-                }
-
-                const { data: deposits } = await supabase
-                    .from('deposits')
-                    .select('id, amount, date, ref, payer')
-                    .or(`ref.ilike.${searchTerm},payer.ilike.${searchTerm}`)
-                    .limit(5);
-
-                if (deposits) {
-                    deposits.forEach((d: any) => searchResults.push({
-                        id: d.id,
-                        type: 'deposit',
-                        title: `Acompte: ${d.amount} DT`,
-                        subtitle: `${d.payer || 'Inconnu'} - Ref: ${d.ref || '-'}`,
-                        date: d.date,
-                        url: '/expenses'
-                    }));
-                }
-
-                setResults(searchResults);
-            } catch (error) {
-                console.error("Search error", error);
+                setResults(out);
+            } catch (err) {
+                console.error('Search error', err);
             } finally {
                 setLoading(false);
             }
-        }, 300);
-
+        }, 250);
         return () => clearTimeout(h);
-    }, [query, supabase]);
+    }, [query, isSearching, supabase]);
 
     if (!mounted) return null;
+
+    // Render the flat list with group headers, keeping flat index for nav
+    let flatIdx = -1;
+    let lastType: ResultType | null = null;
 
     return (
         <>
             <button
-                onClick={toggleSearch}
-                className="group flex items-center gap-3 px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-full transition-all duration-300"
+                onClick={() => setIsOpen(true)}
+                className="group flex items-center gap-2 h-9 px-3 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
             >
-                <Search className="h-4 w-4 text-slate-400 group-hover:text-[#FFB800] transition-colors" />
-                <span className="hidden lg:block text-[10px] font-black tracking-widest text-slate-400 group-hover:text-slate-200 transition-colors uppercase">RECHERCHER...</span>
-                <div className="hidden lg:flex items-center gap-1.5 pl-2 border-l border-white/10 ml-1">
-                    <Command className="h-3 w-3 text-slate-500" strokeWidth={3} />
-                    <span className="text-[10px] font-black text-slate-500">K</span>
-                </div>
+                <Search className="h-4 w-4" strokeWidth={2} />
+                <span className="hidden lg:block text-sm font-medium text-slate-400 group-hover:text-slate-600 transition-colors">Rechercher</span>
+                <span className="hidden lg:flex items-center gap-0.5 ml-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
+                    <Command className="h-2.5 w-2.5" strokeWidth={2.5} /> K
+                </span>
             </button>
 
-            {createPortal(
-                <AnimatePresence>
-                    {isOpen && (
-                        <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[15vh] px-4 md:px-6 font-jakarta">
-                            {/* Backdrop */}
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={toggleSearch}
-                                className="absolute inset-0 bg-slate-950/60 backdrop-blur-2xl"
+            {isOpen && createPortal(
+                <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[12vh] px-4 font-jakarta" onKeyDown={onModalKeyDown}>
+                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150" onClick={close} />
+
+                    <div className="relative w-full max-w-xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[72vh] animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-150">
+                        {/* Search input */}
+                        <div className="flex items-center gap-3 px-4 h-14 border-b border-slate-100 shrink-0">
+                            {loading
+                                ? <Loader2 className="h-5 w-5 text-slate-400 animate-spin shrink-0" />
+                                : <Search className="h-5 w-5 text-slate-400 shrink-0" strokeWidth={2} />}
+                            <input
+                                ref={inputRef}
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                placeholder="Rechercher factures, fournisseurs, commandes…"
+                                className="flex-1 h-full bg-transparent text-[15px] text-slate-900 placeholder:text-slate-400 outline-none min-w-0"
                             />
+                            <button onClick={close} className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors">
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
 
-                            {/* Modal Container */}
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                                className="relative bg-[#F8FAFC] w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden border border-white/20"
-                            >
-                                {/* Header / Search Input */}
-                                <div className="p-6 pb-0 relative">
-                                    <div className="flex items-center gap-6 p-2 relative bg-white rounded-2xl shadow-sm border border-slate-100 group focus-within:ring-2 focus-within:ring-[#FFB800]/20 transition-all duration-300">
-                                        <div className={`p-2.5 rounded-xl transition-colors ${loading ? 'bg-blue-50 text-blue-500' : 'bg-slate-50 text-slate-400 group-focus-within:bg-[#FFB800]/10 group-focus-within:text-[#FFB800]'}`}>
-                                            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
-                                        </div>
-                                        <input
-                                            ref={inputRef}
-                                            className="flex-1 text-lg font-bold outline-none placeholder:text-slate-300 text-slate-900 bg-transparent min-w-0"
-                                            placeholder="Cherchez n'importe quoi..."
-                                            value={query}
-                                            onChange={(e) => setQuery(e.target.value)}
-                                        />
-                                        <button
-                                            onClick={toggleSearch}
-                                            className="p-2 hover:bg-slate-100 rounded-xl transition-all group/close"
-                                        >
-                                            <X className="h-5 w-5 text-slate-300 group-hover/close:text-slate-600 group-hover/close:rotate-90 transition-all duration-300" />
-                                        </button>
-                                    </div>
-
-                                    {/* Shortcuts / Quick Filters */}
-                                    <div className="flex items-center gap-2 mt-6 pb-2 overflow-x-auto no-scrollbar">
-                                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-100 rounded-lg whitespace-nowrap">
-                                            <History className="h-3 w-3 text-slate-400" />
-                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">RÉCENT</span>
-                                        </div>
-                                        {['Factures', 'Commandes', 'Fournisseurs', 'Acomptes'].map((cat) => (
-                                            <button key={cat} className="px-3 py-1.5 hover:bg-[#FFB800]/10 text-slate-400 hover:text-[#FFB800] border border-transparent rounded-lg text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap">
-                                                {cat}
+                        {/* Body */}
+                        <div ref={listRef} className="flex-1 overflow-y-auto no-scrollbar py-2">
+                            {/* Default state: quick actions + recent */}
+                            {!isSearching && (
+                                <>
+                                    <p className="px-4 pt-1 pb-1.5 text-[11px] font-medium text-slate-400 uppercase tracking-wide">Accès rapide</p>
+                                    {QUICK_ACTIONS.map((a, i) => {
+                                        flatIdx++;
+                                        const idx = flatIdx;
+                                        const Icon = a.icon;
+                                        const active = idx === activeIndex;
+                                        return (
+                                            <button
+                                                key={a.id}
+                                                data-idx={idx}
+                                                onMouseEnter={() => setActiveIndex(idx)}
+                                                onClick={() => go(a.url)}
+                                                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${active ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
+                                            >
+                                                <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-slate-100 text-slate-600 shrink-0">
+                                                    <Icon className="h-4 w-4" />
+                                                </span>
+                                                <span className="min-w-0">
+                                                    <span className="block text-sm font-medium text-slate-900 truncate">{a.label}</span>
+                                                    <span className="block text-xs text-slate-400 truncate">{a.subtitle}</span>
+                                                </span>
                                             </button>
-                                        ))}
-                                    </div>
-                                </div>
+                                        );
+                                    })}
 
-                                {/* Results Area */}
-                                <div className="max-h-[50vh] overflow-y-auto mt-4 px-6 pb-6 custom-scrollbar">
-                                    {results.length === 0 && query.length > 1 && !loading && (
-                                        <div className="py-20 text-center bg-white/50 rounded-3xl border border-dashed border-slate-200">
-                                            <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                                <X className="h-8 w-8 text-slate-200" />
-                                            </div>
-                                            <p className="text-sm font-black text-slate-900 uppercase tracking-tight">Aucun résultat</p>
-                                            <p className="text-xs text-slate-400 mt-1 font-medium">Recherchez avec d'autres mots-clés.</p>
-                                        </div>
-                                    )}
-
-                                    {results.length === 0 && query.length < 2 && (
-                                        <div className="py-12 px-4 space-y-6">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
-                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Suggestions</span>
-                                            </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                {['Dernières dépenses', 'Fournisseurs actifs', 'Commandes en cours'].map(s => (
-                                                    <div key={s} className="p-4 bg-white border border-slate-100 rounded-2xl flex items-center justify-between hover:border-[#FFB800]/30 hover:shadow-lg hover:shadow-[#FFB800]/5 cursor-pointer transition-all duration-300 group">
-                                                        <span className="text-[11px] font-bold text-slate-600 group-hover:text-slate-900">{s}</span>
-                                                        <ArrowRight className="h-3.5 w-3.5 text-slate-200 group-hover:text-[#FFB800] transition-colors" />
-                                                    </div>
+                                    {recent.length > 0 && (
+                                        <>
+                                            <p className="px-4 pt-3 pb-1.5 text-[11px] font-medium text-slate-400 uppercase tracking-wide">Récent</p>
+                                            <div className="flex flex-wrap gap-1.5 px-4 pb-2">
+                                                {recent.map((r) => (
+                                                    <button
+                                                        key={r}
+                                                        onClick={() => setQuery(r)}
+                                                        className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                                                    >
+                                                        <Clock className="h-3 w-3 text-slate-400" /> {r}
+                                                    </button>
                                                 ))}
                                             </div>
-                                        </div>
+                                        </>
                                     )}
+                                </>
+                            )}
 
-                                    <div className="space-y-2">
-                                        <AnimatePresence mode='popLayout'>
-                                            {results.map((result, i) => (
-                                                <motion.div
-                                                    key={result.id}
-                                                    initial={{ opacity: 0, y: 10 }}
-                                                    animate={{ opacity: 1, y: 0 }}
-                                                    transition={{ delay: i * 0.05 }}
-                                                >
-                                                    <Link
-                                                        href={result.url}
-                                                        onClick={() => setIsOpen(false)}
-                                                        className="flex items-center gap-5 p-4 bg-white rounded-2xl border border-slate-100 hover:border-[#FFB800]/50 hover:shadow-xl hover:shadow-[#FFB800]/5 group transition-all duration-300 relative overflow-hidden"
-                                                    >
-                                                        <div className={`
-                                                            p-3 rounded-xl transition-colors duration-300
-                                                            ${result.type === 'expense' ? 'bg-amber-50 text-amber-500 group-hover:bg-amber-500 group-hover:text-white' : ''}
-                                                            ${result.type === 'order' ? 'bg-blue-50 text-blue-500 group-hover:bg-blue-500 group-hover:text-white' : ''}
-                                                            ${result.type === 'supplier' ? 'bg-slate-50 text-slate-400 group-hover:bg-slate-900 group-hover:text-white' : ''}
-                                                            ${result.type === 'deposit' ? 'bg-emerald-50 text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white' : ''}
-                                                        `}>
-                                                            {result.type === 'expense' && <Receipt className="h-5 w-5" />}
-                                                            {result.type === 'order' && <ShoppingCart className="h-5 w-5" />}
-                                                            {result.type === 'supplier' && <User className="h-5 w-5" />}
-                                                            {result.type === 'deposit' && <Wallet className="h-5 w-5" />}
-                                                        </div>
-
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center justify-between mb-0.5">
-                                                                <h4 className="text-sm font-black text-slate-900 truncate group-hover:text-[#FFB800] transition-colors">{result.title}</h4>
-                                                                {result.date && <span className="text-[9px] font-black text-slate-400 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-100">{result.date}</span>}
-                                                            </div>
-                                                            <div className="flex items-center gap-3">
-                                                                <p className="text-[11px] text-slate-500 font-medium truncate uppercase tracking-widest opacity-60">{result.subtitle}</p>
-                                                                {result.status && (
-                                                                    <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${result.status === 'paid' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
-                                                                        {result.status}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="w-10 h-10 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 group-hover:bg-[#FFB800]/10 transition-all duration-500">
-                                                            <ArrowRight className="h-4 w-4 text-[#FFB800]" />
-                                                        </div>
-                                                    </Link>
-                                                </motion.div>
-                                            ))}
-                                        </AnimatePresence>
+                            {/* Empty results */}
+                            {isSearching && !loading && sortedResults.length === 0 && (
+                                <div className="py-14 text-center">
+                                    <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center">
+                                        <Search className="h-5 w-5 text-slate-300" />
                                     </div>
+                                    <p className="text-sm font-medium text-slate-900">Aucun résultat</p>
+                                    <p className="text-xs text-slate-400 mt-0.5">Essayez avec d&apos;autres mots-clés.</p>
                                 </div>
+                            )}
 
-                                {/* Footer Info */}
-                                <div className="p-4 bg-slate-900 border-t border-white/5 flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-8">
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex items-center gap-1.5">
-                                            <kbd className="bg-white/10 px-1.5 py-0.5 rounded text-white border border-white/5 font-mono">ESC</kbd>
-                                            <span>Fermer</span>
-                                        </div>
+                            {/* Grouped results */}
+                            {isSearching && sortedResults.map((r) => {
+                                flatIdx++;
+                                const idx = flatIdx;
+                                const active = idx === activeIndex;
+                                const meta = TYPE_META[r.type];
+                                const Icon = meta.icon;
+                                const header = r.type !== lastType ? (lastType = r.type, meta.label) : null;
+                                return (
+                                    <div key={r.id}>
+                                        {header && (
+                                            <p className="px-4 pt-2.5 pb-1 text-[11px] font-medium text-slate-400 uppercase tracking-wide">{header}</p>
+                                        )}
+                                        <button
+                                            data-idx={idx}
+                                            onMouseEnter={() => setActiveIndex(idx)}
+                                            onClick={() => go(r.url)}
+                                            className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${active ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
+                                        >
+                                            <span className={`flex items-center justify-center w-9 h-9 rounded-lg shrink-0 ${meta.chip}`}>
+                                                <Icon className="h-4 w-4" />
+                                            </span>
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block text-sm font-medium text-slate-900 truncate">{highlight(r.title, query)}</span>
+                                                <span className="block text-xs text-slate-400 truncate">{r.subtitle}</span>
+                                            </span>
+                                            {r.status && (
+                                                <span className={`hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${r.status === 'paid' || r.status === 'delivered' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                                    {r.status === 'paid' ? 'Payé' : r.status === 'pending' ? 'En attente' : r.status}
+                                                </span>
+                                            )}
+                                            {r.date && <span className="hidden sm:block text-[11px] text-slate-400 tabular-nums shrink-0">{r.date}</span>}
+                                            {active && <CornerDownLeft className="h-3.5 w-3.5 text-slate-400 shrink-0" />}
+                                        </button>
                                     </div>
-                                    <span className="text-[#FFB800] opacity-80">Recherche Premium HE</span>
-                                </div>
-                            </motion.div>
+                                );
+                            })}
                         </div>
-                    )}
-                </AnimatePresence>,
+
+                        {/* Footer hints */}
+                        <div className="flex items-center justify-between gap-4 px-4 h-10 border-t border-slate-100 text-[11px] text-slate-400 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <span className="flex items-center gap-1"><kbd className="inline-flex items-center justify-center w-5 h-5 rounded border border-slate-200 bg-slate-50"><ArrowUp className="h-3 w-3" /></kbd><kbd className="inline-flex items-center justify-center w-5 h-5 rounded border border-slate-200 bg-slate-50"><ArrowDown className="h-3 w-3" /></kbd> Naviguer</span>
+                                <span className="flex items-center gap-1"><kbd className="inline-flex items-center justify-center w-5 h-5 rounded border border-slate-200 bg-slate-50"><CornerDownLeft className="h-3 w-3" /></kbd> Ouvrir</span>
+                            </div>
+                            <span className="flex items-center gap-1"><kbd className="inline-flex items-center justify-center h-5 px-1.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px]">esc</kbd> Fermer</span>
+                        </div>
+                    </div>
+                </div>,
                 document.body
             )}
         </>

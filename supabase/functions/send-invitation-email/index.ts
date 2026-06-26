@@ -1,6 +1,11 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY')
+// Sender MUST be a verified sender (or verified domain) in Brevo, otherwise Brevo
+// rejects the send. Configure via secrets to avoid code changes:
+//   supabase secrets set BREVO_SENDER_EMAIL=you@verified-domain.com BREVO_SENDER_NAME="HouseExpert"
+const SENDER_EMAIL = Deno.env.get('BREVO_SENDER_EMAIL') || 'hamzahadjtaieb@gmail.com'
+const SENDER_NAME = Deno.env.get('BREVO_SENDER_NAME') || 'HouseExpert'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -44,8 +49,8 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         sender: {
-          name: 'HouseConstruction',
-          email: 'hamzahadjtaieb@gmail.com'
+          name: SENDER_NAME,
+          email: SENDER_EMAIL
         },
         to: [
           {
@@ -104,8 +109,9 @@ serve(async (req) => {
     console.log('Brevo API response data:', data)
 
     if (!res.ok) {
-      console.error('Brevo API error:', data)
-      throw new Error(data.message || JSON.stringify(data))
+      console.error('Brevo API error:', res.status, data)
+      // Common: 401 invalid key, 400 sender not verified — surface status + message.
+      throw new Error(`Brevo (${res.status}): ${data?.message || data?.code || JSON.stringify(data)}`)
     }
 
     return new Response(

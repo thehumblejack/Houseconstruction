@@ -1,15 +1,25 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
 import {
-    Plus, X, Search, Pencil, Save, Loader2, Package,
-    LayoutGrid, List, TrendingDown, Medal, ArrowRightLeft,
-    ChevronDown, Trash2
+    Plus, Search, Pencil, Save, Loader2, Package,
+    LayoutGrid, List, ChevronDown, Trash2, SlidersHorizontal, Trophy, ShoppingCart
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Modal } from '@/components/ui';
+
+// Cheapest visible supplier for an article row (ignores zero/blank prices).
+function bestPriceFor(prices: Record<string, { price: number; isRef?: boolean }>, visibleColumns: string[]) {
+    const entries = Object.entries(prices).filter(([s, v]) => visibleColumns.includes(s) && v.price > 0);
+    if (entries.length === 0) return null;
+    const [supplier, v] = entries.reduce((min, cur) => (cur[1].price < min[1].price ? cur : min));
+    const others = entries.filter(([s]) => s !== supplier).map(([, x]) => x.price);
+    const savings = others.length ? Math.min(...others) - v.price : 0;
+    return { supplier, price: v.price, savings };
+}
 
 const MOSTAKBEL_PRICES: Record<string, number> = {
     "FER ROND DE 06/": 2.650,
@@ -239,6 +249,7 @@ export default function ArticlesContent() {
     }, [supabase, currentProject]);
 
     const handleDelete = async (row: ArticleRow) => {
+        if (!isAdmin) return;
         if (!confirm('Supprimer cet article ?')) return;
         try {
             const { error } = await supabase.from(row.sourceTable).delete().eq('id', row.id);
@@ -251,6 +262,7 @@ export default function ArticlesContent() {
     };
 
     const handleSave = async () => {
+        if (!isAdmin) return;
         const project = currentProject;
         if (!project) return;
         try {
@@ -377,29 +389,6 @@ export default function ArticlesContent() {
         return n.replace(/\s+/g, ' ');
     };
 
-    // Helper to pick a clean label for merged items
-    const normalizedNameLabel = (normalized: string, originalItems: ArticleRow[]) => {
-        if (normalized.startsWith("FER Ø")) return normalized;
-        if (normalized === "FIL ATTACHE") return "FIL ATTACHÉ (RECUIT)";
-        if (normalized === "BRIQUE 8") {
-            const detailed = originalItems.find(i => i.designation.toUpperCase().includes("BCM"));
-            return detailed ? detailed.designation : "BRIQUE DE 8";
-        }
-        if (normalized === "BRIQUE 12") {
-            const detailed = originalItems.find(i => i.designation.toUpperCase().includes("BCM"));
-            return detailed ? detailed.designation : "BRIQUE DE 12";
-        }
-
-        // If it already has unit info from normalizeArticleName, return it
-        if (normalized.includes("(1m3)")) return normalized;
-        if (normalized.startsWith("OM ")) return normalized;
-        if (normalized.startsWith("BERLIET ")) return normalized;
-
-        // Otherwise use the most frequent original name or just the first one
-        return originalItems[0].designation;
-    };
-
-
     // Matrix View Logic
     const matrixData = useMemo(() => {
         // 1. Consolidate Suppliers case-insensitively and filter out blanks
@@ -473,471 +462,515 @@ export default function ArticlesContent() {
         return { suppliers: suppliersWithPrices, rows };
     }, [articles]);
 
+    const filterChips = [
+        { label: 'Tous', value: '' },
+        { label: 'Briques', value: 'BRIQUE' },
+        { label: 'Fer', value: 'FER' },
+        { label: 'Gravier', value: 'GRAVIER' },
+        { label: 'Sable', value: 'SABLE' }
+    ];
+
+    const activeMatrixCols = columnOrder.filter(s => visibleColumns.includes(s) && matrixData.suppliers.includes(s));
+    const matrixRows = matrixData.rows.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-slate-50">
-                <Loader2 className="h-10 w-10 text-slate-900 animate-spin" />
+                <Loader2 className="h-8 w-8 text-slate-900 animate-spin" />
             </div>
         );
     }
 
     return (
-        <div className="max-w-[1600px] mx-auto p-6 space-y-8 pb-32 font-jakarta bg-slate-50 min-h-screen">
+        <div className="min-h-screen font-jakarta">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5">
 
-            {/* Header Section */}
-            <motion.div
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-slate-900 rounded-[2.5rem] p-8 md:p-10 text-white relative overflow-hidden shadow-2xl shadow-slate-900/20"
-            >
-                {/* Premium Background Effects */}
-                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-br from-[#FFB800]/20 via-transparent to-transparent rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3"></div>
-                <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-blue-500/10 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/4"></div>
+                {/* Page header */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">Articles</h1>
+                        <p className="text-sm text-slate-500 mt-0.5">Catalogue des matériaux et comparatif des prix</p>
+                    </div>
+                    {isAdmin && (
+                        <button
+                            onClick={openAdd}
+                            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                        >
+                            <Plus className="h-4 w-4" />
+                            Nouvel article
+                        </button>
+                    )}
+                </div>
 
-                <div className="relative z-10 flex flex-col xl:flex-row justify-between items-center gap-8">
-                    <div className="space-y-4 w-full xl:w-auto text-center xl:text-left">
-                        <div className="flex items-center justify-center xl:justify-start gap-3">
-                            <div className="p-2.5 bg-white/10 rounded-2xl backdrop-blur-md border border-white/10 shadow-lg">
-                                <Package className="h-5 w-5 text-[#FFB800]" />
-                            </div>
-                            <span className="text-[#FFB800] font-black tracking-[0.2em] uppercase text-[10px]">Analytics & Inventaire</span>
-                        </div>
-                        <h1 className="text-3xl md:text-4xl lg:text-5xl font-black uppercase tracking-tighter leading-tight">
-                            Catalogue <span className="text-[#FFB800]">Articles</span>
-                            <br />
-                            <span className="text-white/40">& Market Intelligence</span>
-                        </h1>
+                {/* Controls: view switch + search */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="inline-flex p-1 rounded-xl border border-slate-200 bg-white">
+                        <button
+                            onClick={() => setViewMode('matrix')}
+                            className={`inline-flex items-center justify-center gap-2 h-8 px-3 rounded-lg text-sm font-medium transition-colors ${viewMode === 'matrix' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                        >
+                            <LayoutGrid className="w-4 h-4" />
+                            Comparatif
+                        </button>
+                        <button
+                            onClick={() => setViewMode('inventory')}
+                            className={`inline-flex items-center justify-center gap-2 h-8 px-3 rounded-lg text-sm font-medium transition-colors ${viewMode === 'inventory' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                        >
+                            <List className="w-4 h-4" />
+                            Inventaire
+                        </button>
                     </div>
 
-                    <div className="w-full xl:w-auto flex flex-col md:flex-row items-center gap-4 lg:gap-6">
-                        {/* Tab Switcher - Luxury Style */}
-                        <div className="bg-white/5 backdrop-blur-xl p-1.5 rounded-[2rem] border border-white/5 flex w-full md:w-auto">
-                            <button
-                                onClick={() => setViewMode('inventory')}
-                                className={`
-                                    flex items-center justify-center gap-3 px-8 py-4 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all duration-500 w-full md:w-auto
-                                    ${viewMode === 'inventory' ? 'bg-[#FFB800] text-slate-900 shadow-xl shadow-amber-500/20 scale-105' : 'text-white/40 hover:text-white hover:bg-white/5'}
-                                `}
-                            >
-                                <List className="w-4 h-4" />
-                                Inventaire
-                            </button>
-                            <button
-                                onClick={() => setViewMode('matrix')}
-                                className={`
-                                    flex items-center justify-center gap-3 px-8 py-4 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all duration-500 w-full md:w-auto
-                                    ${viewMode === 'matrix' ? 'bg-[#FFB800] text-slate-900 shadow-xl shadow-amber-500/20 scale-105' : 'text-white/40 hover:text-white hover:bg-white/5'}
-                                `}
-                            >
-                                <LayoutGrid className="w-4 h-4" />
-                                Comparatif
-                            </button>
-                        </div>
-
-                        {/* Search Bar - Luxury Style */}
-                        <div className="relative w-full md:w-[300px] group">
-                            <div className="absolute inset-0 bg-[#FFB800]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-hover:text-[#FFB800] transition-colors" />
-                            <input
-                                type="text"
-                                placeholder="Rechercher un article..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-white/10 backdrop-blur-xl border border-white/10 text-white h-14 pl-12 pr-4 rounded-2xl font-bold text-xs placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#FFB800]/30 transition-all"
-                            />
-                        </div>
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Rechercher un article..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300"
+                        />
                     </div>
                 </div>
-            </motion.div>
 
-            {/* Content Area */}
-            {viewMode === 'matrix' ? (
-                <div className="animate-in fade-in slide-in-from-bottom-6 duration-1000 space-y-8">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 px-2">
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-100">
-                                    <LayoutGrid className="text-[#FFB800] w-6 h-6" />
-                                </div>
-                                <div>
-                                    <h2 className="text-2xl lg:text-3xl font-black text-slate-900 uppercase tracking-tight">Comparatif Matériaux</h2>
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Analyse des prix du marché en temps réel</p>
-                                </div>
-                            </div>
-
-                            {/* Filter Chips - Luxury Pilles */}
+                {/* Content Area */}
+                {viewMode === 'matrix' ? (
+                    <div className="space-y-4 animate-in fade-in duration-300">
+                        {/* Filter chips + column settings */}
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                             <div className="flex flex-wrap gap-2">
-                                {[
-                                    { label: 'Tous', value: '' },
-                                    { label: 'Briques', value: 'BRIQUE' },
-                                    { label: 'Fer', value: 'FER' },
-                                    { label: 'Gravier', value: 'GRAVIER' },
-                                    { label: 'Sable', value: 'SABLE' }
-                                ].map((chip) => {
+                                {filterChips.map((chip) => {
                                     const isActive = searchTerm.toUpperCase() === chip.value.toUpperCase() || (chip.value === '' && searchTerm === '');
                                     return (
                                         <button
                                             key={chip.label}
                                             onClick={() => setSearchTerm(chip.value)}
-                                            className={`
-                                                px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300
-                                                ${isActive
-                                                    ? 'bg-slate-900 text-white shadow-xl shadow-slate-900/10'
-                                                    : 'bg-white text-slate-400 hover:text-slate-900 border border-slate-200/60'
-                                                }
-                                            `}
+                                            className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${isActive ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:text-slate-900'}`}
                                         >
                                             {chip.label}
                                         </button>
                                     );
                                 })}
                             </div>
-                        </div>
 
-                        <div className="relative column-settings-container">
-                            <button
-                                onClick={() => setShowColumnSettings(!showColumnSettings)}
-                                className={`luxury-button-secondary gap-3 ${showColumnSettings ? 'bg-slate-900 text-white border-slate-900' : ''}`}
-                            >
-                                <LayoutGrid className="w-5 h-5" />
-                                <span className="text-[10px] font-black uppercase tracking-widest">Gérer Colonnes</span>
-                            </button>
-
-                            {showColumnSettings && (
-                                <motion.div
-                                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                                    className="absolute top-full right-0 mt-4 w-72 bg-white rounded-[2.5rem] shadow-2xl border border-slate-100 p-8 z-[120]"
+                            <div className="relative column-settings-container">
+                                <button
+                                    onClick={() => setShowColumnSettings(!showColumnSettings)}
+                                    className={`inline-flex items-center justify-center gap-2 h-9 px-3 rounded-xl border text-sm font-medium transition-colors ${showColumnSettings ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
                                 >
-                                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-6">Fournisseurs</h3>
-                                    <div className="space-y-1 max-h-[400px] overflow-y-auto no-scrollbar">
-                                        {matrixData.suppliers.map((s) => (
-                                            <label key={s} className="flex items-center gap-4 p-3.5 hover:bg-slate-50 rounded-2xl cursor-pointer group transition-all">
-                                                <div className={`w-5 h-5 rounded-lg border-2 transition-all flex items-center justify-center ${visibleColumns.includes(s) ? 'bg-slate-900 border-slate-900' : 'border-slate-200'}`}>
-                                                    {visibleColumns.includes(s) && <div className="w-2 h-2 bg-white rounded-sm" />}
-                                                </div>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={visibleColumns.includes(s)}
-                                                    onChange={() => {
-                                                        setVisibleColumns(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
-                                                    }}
-                                                    className="hidden"
-                                                />
-                                                <span className={`text-xs font-black uppercase tracking-tight ${visibleColumns.includes(s) ? 'text-slate-900' : 'text-slate-400'}`}>{s}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </motion.div>
-                            )}
-                        </div>
-                    </div>
+                                    <SlidersHorizontal className="w-4 h-4" />
+                                    Colonnes
+                                </button>
 
-                    <div className="luxury-card bg-white border-none shadow-2xl shadow-slate-200/50">
-                        <div className="overflow-x-auto custom-scrollbar">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="bg-slate-900">
-                                        <th className="sticky left-0 z-20 bg-slate-900 px-8 py-6 text-[10px] font-black text-[#FFB800] uppercase tracking-[0.2em] border-r border-white/5 min-w-[240px] shadow-xl">Article / Désignation</th>
-                                        {columnOrder.filter(s => visibleColumns.includes(s) && matrixData.suppliers.includes(s)).map((s) => (
-                                            <th
-                                                key={s}
-                                                draggable
-                                                onDragStart={(e) => e.dataTransfer.setData('text/plain', s)}
-                                                onDragOver={(e) => e.preventDefault()}
-                                                onDrop={(e) => {
-                                                    e.preventDefault();
-                                                    const draggedSup = e.dataTransfer.getData('text/plain');
-                                                    if (draggedSup === s) return;
-                                                    const newOrder = [...columnOrder];
-                                                    const draggedIdx = newOrder.indexOf(draggedSup);
-                                                    const targetIdx = newOrder.indexOf(s);
-                                                    newOrder.splice(draggedIdx, 1);
-                                                    newOrder.splice(targetIdx, 0, draggedSup);
-                                                    setColumnOrder(newOrder);
-                                                }}
-                                                className="px-6 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em] text-center border-r border-white/5 min-w-[160px] cursor-move hover:bg-slate-800 transition-colors"
-                                            >
-                                                <div className="flex items-center justify-center gap-2">
-                                                    <span className="w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center text-[8px]">{s.charAt(0)}</span>
-                                                    {s}
-                                                </div>
-                                            </th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {matrixData.rows.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase())).map((row) => (
-                                        <tr key={row.name} className="hover:bg-slate-50 transition-all group">
-                                            <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 transition-colors px-8 py-5 border-r border-slate-100 shadow-xl">
-                                                <span className="text-xs font-black text-slate-900 uppercase tracking-tight group-hover:translate-x-1 transition-transform inline-block">{row.name}</span>
-                                            </td>
-                                            {columnOrder.filter(s => visibleColumns.includes(s) && matrixData.suppliers.includes(s)).map(sup => {
-                                                const entry = row.prices[sup];
-                                                const price = entry?.price;
-                                                const visiblePrices = Object.entries(row.prices)
-                                                    .filter(([s]) => visibleColumns.includes(s))
-                                                    .map(([, v]) => v.price);
-                                                const isBest = price && price === Math.min(...visiblePrices);
-
+                                {showColumnSettings && (
+                                    <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-2xl shadow-lg border border-slate-200 p-3 z-[120] animate-in fade-in zoom-in-95 duration-150">
+                                        <p className="text-xs font-medium text-slate-500 px-1 pb-2">Fournisseurs</p>
+                                        <div className="space-y-0.5 max-h-[360px] overflow-y-auto">
+                                            {matrixData.suppliers.map((s) => {
+                                                const checked = visibleColumns.includes(s);
                                                 return (
-                                                    <td key={sup} className="px-6 py-5 text-center border-r border-slate-50">
-                                                        {price ? (
-                                                            <div className={`p-3 rounded-2xl w-full transition-all duration-500 ${isBest ? 'bg-emerald-50 border border-emerald-100 shadow-lg shadow-emerald-500/10' : 'hover:bg-slate-100'}`}>
-                                                                <span className={`text-base font-black tabular-nums tracking-tighter ${isBest ? 'text-emerald-600 scale-110' : 'text-slate-600'}`}>
-                                                                    {price.toLocaleString(undefined, { minimumFractionDigits: 3 })}
-                                                                </span>
-                                                                <div className="flex items-center justify-center gap-1.5 mt-1">
-                                                                    <span className={`text-[7px] font-black uppercase tracking-widest ${isBest ? 'text-emerald-400' : 'text-slate-300'}`}>
-                                                                        DT
-                                                                    </span>
-                                                                    <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded-md ${isBest ? 'bg-emerald-500 text-white' : entry?.isRef ? 'bg-blue-100 text-blue-600' : 'bg-slate-200 text-slate-500'}`}>
-                                                                        {entry?.isRef ? 'CMD' : isBest ? 'BEST' : 'ACT'}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="h-8 flex items-center justify-center">
-                                                                <div className="w-4 h-[1px] bg-slate-200" />
-                                                            </div>
-                                                        )}
-                                                    </td>
+                                                    <label key={s} className="flex items-center gap-3 px-2 py-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors">
+                                                        <span className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${checked ? 'bg-slate-900 border-slate-900' : 'border-slate-300'}`}>
+                                                            {checked && <span className="w-1.5 h-1.5 bg-white rounded-sm" />}
+                                                        </span>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={checked}
+                                                            onChange={() => {
+                                                                setVisibleColumns(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
+                                                            }}
+                                                            className="hidden"
+                                                        />
+                                                        <span className={`text-sm ${checked ? 'text-slate-900 font-medium' : 'text-slate-500'}`}>{s}</span>
+                                                    </label>
                                                 );
                                             })}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Matrix — desktop table */}
+                        <div className="hidden md:block rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50">
+                                            <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500 min-w-[200px]">Article</th>
+                                            <th className="px-4 py-3 text-xs font-medium text-slate-500 min-w-[220px]">Meilleur prix</th>
+                                            {activeMatrixCols.map((s) => (
+                                                <th
+                                                    key={s}
+                                                    draggable
+                                                    onDragStart={(e) => e.dataTransfer.setData('text/plain', s)}
+                                                    onDragOver={(e) => e.preventDefault()}
+                                                    onDrop={(e) => {
+                                                        e.preventDefault();
+                                                        const draggedSup = e.dataTransfer.getData('text/plain');
+                                                        if (draggedSup === s) return;
+                                                        const newOrder = [...columnOrder];
+                                                        const draggedIdx = newOrder.indexOf(draggedSup);
+                                                        const targetIdx = newOrder.indexOf(s);
+                                                        newOrder.splice(draggedIdx, 1);
+                                                        newOrder.splice(targetIdx, 0, draggedSup);
+                                                        setColumnOrder(newOrder);
+                                                    }}
+                                                    className="px-4 py-3 text-xs font-medium text-slate-500 text-center min-w-[130px] cursor-move hover:bg-slate-100 transition-colors"
+                                                >
+                                                    {s}
+                                                </th>
+                                            ))}
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-1000">
-                    <div className="flex justify-between items-center px-4">
-                        <div className="flex items-center gap-4">
-                            <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-100">
-                                <Package className="text-slate-900 w-6 h-6" />
+                                    </thead>
+                                    <tbody>
+                                        {matrixRows.map((row) => {
+                                            const visiblePrices = Object.entries(row.prices)
+                                                .filter(([s]) => visibleColumns.includes(s))
+                                                .map(([, v]) => v.price);
+                                            const best = bestPriceFor(row.prices, visibleColumns);
+                                            return (
+                                                <tr key={row.name} className="border-t border-slate-100 hover:bg-slate-50">
+                                                    <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-slate-900">{row.name}</td>
+                                                    <td className="px-4 py-3">
+                                                        {best ? (
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <div className="min-w-0">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <Trophy className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                                                                        <span className="text-sm font-semibold text-slate-900 tabular-nums">{best.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                                                                        <span className="text-[10px] text-slate-400">DT</span>
+                                                                    </div>
+                                                                    <p className="text-xs text-slate-500 truncate mt-0.5">
+                                                                        {best.supplier}
+                                                                        {best.savings > 0 && <span className="text-emerald-600 font-medium"> · −{best.savings.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>}
+                                                                    </p>
+                                                                </div>
+                                                                <Link
+                                                                    href={`/orders?article=${encodeURIComponent(row.name)}&price=${best.price}&supplier=${encodeURIComponent(best.supplier)}`}
+                                                                    className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-slate-900 text-white text-xs font-medium hover:bg-slate-800 transition-colors shrink-0"
+                                                                >
+                                                                    <ShoppingCart className="h-3.5 w-3.5" /> Commander
+                                                                </Link>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-slate-300">—</span>
+                                                        )}
+                                                    </td>
+                                                    {activeMatrixCols.map(sup => {
+                                                        const entry = row.prices[sup];
+                                                        const price = entry?.price;
+                                                        const isBest = price && price === Math.min(...visiblePrices);
+
+                                                        return (
+                                                            <td key={sup} className="px-4 py-3 text-center">
+                                                                {price ? (
+                                                                    <div className="inline-flex flex-col items-center gap-1">
+                                                                        <span className={`text-sm font-semibold tabular-nums ${isBest ? 'text-emerald-600' : 'text-slate-700'}`}>
+                                                                            {price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] font-normal text-slate-400">DT</span>
+                                                                        </span>
+                                                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${isBest ? 'bg-emerald-50 text-emerald-700' : entry?.isRef ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+                                                                            {entry?.isRef ? 'CMD' : isBest ? 'Meilleur' : 'Actuel'}
+                                                                        </span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-slate-300">—</span>
+                                                                )}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
                             </div>
-                            <div>
-                                <h2 className="text-2xl lg:text-3xl font-black text-slate-900 uppercase tracking-tight">Inventaire Matériaux</h2>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Liste chronologique de vos achats</p>
-                            </div>
                         </div>
-                        {isAdmin && (
-                            <button
-                                onClick={openAdd}
-                                className="luxury-button-gold shadow-2xl"
-                            >
-                                <Plus className="h-5 w-5 mr-2" />
-                                NOUVEAU
-                            </button>
+
+                        {/* Matrix — mobile stacked cards */}
+                        <div className="md:hidden space-y-3">
+                            {matrixRows.map((row) => {
+                                const visiblePrices = Object.entries(row.prices)
+                                    .filter(([s]) => visibleColumns.includes(s))
+                                    .map(([, v]) => v.price);
+                                const best = bestPriceFor(row.prices, visibleColumns);
+                                return (
+                                    <div key={row.name} className="rounded-2xl border border-slate-200 bg-white p-4">
+                                        <p className="text-sm font-semibold text-slate-900 mb-3">{row.name}</p>
+                                        {best && (
+                                            <div className="flex items-center justify-between gap-3 mb-3 rounded-xl bg-amber-50 px-3 py-2">
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Trophy className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                                                        <span className="text-sm font-semibold text-slate-900 tabular-nums">{best.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                                                        <span className="text-[10px] text-slate-400">DT</span>
+                                                    </div>
+                                                    <p className="text-xs text-amber-800/80 truncate mt-0.5">{best.supplier}</p>
+                                                </div>
+                                                <Link
+                                                    href={`/orders?article=${encodeURIComponent(row.name)}&price=${best.price}&supplier=${encodeURIComponent(best.supplier)}`}
+                                                    className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-slate-900 text-white text-xs font-medium shrink-0"
+                                                >
+                                                    <ShoppingCart className="h-3.5 w-3.5" /> Commander
+                                                </Link>
+                                            </div>
+                                        )}
+                                        <div className="space-y-1.5">
+                                            {activeMatrixCols.map(sup => {
+                                                const entry = row.prices[sup];
+                                                const price = entry?.price;
+                                                if (!price) return null;
+                                                const isBest = price === Math.min(...visiblePrices);
+                                                return (
+                                                    <div key={sup} className="flex items-center justify-between gap-3">
+                                                        <span className="text-xs text-slate-500 truncate">{sup}</span>
+                                                        <span className="flex items-center gap-2 shrink-0">
+                                                            <span className={`text-sm font-semibold tabular-nums ${isBest ? 'text-emerald-600' : 'text-slate-700'}`}>
+                                                                {price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] font-normal text-slate-400">DT</span>
+                                                            </span>
+                                                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${isBest ? 'bg-emerald-50 text-emerald-700' : entry?.isRef ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+                                                                {entry?.isRef ? 'CMD' : isBest ? 'Meilleur' : 'Actuel'}
+                                                            </span>
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {matrixRows.length === 0 && (
+                            <div className="flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-slate-200 bg-white py-16">
+                                <LayoutGrid className="h-10 w-10 text-slate-300 mb-3" />
+                                <p className="text-sm text-slate-500">Aucun article à comparer.</p>
+                            </div>
                         )}
                     </div>
-
-                    <div className="space-y-6">
+                ) : (
+                    <div className="space-y-3 animate-in fade-in duration-300">
                         {supplierGroups.map((group) => {
                             const isExpanded = expandedSuppliers[group.name];
                             return (
-                                <motion.div
-                                    layout
-                                    key={group.name}
-                                    className="luxury-card border-none bg-white p-2 shadow-2xl shadow-slate-200/50"
-                                >
-                                    <div
+                                <div key={group.name} className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                                    <button
                                         onClick={() => toggleSupplier(group.name)}
-                                        className={`
-                                            p-6 flex flex-col md:flex-row items-center justify-between cursor-pointer rounded-3xl transition-all duration-500
-                                            ${isExpanded ? 'bg-slate-50 shadow-inner' : 'hover:bg-slate-50'}
-                                        `}
+                                        className="w-full flex items-center justify-between gap-4 p-4 text-left hover:bg-slate-50 transition-colors"
                                     >
-                                        <div className="flex items-center gap-6 w-full md:w-auto">
-                                            <div className={`w-16 h-16 rounded-2xl ${group.color} flex items-center justify-center text-white shadow-2xl text-2xl font-black transform group-hover:scale-110 transition-transform`}>
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <span className={`w-10 h-10 shrink-0 rounded-full ${group.color} flex items-center justify-center text-white text-sm font-semibold`}>
                                                 {group.name.charAt(0).toUpperCase()}
-                                            </div>
-                                            <div>
-                                                <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">{group.name}</h2>
-                                                <div className="flex items-center gap-3 mt-1">
-                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] bg-white px-2 py-1 rounded-lg border border-slate-100">
-                                                        {group.rows.length} ARTICLES
-                                                    </span>
-                                                </div>
+                                            </span>
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-semibold text-slate-900 truncate">{group.name}</p>
+                                                <p className="text-xs text-slate-500 mt-0.5">{group.rows.length} articles</p>
                                             </div>
                                         </div>
-
-                                        <div className="flex items-center gap-8 mt-6 md:mt-0 w-full md:w-auto justify-between md:justify-end">
-                                            <div className="flex flex-col items-end">
-                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Dépense Totale (TTC)</span>
-                                                <span className="text-2xl font-black text-slate-900 tabular-nums leading-none tracking-tighter">
-                                                    {group.total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs text-[#FFB800] uppercase font-black ml-1">DT</span>
-                                                </span>
+                                        <div className="flex items-center gap-3 shrink-0">
+                                            <div className="text-right">
+                                                <p className="text-xs text-slate-500">Total TTC</p>
+                                                <p className="text-sm font-semibold text-slate-900 tabular-nums">
+                                                    {group.total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs text-slate-400">DT</span>
+                                                </p>
                                             </div>
-                                            <div className={`p-3 rounded-full border-2 transition-all duration-500 ${isExpanded ? 'bg-slate-900 text-white border-slate-900 rotate-180 shadow-lg' : 'bg-white text-slate-200 border-slate-100 hover:border-slate-900 hover:text-slate-900'}`}>
-                                                <ChevronDown className="h-6 w-6" />
-                                            </div>
+                                            <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                         </div>
-                                    </div>
+                                    </button>
 
                                     {isExpanded && (
-                                        <motion.div
-                                            initial={{ opacity: 0, height: 0 }}
-                                            animate={{ opacity: 1, height: 'auto' }}
-                                            className="p-4"
-                                        >
-                                            <div className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm">
-                                                <div className="overflow-x-auto no-scrollbar">
-                                                    <table className="w-full text-left border-collapse">
-                                                        <thead>
-                                                            <tr className="bg-slate-950 text-white/40">
-                                                                <th className="px-8 py-5 text-[9px] font-black uppercase tracking-[0.2em] w-32">Émission</th>
-                                                                <th className="px-8 py-5 text-[9px] font-black uppercase tracking-[0.2em]">Désignation / Article</th>
-                                                                <th className="px-8 py-5 text-[9px] font-black uppercase tracking-[0.2em] w-24 text-center">Qté</th>
-                                                                <th className="px-8 py-5 text-[9px] font-black uppercase tracking-[0.2em] w-40 text-right">Unit. TTC</th>
-                                                                <th className="px-8 py-5 text-[9px] font-black uppercase tracking-[0.2em] w-40 text-right">Total TTC</th>
-                                                                {isAdmin && <th className="px-8 py-5 text-[9px] font-black uppercase tracking-[0.2em] w-28"></th>}
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-slate-50">
-                                                            {group.rows.map((row) => (
-                                                                <tr key={row.id} className="hover:bg-slate-50 transition-all group">
-                                                                    <td className="px-8 py-5">
-                                                                        <div className="flex flex-col">
-                                                                            <span className="text-[11px] font-black text-slate-900 font-mono tracking-tighter">{row.date}</span>
-                                                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Valide</span>
-                                                                        </div>
-                                                                    </td>
-                                                                    <td className="px-8 py-5">
-                                                                        <div className="flex flex-col">
-                                                                            <span className="text-xs font-black text-slate-900 uppercase tracking-tight group-hover:text-[#FFB800] transition-colors">{normalizeArticleName(row.designation)}</span>
-                                                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 truncate max-w-[200px]">{row.reference}</span>
-                                                                        </div>
-                                                                    </td>
-                                                                    <td className="px-8 py-5 text-center">
-                                                                        <span className="text-xs font-black text-slate-900 bg-slate-100 px-3 py-1.5 rounded-xl">{row.quantity}</span>
-                                                                    </td>
-                                                                    <td className="px-8 py-5 text-right font-bold text-slate-500 tabular-nums text-xs">{row.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                                                                    <td className="px-8 py-5 text-right font-black text-slate-900 tabular-nums text-sm group-hover:scale-105 transition-transform">{row.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                                                                    {isAdmin && (
-                                                                        <td className="px-8 py-5 text-center">
-                                                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                                                                                <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="p-2.5 bg-slate-50 hover:bg-slate-900 hover:text-white rounded-xl text-slate-400 transition-all shadow-sm"><Pencil className="h-4 w-4" /></button>
-                                                                                <button onClick={(e) => { e.stopPropagation(); handleDelete(row); }} className="p-2.5 bg-slate-50 hover:bg-rose-500 hover:text-white rounded-xl text-slate-400 transition-all shadow-sm"><Trash2 className="h-4 w-4" /></button>
-                                                                            </div>
-                                                                        </td>
+                                        <div className="border-t border-slate-100">
+                                            {/* Desktop table */}
+                                            <div className="hidden md:block overflow-x-auto">
+                                                <table className="w-full text-left border-collapse">
+                                                    <thead>
+                                                        <tr className="bg-slate-50">
+                                                            <th className="px-4 py-3 text-xs font-medium text-slate-500 w-28">Date</th>
+                                                            <th className="px-4 py-3 text-xs font-medium text-slate-500">Désignation</th>
+                                                            <th className="px-4 py-3 text-xs font-medium text-slate-500 w-20 text-center">Qté</th>
+                                                            <th className="px-4 py-3 text-xs font-medium text-slate-500 w-32 text-right">Unit. TTC</th>
+                                                            <th className="px-4 py-3 text-xs font-medium text-slate-500 w-32 text-right">Total TTC</th>
+                                                            {isAdmin && <th className="px-4 py-3 w-24"></th>}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {group.rows.map((row) => (
+                                                            <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50 group">
+                                                                <td className="px-4 py-3 text-sm text-slate-500 tabular-nums">{row.date}</td>
+                                                                <td className="px-4 py-3">
+                                                                    <p className="text-sm font-medium text-slate-900">{normalizeArticleName(row.designation)}</p>
+                                                                    {row.reference && row.reference !== '-' && (
+                                                                        <p className="text-xs text-slate-400 truncate max-w-[220px] mt-0.5">{row.reference}</p>
                                                                     )}
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
+                                                                </td>
+                                                                <td className="px-4 py-3 text-center">
+                                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 tabular-nums">{row.quantity}</span>
+                                                                </td>
+                                                                <td className="px-4 py-3 text-right text-sm text-slate-500 tabular-nums">{row.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                                                                <td className="px-4 py-3 text-right text-sm font-semibold text-slate-900 tabular-nums">{row.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                                                                {isAdmin && (
+                                                                    <td className="px-4 py-3">
+                                                                        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                            <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-4 w-4" /></button>
+                                                                            <button onClick={(e) => { e.stopPropagation(); handleDelete(row); }} className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
+                                                                        </div>
+                                                                    </td>
+                                                                )}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
                                             </div>
-                                        </motion.div>
+
+                                            {/* Mobile stacked cards */}
+                                            <div className="md:hidden divide-y divide-slate-100">
+                                                {group.rows.map((row) => (
+                                                    <div key={row.id} className="p-4">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="min-w-0 flex-1">
+                                                                <p className="text-sm font-medium text-slate-900">{normalizeArticleName(row.designation)}</p>
+                                                                <p className="text-xs text-slate-400 mt-0.5 tabular-nums">{row.date}</p>
+                                                            </div>
+                                                            {isAdmin && (
+                                                                <div className="flex gap-1 shrink-0">
+                                                                    <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-4 w-4" /></button>
+                                                                    <button onClick={(e) => { e.stopPropagation(); handleDelete(row); }} className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="grid grid-cols-3 gap-2 mt-3">
+                                                            <div>
+                                                                <p className="text-xs text-slate-400">Qté</p>
+                                                                <p className="text-sm text-slate-700 tabular-nums">{row.quantity}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs text-slate-400">Unit. TTC</p>
+                                                                <p className="text-sm text-slate-700 tabular-nums">{row.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs text-slate-400">Total TTC</p>
+                                                                <p className="text-sm font-semibold text-slate-900 tabular-nums">{row.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
                                     )}
-                                </motion.div>
+                                </div>
                             );
                         })}
-                    </div>
 
-                    {articles.length === 0 && (
-                        <div className="text-center py-20 opacity-50">
-                            <Package className="h-20 w-20 mx-auto mb-6 text-slate-300" />
-                            <h3 className="text-xl font-black text-slate-900 uppercase">Aucun article enregistré</h3>
-                            <p className="text-slate-500 mt-2 font-medium">Commencez par ajouter votre premier achat.</p>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Modal */}
-            {isAdding && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-                    <div className="bg-white w-full max-w-lg rounded-[32px] p-8 shadow-2xl scale-100 animate-in zoom-in-95 duration-300">
-                        <div className="flex justify-between items-center mb-8">
-                            <div>
-                                <h2 className="text-2xl font-black uppercase text-slate-900 tracking-tight">{editingItem ? 'Modifier' : 'Nouvel'} Article</h2>
-                                <p className="text-xs font-bold text-slate-400 uppercase mt-1">Détails de l'achat</p>
+                        {articles.length === 0 && (
+                            <div className="flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-slate-200 bg-white py-16">
+                                <Package className="h-10 w-10 text-slate-300 mb-3" />
+                                <p className="text-sm font-medium text-slate-900">Aucun article enregistré</p>
+                                <p className="text-sm text-slate-500 mt-1">Commencez par ajouter votre premier achat.</p>
                             </div>
-                            <button onClick={() => setIsAdding(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X className="h-6 w-6 text-slate-400 hover:text-red-500" /></button>
-                        </div>
-                        <div className="space-y-6">
-                            {!editingItem && (
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Fournisseur</label>
-                                        <div className="relative">
-                                            <select
-                                                className="w-full p-4 border-none bg-slate-50 rounded-2xl font-bold text-sm text-slate-900 focus:ring-2 focus:ring-[#FFB800] appearance-none"
-                                                value={formData.supplierId}
-                                                onChange={e => setFormData({ ...formData, supplierId: e.target.value })}
-                                            >
-                                                <option value="">Sélectionner...</option>
-                                                {suppliersList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                            </select>
-                                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Date</label>
-                                        <input
-                                            className="w-full p-4 border-none bg-slate-50 rounded-2xl font-bold text-sm text-slate-900 focus:ring-2 focus:ring-[#FFB800]"
-                                            value={formData.date}
-                                            onChange={e => setFormData({ ...formData, date: e.target.value })}
-                                            placeholder="JJ/MM/AAAA"
-                                        />
-                                    </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Add / Edit modal */}
+            <Modal
+                open={isAdding}
+                onClose={() => { setIsAdding(false); setEditingItem(null); }}
+                title={editingItem ? 'Modifier l\'article' : 'Nouvel article'}
+                description="Détails de l'achat"
+                size="lg"
+                footer={
+                    <>
+                        <button
+                            onClick={() => { setIsAdding(false); setEditingItem(null); }}
+                            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
+                        >
+                            Annuler
+                        </button>
+                        <button
+                            onClick={handleSave}
+                            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors"
+                        >
+                            <Save className="h-4 w-4" />
+                            {editingItem ? 'Mettre à jour' : 'Enregistrer'}
+                        </button>
+                    </>
+                }
+            >
+                <div className="space-y-4">
+                    {!editingItem && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Fournisseur</label>
+                                <div className="relative">
+                                    <select
+                                        className="w-full h-10 px-3 pr-9 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 appearance-none transition"
+                                        value={formData.supplierId}
+                                        onChange={e => setFormData({ ...formData, supplierId: e.target.value })}
+                                    >
+                                        <option value="">Sélectionner...</option>
+                                        {suppliersList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    </select>
+                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                                 </div>
-                            )}
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Désignation article</label>
+                            </div>
+                            <div>
+                                <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Date</label>
                                 <input
-                                    className="w-full p-4 border-none bg-slate-50 rounded-2xl font-black text-slate-900 focus:ring-2 focus:ring-[#FFB800]"
-                                    value={formData.designation}
-                                    onChange={e => setFormData({ ...formData, designation: e.target.value })}
-                                    placeholder="Ex: Ciment 50kg..."
+                                    className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                    value={formData.date}
+                                    onChange={e => setFormData({ ...formData, date: e.target.value })}
+                                    placeholder="JJ/MM/AAAA"
                                 />
                             </div>
-                            <div className="grid grid-cols-3 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Quantité</label>
-                                    <input
-                                        type="number"
-                                        className="w-full p-4 border-none bg-slate-50 rounded-2xl font-bold text-sm text-slate-900 focus:ring-2 focus:ring-[#FFB800]"
-                                        value={formData.quantity}
-                                        onChange={e => {
-                                            const qty = Number(e.target.value);
-                                            setFormData({ ...formData, quantity: qty, totalPrice: qty * formData.unitPrice })
-                                        }}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">P.U.</label>
-                                    <input
-                                        type="number"
-                                        className="w-full p-4 border-none bg-slate-50 rounded-2xl font-bold text-sm text-slate-900 focus:ring-2 focus:ring-[#FFB800]"
-                                        value={formData.unitPrice}
-                                        onChange={e => {
-                                            const price = Number(e.target.value);
-                                            setFormData({ ...formData, unitPrice: price, totalPrice: formData.quantity * price })
-                                        }}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-[#FFB800] tracking-widest pl-1">Total</label>
-                                    <input
-                                        type="number"
-                                        className="w-full p-4 border-none bg-[#FFB800]/10 rounded-2xl font-black text-sm text-slate-900 focus:ring-2 focus:ring-[#FFB800]"
-                                        value={formData.totalPrice}
-                                        onChange={e => setFormData({ ...formData, totalPrice: Number(e.target.value) })}
-                                    />
-                                </div>
-                            </div>
-                            <button onClick={handleSave} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-[#FFB800] hover:text-slate-900 transition-all flex items-center justify-center gap-3 mt-4 shadow-xl">
-                                <Save className="h-5 w-5" />
-                                {editingItem ? 'Mettre à jour' : 'Enregistrer Article'}
-                            </button>
+                        </div>
+                    )}
+                    <div>
+                        <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Désignation article</label>
+                        <input
+                            className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                            value={formData.designation}
+                            onChange={e => setFormData({ ...formData, designation: e.target.value })}
+                            placeholder="Ex: Ciment 50kg..."
+                        />
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                        <div>
+                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Quantité</label>
+                            <input
+                                type="number"
+                                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition tabular-nums"
+                                value={formData.quantity}
+                                onChange={e => {
+                                    const qty = Number(e.target.value);
+                                    setFormData({ ...formData, quantity: qty, totalPrice: qty * formData.unitPrice })
+                                }}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">P.U.</label>
+                            <input
+                                type="number"
+                                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition tabular-nums"
+                                value={formData.unitPrice}
+                                onChange={e => {
+                                    const price = Number(e.target.value);
+                                    setFormData({ ...formData, unitPrice: price, totalPrice: formData.quantity * price })
+                                }}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Total</label>
+                            <input
+                                type="number"
+                                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition tabular-nums"
+                                value={formData.totalPrice}
+                                onChange={e => setFormData({ ...formData, totalPrice: Number(e.target.value) })}
+                            />
                         </div>
                     </div>
                 </div>
-            )}
+            </Modal>
         </div>
     );
 }

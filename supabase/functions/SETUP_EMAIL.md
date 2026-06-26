@@ -1,80 +1,59 @@
-# Setup Guide: Email Invitations with Supabase Edge Functions
+# Email invitations — Brevo + Supabase Edge Function
 
-## Prerequisites
-- Supabase CLI installed
-- Resend account (free tier)
+The `send-invitation-email` function sends invites through **Brevo** (Sendinblue).
+"Edge Function returned a non-2xx status code" almost always means one of two things:
+the **API key isn't set**, or the **sender isn't verified** in Brevo.
 
-## Step 1: Install Supabase CLI
+## 1. Get a Brevo API key
+1. Create an account at https://www.brevo.com/
+2. Go to **SMTP & API → API Keys → Generate a new API key**
+3. Copy the key (starts with `xkeysib-…`)
 
+## 2. Verify a sender (REQUIRED)
+Brevo refuses to send from an unverified address.
+1. Go to **Senders, Domains & Dedicated IPs → Senders → Add a sender**
+2. Add the address you want emails to come from and confirm it via the email Brevo sends.
+   (Best: verify your own domain for good deliverability. A Gmail sender works only after it's
+   confirmed in Brevo, and may land in spam.)
+
+## 3. Set the secrets on the deployed project
 ```bash
-npm install -g supabase
+supabase link --project-ref <your-project-ref>
+
+# Required
+supabase secrets set BREVO_API_KEY=xkeysib-xxxxxxxx
+
+# Recommended — use your verified sender (defaults to hamzahadjtaieb@gmail.com / "HouseExpert")
+supabase secrets set BREVO_SENDER_EMAIL=invitations@your-verified-domain.com
+supabase secrets set BREVO_SENDER_NAME="HouseExpert"
+
+# Verify they are set
+supabase secrets list
 ```
 
-## Step 2: Link your Supabase project
-
-```bash
-supabase link --project-ref ttdhclkguxicjmjytmnp
-```
-
-## Step 3: Get Resend API Key
-
-1. Go to https://resend.com/
-2. Sign up for a free account
-3. Go to API Keys section
-4. Create a new API key
-5. Copy the key (starts with `re_`)
-
-## Step 4: Set Resend API Key in Supabase
-
-```bash
-supabase secrets set RESEND_API_KEY=your_resend_api_key_here
-```
-
-## Step 5: Deploy the Edge Function
-
+## 4. Deploy the function
 ```bash
 supabase functions deploy send-invitation-email
 ```
 
-## Step 6: Verify Domain in Resend
+## 5. Test
+Create an invitation in the app → **Envoyer par email**. The app now surfaces the real
+error (e.g. `Brevo (401): Key not found` or `Brevo (400): sender not valid`) instead of the
+generic "non-2xx".
 
-1. Go to Resend dashboard → Domains
-2. Add your domain: `houseconstruction.vercel.app`
-3. Follow DNS verification steps
-4. OR use Resend's test domain for development
+## Troubleshooting by message
+- **"Email service not configured"** → `BREVO_API_KEY` secret is missing. Set it (step 3) and redeploy.
+- **`Brevo (401): …`** → the API key is wrong/revoked. Generate a new one.
+- **`Brevo (400): … sender …`** → `BREVO_SENDER_EMAIL` isn't a verified sender. Verify it (step 2).
+- **"Missing required fields"** → no project selected / empty email when sending.
+- **Function not found / failed to send a request** → the function isn't deployed (step 4).
 
-## Step 7: Test the function
-
-After deployment, test by creating an invitation in your app and clicking "Envoyer par Email".
-
-## Troubleshooting
-
-### Function not found
-- Make sure you deployed: `supabase functions deploy send-invitation-email`
-- Check deployment status in Supabase dashboard → Edge Functions
-
-### Email not sending
-- Verify RESEND_API_KEY is set: `supabase secrets list`
-- Check Resend dashboard for error logs
-- Verify domain is configured in Resend
-
-### CORS errors
-- Edge functions automatically handle CORS for your Supabase project
-
-## Alternative: Use Resend's test domain
-
-If you don't want to verify a domain immediately, update the Edge Function:
-
-Change line 21 in `supabase/functions/send-invitation-email/index.ts`:
-```typescript
-from: 'HouseConstruction <onboarding@resend.dev>',
+## Inspect live logs
+```bash
+supabase functions logs send-invitation-email
 ```
+The function logs the request, whether the key exists, and the full Brevo response.
 
-This uses Resend's test domain (can only send to your own email).
-
-## Cost
-
-- Resend Free Tier: 3,000 emails/month
-- Supabase Edge Functions: Free tier includes 500K function invocations/month
-
-Both are more than enough for most projects!
+## Notes
+- The app still works without email: every invite produces a **copy-able link** you can share manually.
+- Brevo free tier: ~300 emails/day — plenty for invitations.

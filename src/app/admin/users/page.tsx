@@ -7,8 +7,8 @@ import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { UserProfile } from '@/context/AuthContext';
-import { Shield, UserPlus, Search, Filter, MoreVertical, CheckCircle2, XCircle, Clock, Trash2, Mail, Calendar, UserCheck, ShieldCheck } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Shield, UserPlus, Search, CheckCircle2, XCircle, Clock, Trash2, Mail, Calendar, UserCheck } from 'lucide-react';
+import { Modal } from '@/components/ui';
 
 export default function AdminUsersPage() {
     const { isAdmin, loading: authLoading } = useAuth();
@@ -161,13 +161,10 @@ export default function AdminUsersPage() {
 
     if (authLoading || (loading && users.length === 0)) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
+            <div className="min-h-screen flex items-center justify-center">
                 <div className="flex flex-col items-center gap-4">
-                    <div className="relative w-16 h-16">
-                        <div className="absolute inset-0 rounded-full border-4 border-slate-200" />
-                        <div className="absolute inset-0 rounded-full border-4 border-[#FFB800] border-t-transparent animate-spin" />
-                    </div>
-                    <p className="text-sm font-black text-slate-500 uppercase tracking-widest animate-pulse">Chargement...</p>
+                    <div className="h-12 w-12 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin" />
+                    <p className="text-slate-500 text-sm">Chargement...</p>
                 </div>
             </div>
         );
@@ -175,31 +172,26 @@ export default function AdminUsersPage() {
 
     if (error === 'DATABASE_MISSING') {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] p-6 font-jakarta">
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="max-w-md w-full glass-morphism rounded-[32px] p-10 text-center relative overflow-hidden"
-                >
-                    <div className="absolute top-0 left-0 w-full h-1 bg-red-500" />
-                    <div className="w-20 h-20 bg-red-50 rounded-[28px] flex items-center justify-center mx-auto mb-6 shadow-lg shadow-red-500/10">
-                        <Shield className="h-10 w-10 text-red-600" />
+            <div className="min-h-screen flex items-center justify-center p-6 font-jakarta">
+                <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 text-center shadow-sm">
+                    <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                        <Shield className="h-7 w-7 text-red-600" />
                     </div>
-                    <h2 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">CONFIGURATION REQUISE</h2>
-                    <p className="text-slate-500 mb-8 font-medium">
-                        La table <code className="bg-slate-100 px-1.5 py-0.5 rounded text-red-600">user_profiles</code> est manquante.
+                    <h2 className="text-lg font-semibold text-slate-900 mb-2 tracking-tight">Configuration requise</h2>
+                    <p className="text-sm text-slate-500 mb-6">
+                        La table <code className="bg-slate-100 px-1.5 py-0.5 rounded text-red-600 text-xs">user_profiles</code> est manquante.
                     </p>
-                    <div className="bg-slate-900 text-slate-400 p-5 rounded-[24px] text-[11px] font-mono text-left mb-8 border border-white/5 shadow-2xl leading-relaxed">
-                        <span className="text-[#FFB800]"># Migration requise</span><br />
+                    <div className="bg-slate-900 text-slate-300 p-4 rounded-xl text-[11px] font-mono text-left mb-6 leading-relaxed">
+                        <span className="text-amber-400"># Migration requise</span><br />
                         supabase/migrations/20260112_add_user_management.sql
                     </div>
                     <button
                         onClick={() => fetchUsers()}
-                        className="luxury-button-primary w-full py-4 text-xs font-black tracking-widest"
+                        className="inline-flex items-center justify-center gap-2 w-full h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors"
                     >
-                        VÉRIFIER À NOUVEAU
+                        Vérifier à nouveau
                     </button>
-                </motion.div>
+                </div>
             </div>
         );
     }
@@ -208,90 +200,127 @@ export default function AdminUsersPage() {
 
     const pendingCount = users.filter(u => u.status === 'pending').length;
 
+    const statusChip = (status: string) => {
+        const map: Record<string, { cls: string; dot: string; label: string }> = {
+            approved: { cls: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500', label: 'Approuvé' },
+            pending: { cls: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500', label: 'En attente' },
+            rejected: { cls: 'bg-rose-50 text-rose-700', dot: 'bg-rose-500', label: 'Rejeté' },
+        };
+        const s = map[status] || map.rejected;
+        return (
+            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${s.cls}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
+                {s.label}
+            </span>
+        );
+    };
+
+    const roleSelectClass = 'h-9 px-2.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition cursor-pointer disabled:opacity-50';
+
+    const renderActions = (user: UserProfile) => (
+        <div className="flex items-center justify-end gap-1">
+            {user.status === 'pending' && (
+                <>
+                    <button
+                        onClick={() => approveUser(user.id)}
+                        disabled={actionLoading === user.id}
+                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                        title="Approuver"
+                    >
+                        <CheckCircle2 className="h-4 w-4" />
+                    </button>
+                    <button
+                        onClick={() => setShowRejectModal(user.id)}
+                        disabled={actionLoading === user.id}
+                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                        title="Refuser"
+                    >
+                        <XCircle className="h-4 w-4" />
+                    </button>
+                </>
+            )}
+            {user.status === 'approved' && (
+                <button
+                    onClick={() => setShowRejectModal(user.id)}
+                    disabled={actionLoading === user.id}
+                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-amber-600 hover:bg-amber-50 transition-colors disabled:opacity-50"
+                    title="Révoquer l'accès"
+                >
+                    <XCircle className="h-4 w-4" />
+                </button>
+            )}
+            {user.status === 'rejected' && (
+                <button
+                    onClick={() => approveUser(user.id)}
+                    disabled={actionLoading === user.id}
+                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                    title="Ré-approuver"
+                >
+                    <UserCheck className="h-4 w-4" />
+                </button>
+            )}
+            <button
+                onClick={() => deleteUser(user.id)}
+                disabled={actionLoading === user.id}
+                className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors disabled:opacity-50"
+                title="Supprimer"
+            >
+                <Trash2 className="h-4 w-4" />
+            </button>
+        </div>
+    );
+
     return (
-        <div className="min-h-screen bg-[#F8FAFC] pb-24 font-jakarta">
-            <div className="max-w-7xl mx-auto px-6 pt-10">
-
-                {/* Header */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
-                    <motion.div
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                    >
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="bg-[#FFB800]/10 p-2 rounded-xl">
-                                <ShieldCheck className="h-5 w-5 text-[#FFB800]" />
-                            </div>
-                            <span className="text-[10px] font-black text-[#FFB800] tracking-[0.3em] uppercase">Administration</span>
-                        </div>
-                        <h1 className="text-4xl font-black text-slate-900 tracking-tight">Gestion des Utilisateurs</h1>
-                        <p className="text-slate-400 text-sm mt-1 font-medium">Contrôlez les accès et les permissions de votre plateforme.</p>
-                    </motion.div>
-
-                    <motion.div
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                    >
-                        {currentProject && (
-                            <button
-                                onClick={() => setShowInviteModal(true)}
-                                className="luxury-button-gold flex items-center gap-3 py-4 shadow-xl shadow-amber-500/20"
-                            >
-                                <UserPlus className="h-4 w-4" />
-                                <span className="tracking-widest text-[11px] font-black uppercase">Inviter au Projet</span>
-                            </button>
-                        )}
-                    </motion.div>
+        <div className="min-h-screen font-jakarta">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5">
+                {/* Page header */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">Utilisateurs</h1>
+                        <p className="text-sm text-slate-500 mt-0.5">Gestion des accès et des permissions.</p>
+                    </div>
+                    {currentProject && (
+                        <button
+                            onClick={() => setShowInviteModal(true)}
+                            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors"
+                        >
+                            <UserPlus className="h-4 w-4" /> Inviter
+                        </button>
+                    )}
                 </div>
 
-                {/* Stats Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+                {/* Stat cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     {[
-                        { label: 'Utilisateurs', value: users.length, icon: Mail, color: 'slate' },
-                        { label: 'En attente', value: pendingCount, icon: Clock, color: 'amber', highlight: pendingCount > 0 },
-                        { label: 'Approuvés', value: users.filter(u => u.status === 'approved').length, icon: CheckCircle2, color: 'emerald' },
-                        { label: 'Refusés', value: users.filter(u => u.status === 'rejected').length, icon: XCircle, color: 'rose' },
-                    ].map((stat, i) => (
-                        <motion.div
-                            key={stat.label}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.1 }}
-                            className="luxury-card p-6 flex items-center gap-5 group"
-                        >
-                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 ${stat.color === 'amber' ? 'bg-amber-50 text-amber-600 group-hover:bg-amber-600 group-hover:text-white' :
-                                    stat.color === 'emerald' ? 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white' :
-                                        stat.color === 'rose' ? 'bg-rose-50 text-rose-600 group-hover:bg-rose-600 group-hover:text-white' :
-                                            'bg-slate-50 text-slate-600 group-hover:bg-slate-900 group-hover:text-white'
-                                }`}>
-                                <stat.icon className="h-6 w-6" />
+                        { label: 'Utilisateurs', value: users.length, icon: Mail, tone: 'bg-slate-100 text-slate-600' },
+                        { label: 'En attente', value: pendingCount, icon: Clock, tone: 'bg-amber-50 text-amber-600', highlight: pendingCount > 0 },
+                        { label: 'Approuvés', value: users.filter(u => u.status === 'approved').length, icon: CheckCircle2, tone: 'bg-emerald-50 text-emerald-600' },
+                        { label: 'Rejetés', value: users.filter(u => u.status === 'rejected').length, icon: XCircle, tone: 'bg-rose-50 text-rose-600' },
+                    ].map((stat) => (
+                        <div key={stat.label} className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                            <div className="flex items-start justify-between">
+                                <p className="text-xs text-slate-500">{stat.label}</p>
+                                <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg ${stat.tone}`}>
+                                    <stat.icon className="h-4 w-4" />
+                                </span>
                             </div>
-                            <div>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{stat.label}</p>
-                                <p className={`text-2xl font-black tracking-tight ${stat.highlight ? 'text-amber-600 animate-pulse' : 'text-slate-900'}`}>{stat.value}</p>
-                            </div>
-                        </motion.div>
+                            <p className={`text-xl sm:text-2xl font-semibold tabular-nums mt-1 ${stat.highlight ? 'text-amber-600' : 'text-slate-900'}`}>{stat.value}</p>
+                        </div>
                     ))}
                 </div>
 
-                {/* Filters & Search */}
-                <div className="flex flex-col lg:flex-row justify-between items-center gap-6 mb-8">
-                    <div className="flex items-center gap-2 bg-slate-100/50 p-1.5 rounded-[20px] w-full lg:w-auto overflow-x-auto no-scrollbar">
+                {/* Filters + search */}
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-full lg:w-auto overflow-x-auto no-scrollbar">
                         {(['all', 'pending', 'approved', 'rejected'] as const).map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setFilter(tab)}
-                                className={`
-                                    px-6 py-2.5 rounded-[14px] text-[10px] font-black uppercase tracking-widest transition-all duration-300 whitespace-nowrap
-                                    ${filter === tab
-                                        ? 'bg-white text-slate-900 shadow-lg shadow-slate-200/50'
-                                        : 'text-slate-400 hover:text-slate-600'
-                                    }
-                                `}
+                                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${filter === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             >
-                                {tab === 'all' ? 'Tous' : tab === 'pending' ? 'En Attente' : tab === 'approved' ? 'Approuvés' : 'Refusés'}
+                                {tab === 'all' ? 'Tous' : tab === 'pending' ? 'En attente' : tab === 'approved' ? 'Approuvés' : 'Rejetés'}
                                 {tab === 'pending' && pendingCount > 0 && (
-                                    <span className="ml-2 bg-[#FFB800] text-black w-5 h-5 inline-flex items-center justify-center rounded-full text-[9px]">
+                                    <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-amber-500 text-white rounded-full text-[10px] font-semibold">
                                         {pendingCount}
                                     </span>
                                 )}
@@ -299,218 +328,156 @@ export default function AdminUsersPage() {
                         ))}
                     </div>
 
-                    <div className="relative w-full lg:w-96 group">
-                        <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-[#FFB800] transition-colors" />
+                    <div className="relative w-full lg:w-80">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input
                             type="text"
                             placeholder="Rechercher un utilisateur..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="luxury-input pl-12 py-4"
+                            className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300"
                         />
                     </div>
                 </div>
 
-                {/* Table Section */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="luxury-card overflow-hidden"
-                >
-                    <div className="overflow-x-auto">
-                        <table className="w-full border-collapse">
-                            <thead>
-                                <tr className="border-b border-slate-100">
-                                    <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">UTILISATEUR</th>
-                                    <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">STATUT</th>
-                                    <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">RÔLE</th>
-                                    <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">REQUIS LE</th>
-                                    <th className="px-8 py-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">ACTIONS</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-50">
-                                <AnimatePresence mode='popLayout'>
-                                    {filteredUsers.map((user) => (
-                                        <motion.tr
-                                            key={user.id}
-                                            layout
-                                            initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            exit={{ opacity: 0 }}
-                                            className="group hover:bg-slate-50/50 transition-colors"
+                {/* Desktop table */}
+                <div className="hidden md:block rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="bg-slate-50 text-xs font-medium text-slate-500">
+                                <th className="px-4 py-3">Utilisateur</th>
+                                <th className="px-4 py-3">Statut</th>
+                                <th className="px-4 py-3">Rôle</th>
+                                <th className="px-4 py-3">Demandé le</th>
+                                <th className="px-4 py-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredUsers.map((user) => (
+                                <tr key={user.id} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                                    <td className="px-4 py-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-xs font-semibold shrink-0">
+                                                {user.full_name?.substring(0, 2).toUpperCase() || '??'}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-medium text-slate-900 truncate">{user.full_name || 'Sans nom'}</p>
+                                                <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3">{statusChip(user.status)}</td>
+                                    <td className="px-4 py-3">
+                                        <select
+                                            value={user.role}
+                                            onChange={(e) => updateUserRole(user.id, e.target.value as any)}
+                                            disabled={actionLoading === user.id}
+                                            className={roleSelectClass}
                                         >
-                                            <td className="px-8 py-6">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center text-slate-500 font-black text-sm shadow-sm group-hover:scale-110 transition-transform duration-500">
-                                                        {user.full_name?.substring(0, 2).toUpperCase() || '??'}
-                                                    </div>
-                                                    <div>
-                                                        <div className="font-bold text-slate-900 text-sm mb-0.5">{user.full_name || 'Sans nom'}</div>
-                                                        <div className="text-[11px] text-slate-400 font-medium flex items-center gap-1.5">
-                                                            <Mail className="h-3 w-3" />
-                                                            {user.email}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-8 py-6">
-                                                <span className={`
-                                                    inline-flex items-center px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest
-                                                    ${user.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
-                                                        user.status === 'pending' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
-                                                            'bg-rose-50 text-rose-600 border border-rose-100'}
-                                                `}>
-                                                    <span className={`w-1.5 h-1.5 rounded-full mr-2 ${user.status === 'approved' ? 'bg-emerald-500' :
-                                                            user.status === 'pending' ? 'bg-amber-500 animate-pulse' :
-                                                                'bg-rose-500'
-                                                        }`} />
-                                                    {user.status === 'approved' ? 'Approuvé' : user.status === 'pending' ? 'En attente' : 'Refusé'}
-                                                </span>
-                                            </td>
-                                            <td className="px-8 py-6">
-                                                <select
-                                                    value={user.role}
-                                                    onChange={(e) => updateUserRole(user.id, e.target.value as any)}
-                                                    disabled={actionLoading === user.id}
-                                                    className="bg-slate-100/50 border-none rounded-xl px-4 py-2 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-[#FFB800]/20 hover:bg-slate-100 transition-colors cursor-pointer"
-                                                >
-                                                    <option value="viewer">Observateur</option>
-                                                    <option value="user">Utilisateur</option>
-                                                    <option value="admin">Admin</option>
-                                                </select>
-                                            </td>
-                                            <td className="px-8 py-6">
-                                                <div className="flex items-center gap-2 text-slate-400 font-medium text-[11px]">
-                                                    <Calendar className="h-3.5 w-3.5" />
-                                                    {new Date(user.requested_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                                </div>
-                                            </td>
-                                            <td className="px-8 py-6 text-right">
-                                                <div className="flex justify-end items-center gap-2">
-                                                    {user.status === 'pending' && (
-                                                        <>
-                                                            <button
-                                                                onClick={() => approveUser(user.id)}
-                                                                disabled={actionLoading === user.id}
-                                                                className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-600 hover:text-white transition-all duration-300"
-                                                                title="Approuver"
-                                                            >
-                                                                <CheckCircle2 className="h-4 w-4" />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => setShowRejectModal(user.id)}
-                                                                disabled={actionLoading === user.id}
-                                                                className="p-2.5 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-600 hover:text-white transition-all duration-300"
-                                                                title="Refuser"
-                                                            >
-                                                                <XCircle className="h-4 w-4" />
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                    {user.status === 'approved' && (
-                                                        <button
-                                                            onClick={() => setShowRejectModal(user.id)}
-                                                            disabled={actionLoading === user.id}
-                                                            className="p-2.5 bg-amber-50 text-amber-600 rounded-xl hover:bg-amber-600 hover:text-white transition-all duration-300"
-                                                            title="Révoquer l'accès"
-                                                        >
-                                                            <XCircle className="h-4 w-4" />
-                                                        </button>
-                                                    )}
-                                                    {user.status === 'rejected' && (
-                                                        <button
-                                                            onClick={() => approveUser(user.id)}
-                                                            disabled={actionLoading === user.id}
-                                                            className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-600 hover:text-white transition-all duration-300"
-                                                            title="Ré-approuver"
-                                                        >
-                                                            <UserCheck className="h-4 w-4" />
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        onClick={() => deleteUser(user.id)}
-                                                        disabled={actionLoading === user.id}
-                                                        className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:bg-red-600 hover:text-white transition-all duration-300"
-                                                        title="Supprimer"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </motion.tr>
-                                    ))}
-                                </AnimatePresence>
-                            </tbody>
-                        </table>
-                    </div>
+                                            <option value="viewer">Observateur</option>
+                                            <option value="user">Utilisateur</option>
+                                            <option value="admin">Admin</option>
+                                        </select>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <span className="text-sm text-slate-500 tabular-nums">
+                                            {new Date(user.requested_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-3">{renderActions(user)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
 
                     {filteredUsers.length === 0 && (
-                        <div className="text-center py-24">
-                            <div className="w-20 h-20 bg-slate-50 rounded-[28px] flex items-center justify-center mx-auto mb-6">
-                                <Mail className="h-10 w-10 text-slate-200" />
-                            </div>
-                            <h3 className="text-lg font-black text-slate-900 mb-2 uppercase tracking-tight">Aucun résultat</h3>
-                            <p className="text-slate-400 text-sm font-medium">Nous n'avons trouvé aucun utilisateur correspondant à votre recherche.</p>
+                        <div className="flex flex-col items-center justify-center text-center py-16">
+                            <Mail className="h-10 w-10 mb-3 text-slate-300" />
+                            <p className="text-sm text-slate-500">Aucun utilisateur trouvé</p>
                         </div>
                     )}
-                </motion.div>
+                </div>
+
+                {/* Mobile card list */}
+                <div className="md:hidden space-y-3">
+                    {filteredUsers.map((user) => (
+                        <div key={user.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                            <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-xs font-semibold shrink-0">
+                                    {user.full_name?.substring(0, 2).toUpperCase() || '??'}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-medium text-slate-900 truncate">{user.full_name || 'Sans nom'}</p>
+                                    <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                                </div>
+                                <div className="shrink-0">{statusChip(user.status)}</div>
+                            </div>
+
+                            <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
+                                <Calendar className="h-3.5 w-3.5" />
+                                Demandé le {new Date(user.requested_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-between gap-2">
+                                <select
+                                    value={user.role}
+                                    onChange={(e) => updateUserRole(user.id, e.target.value as any)}
+                                    disabled={actionLoading === user.id}
+                                    className={roleSelectClass}
+                                >
+                                    <option value="viewer">Observateur</option>
+                                    <option value="user">Utilisateur</option>
+                                    <option value="admin">Admin</option>
+                                </select>
+                                {renderActions(user)}
+                            </div>
+                        </div>
+                    ))}
+
+                    {filteredUsers.length === 0 && (
+                        <div className="flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-slate-200 bg-white py-16">
+                            <Mail className="h-10 w-10 mb-3 text-slate-300" />
+                            <p className="text-sm text-slate-500">Aucun utilisateur trouvé</p>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Reject Modal */}
-            <AnimatePresence>
-                {showRejectModal && (
-                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onClick={() => setShowRejectModal(null)}
-                            className="absolute inset-0 bg-slate-950/40 backdrop-blur-md"
-                        />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                            className="bg-white rounded-[40px] max-w-lg w-full p-10 relative overflow-hidden shadow-2xl"
-                        >
-                            <div className="absolute top-0 left-0 w-full h-1 bg-red-500" />
-                            <div className="w-16 h-16 bg-red-50 rounded-[24px] flex items-center justify-center mb-8">
-                                <XCircle className="h-8 w-8 text-red-600" />
-                            </div>
-                            <h3 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">REFUSER L'ACCÈS</h3>
-                            <p className="text-slate-400 text-sm mb-8 font-medium">
-                                Veuillez indiquer la raison du refus (l'utilisateur pourra la voir).
-                            </p>
-
-                            <textarea
-                                value={rejectionReason}
-                                onChange={(e) => setRejectionReason(e.target.value)}
-                                placeholder="Ex: Informations incomplètes ou accès non justifié..."
-                                className="luxury-input h-32 py-4 mb-8 resize-none"
-                            />
-
-                            <div className="flex gap-4">
-                                <button
-                                    onClick={() => {
-                                        setShowRejectModal(null);
-                                        setRejectionReason('');
-                                    }}
-                                    className="luxury-button-secondary flex-1 py-4 text-[10px] font-black tracking-widest uppercase"
-                                >
-                                    ANNULER
-                                </button>
-                                <button
-                                    onClick={() => rejectUser(showRejectModal)}
-                                    disabled={actionLoading === showRejectModal}
-                                    className="luxury-button-primary flex-1 bg-red-600 hover:bg-red-700 py-4 text-[10px] font-black tracking-widest uppercase"
-                                >
-                                    {actionLoading === showRejectModal ? 'TRAITEMENT...' : 'REFUSER ACCÈS'}
-                                </button>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+            <Modal
+                open={showRejectModal !== null}
+                onClose={() => { setShowRejectModal(null); setRejectionReason(''); }}
+                persistent
+                size="md"
+                icon={<span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-red-50 text-red-600"><XCircle className="h-5 w-5" /></span>}
+                title="Refuser l'accès"
+                description="Veuillez indiquer la raison du refus (l'utilisateur pourra la voir)."
+                footer={<>
+                    <button
+                        onClick={() => { setShowRejectModal(null); setRejectionReason(''); }}
+                        className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 active:scale-[0.99] transition-colors"
+                    >
+                        Annuler
+                    </button>
+                    <button
+                        onClick={() => showRejectModal && rejectUser(showRejectModal)}
+                        disabled={actionLoading === showRejectModal}
+                        className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    >
+                        {actionLoading === showRejectModal ? 'Traitement...' : "Refuser l'accès"}
+                    </button>
+                </>}
+            >
+                <div className="space-y-2">
+                    <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Raison du refus</label>
+                    <textarea
+                        value={rejectionReason}
+                        onChange={(e) => setRejectionReason(e.target.value)}
+                        placeholder="Ex: Informations incomplètes ou accès non justifié..."
+                        className="w-full px-3 py-2.5 min-h-[96px] rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition resize-none"
+                    />
+                </div>
+            </Modal>
 
             {showInviteModal && (
                 <ProjectSettingsModal onClose={() => setShowInviteModal(false)} />

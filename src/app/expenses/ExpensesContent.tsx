@@ -1,19 +1,18 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect, useMemo, Suspense } from 'react';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
 import {
     Plus, Receipt, FileText, Trash2, TrendingUp, DollarSign,
-    Upload, X, CheckCircle2, Clock, Eye, EyeOff, AlertCircle, Download, FileDown, ChevronDown,
-    ArrowUpDown, ArrowUp, ArrowDown, ArrowRight, Search, Pencil, Image as ImageIcon, Package, GripVertical,
+    Upload, X, CheckCircle2, Clock, Eye, EyeOff, AlertCircle, FileDown, ChevronDown,
+    ArrowRight, ArrowUp, ArrowDown, ArrowUpDown, Search, Pencil, Image as ImageIcon, Package, GripVertical,
     Store, FilePlus, Sparkles, Keyboard, ImagePlus, ClipboardList
 } from 'lucide-react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
-import * as XLSX from 'xlsx';
+import { Modal, AnchoredDropdown } from '@/components/ui';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -120,25 +119,26 @@ interface SupplierData {
 const ImageViewer = ({ src, onClose }: { src: string, onClose: () => void }) => {
     const isPdf = src.toLowerCase().includes('.pdf') || src.startsWith('data:application/pdf');
     return (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={onClose}>
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 font-jakarta" onClick={onClose}>
             <div className="relative max-w-5xl w-full h-[90vh] flex flex-col items-center">
                 <button
                     onClick={onClose}
-                    className="absolute -top-12 right-0 text-white hover:text-gray-300 p-2"
+                    aria-label="Fermer"
+                    className="absolute -top-11 right-0 inline-flex items-center justify-center w-9 h-9 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
                 >
-                    <X className="h-8 w-8" />
+                    <X className="h-6 w-6" />
                 </button>
                 {isPdf ? (
                     <iframe
                         src={src}
-                        className="w-full h-full bg-white rounded-lg shadow-2xl"
+                        className="w-full h-full bg-white rounded-2xl shadow-xl"
                         title="Document Viewer"
                     />
                 ) : (
                     <img
                         src={src}
                         alt="Document"
-                        className="max-w-full max-h-full object-contain rounded-lg shadow-2xl bg-white"
+                        className="max-w-full max-h-full object-contain rounded-2xl shadow-xl bg-white"
                         onClick={(e) => e.stopPropagation()}
                     />
                 )}
@@ -159,7 +159,7 @@ const SupplierList = ({
     setDeleteConfirmInput
 }: any) => {
     return (
-        <Reorder.Group axis="y" values={orderedSuppliers} onReorder={handleReorder} className="flex lg:flex-col gap-3 overflow-x-auto lg:overflow-visible no-scrollbar pb-4 lg:pb-0">
+        <Reorder.Group axis="y" values={orderedSuppliers} onReorder={handleReorder} className="flex lg:flex-col gap-2 lg:gap-2.5 overflow-x-auto lg:overflow-visible no-scrollbar snap-x snap-mandatory -mx-4 px-4 lg:mx-0 lg:px-0 pb-1 lg:pb-0">
             {orderedSuppliers.map((sup: any) => (
                 <SupplierListItem
                     key={sup.id}
@@ -193,29 +193,30 @@ const SupplierListItem = ({
             dragControls={controls}
             dragListener={false}
             className={`
-                group flex-shrink-0 lg:flex-shrink-1 flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl cursor-pointer transition-all duration-300
+                group snap-start shrink-0 lg:shrink flex items-center gap-2.5 pl-2 pr-3 py-2 lg:py-2.5 rounded-xl cursor-pointer transition-colors border
                 ${activeTab === sup.id
-                    ? 'bg-slate-900 text-white shadow-xl shadow-slate-900/20 ring-1 ring-white/10'
-                    : 'bg-white/50 backdrop-blur-sm border border-slate-200/60 text-slate-500 hover:bg-white hover:border-slate-300 hover:shadow-lg hover:shadow-slate-200/50 hover:-translate-y-0.5'}
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'}
             `}
             onClick={() => setActiveTab(sup.id as any)}
             layout
         >
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-                {isAdmin && (
-                    <div
-                        className={`hidden lg:flex items-center justify-center p-1 rounded-lg transition-colors cursor-grab active:cursor-grabbing ${activeTab === sup.id ? 'text-white/20 hover:text-white/40' : 'text-slate-300 hover:text-slate-400'}`}
-                        onPointerDown={(e) => controls.start(e)}
-                    >
-                        <GripVertical className="h-4 w-4" />
-                    </div>
-                )}
-                <div className="flex flex-col min-w-0">
-                    <span className={`text-[11px] font-black uppercase tracking-tight truncate ${activeTab === sup.id ? 'text-white' : 'text-slate-900'}`}>{sup.name}</span>
-                    <span className={`text-[8px] font-bold uppercase tracking-[0.1em] mt-0.5 ${activeTab === sup.id ? 'text-white/40' : 'text-slate-400'}`}>
-                        {sup.expenses?.length || 0} Docs
-                    </span>
+            {isAdmin && (
+                <div
+                    className={`hidden lg:flex items-center justify-center rounded-lg transition-colors cursor-grab active:cursor-grabbing ${activeTab === sup.id ? 'text-white/30 hover:text-white/60' : 'text-slate-300 hover:text-slate-400'}`}
+                    onPointerDown={(e) => controls.start(e)}
+                >
+                    <GripVertical className="h-4 w-4" />
                 </div>
+            )}
+            <div className={`flex items-center justify-center w-8 h-8 rounded-lg text-xs font-semibold shrink-0 ${activeTab === sup.id ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                {sup.name?.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex flex-col min-w-0 flex-1">
+                <span className={`text-[13px] font-medium tracking-tight truncate ${activeTab === sup.id ? 'text-white' : 'text-slate-900'}`}>{sup.name}</span>
+                <span className={`text-[11px] mt-0.5 ${activeTab === sup.id ? 'text-white/50' : 'text-slate-400'}`}>
+                    {sup.expenses?.length || 0} docs
+                </span>
             </div>
             {isAdmin && (
                 <button
@@ -225,7 +226,7 @@ const SupplierListItem = ({
                         setShowDeleteConfirmModal(true);
                         setDeleteConfirmInput('');
                     }}
-                    className={`p-2 rounded-xl transition-all opacity-0 group-hover:opacity-100 ${activeTab === sup.id ? 'bg-white/10 text-white/40 hover:text-white hover:bg-rose-500' : 'bg-slate-50 text-slate-300 hover:text-white hover:bg-rose-500 shadow-sm'}`}
+                    className={`hidden lg:inline-flex shrink-0 ml-auto items-center justify-center w-8 h-8 rounded-lg transition-colors lg:opacity-0 lg:group-hover:opacity-100 ${activeTab === sup.id ? 'text-white/50 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'}`}
                     title="Supprimer"
                 >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -237,7 +238,7 @@ const SupplierListItem = ({
 
 function ExpensesContentMain() {
     const { isAdmin: isGlobalAdmin, user } = useAuth();
-    const { currentProject, userRole } = useProject();
+    const { currentProject, userRole, loading: projectLoading } = useProject();
 
     // Permission check: Global admins OR project admins/editors can edit
     const isAdmin = isGlobalAdmin || userRole === 'admin' || userRole === 'editor';
@@ -276,6 +277,34 @@ function ExpensesContentMain() {
     });
     const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
 
+    // Direct image attachment for the new/edit facture-bon modal
+    const [expenseImageFile, setExpenseImageFile] = useState<File | null>(null);
+    const [expenseImagePreview, setExpenseImagePreview] = useState<string | null>(null); // object URL for a freshly picked file
+    const [expenseExistingImage, setExpenseExistingImage] = useState<string | null>(null); // already-saved invoice_image when editing
+
+    const handleExpenseImageSelect = (file: File | null) => {
+        if (expenseImagePreview) URL.revokeObjectURL(expenseImagePreview);
+        if (file) {
+            setExpenseImageFile(file);
+            setExpenseImagePreview(URL.createObjectURL(file));
+        } else {
+            setExpenseImageFile(null);
+            setExpenseImagePreview(null);
+        }
+    };
+
+    const clearExpenseImage = () => {
+        handleExpenseImageSelect(null);
+        setExpenseExistingImage(null);
+    };
+
+    // Revoke the object URL when the preview changes or on unmount (avoids leaks).
+    useEffect(() => {
+        return () => {
+            if (expenseImagePreview) URL.revokeObjectURL(expenseImagePreview);
+        };
+    }, [expenseImagePreview]);
+
     const [showAddInvoiceItemsStep, setShowAddInvoiceItemsStep] = useState(false);
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
     const [showAIComingSoonModal, setShowAIComingSoonModal] = useState(false);
@@ -285,9 +314,11 @@ function ExpensesContentMain() {
         setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
     };
 
-    const [showUploadedDocs, setShowUploadedDocs] = useState(false);
-    const [showExpensesSection, setShowExpensesSection] = useState(false);
-    const [showDepositsSection, setShowDepositsSection] = useState(false);
+    const [showUploadedDocs, setShowUploadedDocs] = useState(true);
+    const [showExpensesSection, setShowExpensesSection] = useState(true);
+    const [showDepositsSection, setShowDepositsSection] = useState(true);
+    // Tabbed supplier panel: factures | acomptes | documents | notes
+    const [panelTab, setPanelTab] = useState<'factures' | 'acomptes' | 'documents' | 'notes'>('factures');
 
     const [suppliers, setSuppliers] = useState<Record<string, SupplierData>>({});
     const [allAvailableSuppliers, setAllAvailableSuppliers] = useState<any[]>([]);
@@ -423,6 +454,7 @@ function ExpensesContentMain() {
     }, [suppliers]);
 
     const [activeArticleSearchIdx, setActiveArticleSearchIdx] = useState<number | null>(null);
+    const [articleSearchAnchorEl, setArticleSearchAnchorEl] = useState<HTMLElement | null>(null);
 
     // Sync URL params to State
     useEffect(() => {
@@ -460,10 +492,12 @@ function ExpensesContentMain() {
 
     const fetchData = useCallback(async () => {
         if (!currentProject) {
-            setLoading(false);
+            // Projects may still be resolving on reload — only declare "empty" once they have loaded.
+            if (!projectLoading) setLoading(false);
             return;
         }
 
+        setLoading(true);
         try {
             const [allSuppliersRes, expensesRes, depositsRes, settingsRes, uploadedDocsRes] = await Promise.all([
                 supabase.from('suppliers').select('*').is('deleted_at', null).order('name'),
@@ -646,7 +680,7 @@ function ExpensesContentMain() {
             console.log('Expenses: Fetching data complete.');
             setLoading(false);
         }
-    }, [supabase, currentProject, activeTab, sessionLinkedSuppliers]);
+    }, [supabase, currentProject, activeTab, sessionLinkedSuppliers, projectLoading]);
 
     useEffect(() => {
         fetchData();
@@ -755,6 +789,7 @@ function ExpensesContentMain() {
     };
 
     const handleUpdateDocNote = async (docId: string, note: string) => {
+        if (!isAdmin) return;
         const { error } = await supabase
             .from('uploaded_documents')
             .update({ note })
@@ -770,6 +805,7 @@ function ExpensesContentMain() {
     };
 
     const handleDeleteUploadedDoc = async (docId: string | 'all') => {
+        if (!isAdmin) return;
         setIsDeleting(true);
         try {
             if (docId === 'all') {
@@ -798,6 +834,7 @@ function ExpensesContentMain() {
     };
 
     const handleReplaceDocument = async (docId: string, file: File) => {
+        if (!isAdmin) return;
         const project = currentProject;
         if (!project) return;
 
@@ -863,6 +900,7 @@ function ExpensesContentMain() {
     };
 
     const handleUndoReplace = async () => {
+        if (!isAdmin) return;
         if (!lastReplacedDoc) return;
         setIsUploading(true);
         try {
@@ -888,6 +926,7 @@ function ExpensesContentMain() {
     };
 
     const handleManualSubmit = async () => {
+        if (!isAdmin) return;
         const project = currentProject;
         if (!project) return;
         if (manualForm.files.length === 0) {
@@ -960,6 +999,7 @@ function ExpensesContentMain() {
     };
 
     const handleManualSubmitNew = async () => {
+        if (!isAdmin) return;
         const project = currentProject;
         if (!project) return;
         if (manualForm.files.length === 0) {
@@ -1202,6 +1242,7 @@ function ExpensesContentMain() {
 
 
     const updateStatus = async (id: string, newStatus: PaymentStatus) => {
+        if (!isAdmin) return;
         // Optimistic Update for immediate UI feedback
         setSuppliers(prev => {
             const next = { ...prev };
@@ -1239,6 +1280,7 @@ function ExpensesContentMain() {
     };
 
     const handleDelete = async (id: string) => {
+        if (!isAdmin) return;
         if (!confirm('Supprimer cet enregistrement définitivement ?')) return;
 
         // Optimistic Delete
@@ -1272,6 +1314,7 @@ function ExpensesContentMain() {
     };
 
     const handleSaveNote = async () => {
+        if (!isAdmin) return;
         try {
             if (noteEditorType === 'supplier') {
                 const { error } = await supabase.from('suppliers').update({ notes: tempNoteValue }).eq('id', activeTab);
@@ -1303,6 +1346,7 @@ function ExpensesContentMain() {
 
 
     const handleAddSupplier = async () => {
+        if (!isAdmin) return;
         const project = currentProject;
         if (!project) return;
         if (!newSupplierName) return;
@@ -1342,6 +1386,7 @@ function ExpensesContentMain() {
     };
 
     const handleLinkSupplierToProject = async (supplierId: string) => {
+        if (!isAdmin) return;
         const project = currentProject;
         if (!project) return;
 
@@ -1376,7 +1421,10 @@ function ExpensesContentMain() {
     };
 
     const handleRemoveSupplierFromProject = async () => {
+        if (!isAdmin) return;
         if (!supplierToDelete || !currentProject) return;
+        // Require the typed name to match exactly before this destructive action.
+        if (deleteConfirmInput.trim().toUpperCase() !== supplierToDelete.name.trim().toUpperCase()) return;
 
         setIsDeleting(true);
         try {
@@ -1413,6 +1461,7 @@ function ExpensesContentMain() {
     };
 
     const handleRestoreSupplierToProject = async (supplierId: string) => {
+        if (!isAdmin) return;
         if (!currentProject) return;
         try {
             // Restore association, expenses, and deposits
@@ -1432,6 +1481,7 @@ function ExpensesContentMain() {
     };
 
     const handleReorder = async (newOrder: SupplierData[]) => {
+        if (!isAdmin) return;
         setOrderedSuppliers(newOrder);
         if (!currentProject) return;
 
@@ -1457,6 +1507,7 @@ function ExpensesContentMain() {
     };
 
     const handleAddDeposit = async () => {
+        if (!isAdmin) return;
         const project = currentProject;
         if (!project) return;
         const amount = parseFloat(newDepositData.amount);
@@ -1517,6 +1568,7 @@ function ExpensesContentMain() {
     };
 
     const handleSaveDeposit = async () => {
+        if (!isAdmin) return;
         const project = currentProject;
         if (!project) return;
         const amount = parseFloat(newDepositData.amount);
@@ -1590,6 +1642,7 @@ function ExpensesContentMain() {
     };
 
     const handleDeleteDeposit = async (id: string) => {
+        if (!isAdmin) return;
         if (!confirm('Supprimer cet acompte définitivement ?')) return;
 
         const activeTabSave = activeTab;
@@ -1638,9 +1691,11 @@ function ExpensesContentMain() {
         });
         setInvoiceItems([]);
         setActiveArticleSearchIdx(null);
+        clearExpenseImage();
     };
 
     const handleSaveExpense = async () => {
+        if (!isAdmin) return;
         const project = currentProject;
         if (!project) return;
         const price = parseFloat(newExpenseData.price);
@@ -1657,6 +1712,25 @@ function ExpensesContentMain() {
             const dateObj = new Date(newExpenseData.date);
             const formattedDate = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth() + 1).toString().padStart(2, '0')}/${dateObj.getFullYear()}`;
 
+            // Resolve the invoice image: upload a freshly picked file, otherwise keep
+            // whatever existing image remains (null if the user removed it).
+            let invoiceImageUrl: string | null = expenseExistingImage;
+            if (expenseImageFile) {
+                const ext = expenseImageFile.name.split('.').pop() || 'jpg';
+                const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${ext}`;
+                const filePath = `${activeTab}/${fileName}`;
+
+                let bucketName = 'invoices';
+                const { error: uploadError } = await supabase.storage.from(bucketName).upload(filePath, expenseImageFile);
+                if (uploadError) {
+                    bucketName = 'documents';
+                    const { error: matchError } = await supabase.storage.from(bucketName).upload(filePath, expenseImageFile);
+                    if (matchError) throw uploadError;
+                }
+                const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+                invoiceImageUrl = data.publicUrl;
+            }
+
             let expenseId = editingExpenseId;
 
             if (editingExpenseId) {
@@ -1665,7 +1739,8 @@ function ExpensesContentMain() {
                     price: price,
                     date: formattedDate,
                     status: newExpenseData.status,
-                    quantity: newExpenseData.quantity
+                    quantity: newExpenseData.quantity,
+                    invoice_image: invoiceImageUrl
                 }).eq('id', editingExpenseId);
                 if (error) throw error;
 
@@ -1679,7 +1754,8 @@ function ExpensesContentMain() {
                     price: price,
                     date: formattedDate,
                     status: newExpenseData.status,
-                    quantity: newExpenseData.quantity
+                    quantity: newExpenseData.quantity,
+                    invoice_image: invoiceImageUrl
                 }).select().single();
                 if (error) throw error;
                 expenseId = newExp?.id;
@@ -1725,6 +1801,8 @@ function ExpensesContentMain() {
             quantity: expense.quantity || '1'
         });
         setInvoiceItems(expense.items || []);
+        handleExpenseImageSelect(null);
+        setExpenseExistingImage(expense.invoiceImage || null);
         setEditingExpenseId(expense.id);
         setShowAddExpenseModal(true);
     };
@@ -1747,6 +1825,7 @@ function ExpensesContentMain() {
     };
 
     const handleSelectDocLink = async (url: string) => {
+        if (!isAdmin) return;
         if (!pickerTarget) return;
 
         try {
@@ -1849,12 +1928,71 @@ function ExpensesContentMain() {
         return val.toLocaleString(undefined, { minimumFractionDigits: 3 });
     };
 
-    if (loading) {
+    if (loading || projectLoading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50">
-                <div className="flex flex-col items-center">
-                    <div className="h-10 w-10 border-4 border-slate-900 border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p className="text-sm font-black text-slate-500 uppercase tracking-widest animate-pulse">Chargement des données...</p>
+            <div className="min-h-screen font-jakarta">
+                <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5 animate-pulse">
+                    {/* Header */}
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="space-y-2">
+                            <div className="h-6 w-40 rounded-lg bg-slate-200" />
+                            <div className="h-3.5 w-56 rounded bg-slate-100" />
+                        </div>
+                        <div className="hidden sm:flex gap-2">
+                            <div className="h-10 w-28 rounded-xl bg-slate-100" />
+                            <div className="h-10 w-24 rounded-xl bg-slate-200" />
+                        </div>
+                    </div>
+                    {/* Stat cards */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                            <div key={i} className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-3">
+                                <div className="flex items-start justify-between">
+                                    <div className="h-3 w-20 rounded bg-slate-100" />
+                                    <div className="h-7 w-7 rounded-lg bg-slate-100" />
+                                </div>
+                                <div className="h-6 w-24 rounded-lg bg-slate-200" />
+                            </div>
+                        ))}
+                    </div>
+                    {/* Supplier rail + panel */}
+                    <div className="flex flex-col lg:flex-row gap-4">
+                        <div className="flex lg:flex-col gap-2.5 lg:w-64 overflow-hidden">
+                            {Array.from({ length: 4 }).map((_, i) => (
+                                <div key={i} className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl border border-slate-200 bg-white shrink-0 lg:shrink">
+                                    <div className="h-8 w-8 rounded-lg bg-slate-100 shrink-0" />
+                                    <div className="space-y-1.5">
+                                        <div className="h-3 w-20 rounded bg-slate-200" />
+                                        <div className="h-2.5 w-10 rounded bg-slate-100" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex-1 space-y-4">
+                            <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-3">
+                                <div className="h-5 w-40 rounded-lg bg-slate-200" />
+                                <div className="grid grid-cols-3 gap-2">
+                                    {Array.from({ length: 3 }).map((_, i) => (
+                                        <div key={i} className="h-16 rounded-2xl border border-slate-200 bg-slate-50" />
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                                <div className="px-4 py-3 border-b border-slate-100 h-12" />
+                                {Array.from({ length: 5 }).map((_, i) => (
+                                    <div key={i} className="flex items-center gap-3 px-4 py-3.5 border-t border-slate-100">
+                                        <div className="h-4 w-4 rounded bg-slate-100" />
+                                        <div className="flex-1 space-y-1.5">
+                                            <div className="h-3.5 w-1/3 rounded bg-slate-200" />
+                                            <div className="h-2.5 w-20 rounded bg-slate-100" />
+                                        </div>
+                                        <div className="h-5 w-16 rounded-full bg-slate-100" />
+                                        <div className="h-4 w-20 rounded bg-slate-200" />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         );
@@ -1866,465 +2004,314 @@ function ExpensesContentMain() {
     const isEmpty = Object.keys(suppliers).length === 0;
 
     return (
-        <div className="max-w-7xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6 pb-20 font-jakarta">
+        <div className="min-h-screen font-jakarta">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5">
             {/* Image Modal */}
             {viewingImage && <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} />}
 
-            {/* Step 1 Modal: Choose AI or Manual */}
-            {showAddInvoiceStep1 && (
-                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                    <div className="bg-white p-8 rounded-[3rem] w-full max-w-xl shadow-2xl animate-in zoom-in-95 duration-200 relative">
-                        <button
-                            onClick={() => setShowAddInvoiceStep1(false)}
-                            className="absolute right-6 top-6 p-2 hover:bg-slate-50 rounded-full text-slate-300 transition-colors"
-                        >
-                            <X className="h-6 w-6" />
-                        </button>
-
-                        <div className="text-center mb-10">
-                            <h3 className="text-2xl font-black uppercase text-slate-900 tracking-tight">Ajouter une Facture</h3>
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-2">Choisissez votre méthode d'ajout</p>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <button
-                                onClick={() => {
-                                    setInvoiceFlowMode('ai');
-                                    setShowAddInvoiceStep1(false);
-                                    // Potential AI flow call here
-                                    setShowAIComingSoonModal(true);
-                                }}
-                                className="p-8 bg-slate-50 rounded-[2.5rem] border-2 border-transparent hover:border-blue-500 hover:bg-white transition-all group flex flex-col items-center gap-4 text-center"
-                            >
-                                <div className="p-5 bg-blue-500 text-white rounded-[1.5rem] shadow-lg shadow-blue-200 group-hover:scale-110 transition-transform">
-                                    <Sparkles className="h-8 w-8" />
-                                </div>
-                                <div>
-                                    <p className="font-black text-slate-900 uppercase text-sm mb-1 line-clamp-2">Extraire avec l'IA</p>
-                                    <p className="text-[10px] font-bold text-slate-400 leading-relaxed uppercase">Scannez et remplissez automatiquement les champs</p>
-                                </div>
-                            </button>
-
-                            <button
-                                onClick={() => {
-                                    setInvoiceFlowMode('manual');
-                                    setShowAddInvoiceStep1(false);
-                                    setShowAddInvoiceItemsStep(false);
-                                    setTempInvoiceFile(null); // Reset when opening new
-                                    setShowAddInvoiceStep2(true);
-                                    setNewInvoiceSupplierId(activeTab); // Pre-select current supplier if any
-                                    setNewExpenseData({
-                                        item: '',
-                                        price: '',
-                                        date: new Date().toISOString().split('T')[0],
-                                        status: 'pending',
-                                        quantity: '1'
-                                    });
-                                    setInvoiceItems([]);
-                                }}
-                                className="p-8 bg-slate-50 rounded-[2.5rem] border-2 border-transparent hover:border-slate-900 hover:bg-white transition-all group flex flex-col items-center gap-4 text-center"
-                            >
-                                <div className="p-5 bg-slate-900 text-white rounded-[1.5rem] shadow-lg shadow-slate-200 group-hover:scale-110 transition-transform">
-                                    <Keyboard className="h-8 w-8" />
-                                </div>
-                                <div>
-                                    <p className="font-black text-slate-900 uppercase text-sm mb-1">Ajout Manuel</p>
-                                    <p className="text-[10px] font-bold text-slate-400 leading-relaxed uppercase">Saisissez les informations de la facture vous-même</p>
-                                </div>
-                            </button>
-                        </div>
-                    </div>
+            {/* Page Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                    <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">Dépenses</h1>
+                    <p className="text-sm text-slate-500 mt-0.5">Factures, bons et acomptes par fournisseur</p>
                 </div>
-            )}
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setPrivacyMode(!privacyMode)}
+                        className={`inline-flex items-center justify-center gap-2 h-10 px-3 rounded-xl text-sm font-medium transition-colors ${privacyMode ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                        title={privacyMode ? 'Afficher les montants' : 'Masquer les montants'}
+                    >
+                        {privacyMode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        <span className="hidden sm:inline">{privacyMode ? 'Mode discret' : 'Visible'}</span>
+                    </button>
+                    {!isEmpty && (
+                        <button
+                            onClick={handleExportPDF}
+                            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 active:scale-[0.99] transition-colors"
+                        >
+                            <FileDown className="h-4 w-4" /> <span className="hidden sm:inline">Export PDF</span>
+                        </button>
+                    )}
+                    {isAdmin && (
+                        <button
+                            onClick={() => setShowAddInvoiceStep1(true)}
+                            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors"
+                        >
+                            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Facture</span>
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Step 1 Modal: Choose AI or Manual */}
+            <Modal
+                open={showAddInvoiceStep1}
+                onClose={() => setShowAddInvoiceStep1(false)}
+                title="Ajouter une facture"
+                description="Choisissez votre méthode d'ajout"
+                size="lg"
+            >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                        onClick={() => {
+                            setInvoiceFlowMode('ai');
+                            setShowAddInvoiceStep1(false);
+                            // Potential AI flow call here
+                            setShowAIComingSoonModal(true);
+                        }}
+                        className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 transition-colors flex flex-col items-center gap-3 text-center"
+                    >
+                        <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                            <Sparkles className="h-6 w-6" />
+                        </div>
+                        <div>
+                            <p className="font-semibold text-slate-900 text-sm mb-0.5">Extraire avec l'IA</p>
+                            <p className="text-xs text-slate-500 leading-relaxed">Scannez et remplissez automatiquement les champs</p>
+                        </div>
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            setInvoiceFlowMode('manual');
+                            setShowAddInvoiceStep1(false);
+                            setShowAddInvoiceItemsStep(false);
+                            setTempInvoiceFile(null); // Reset when opening new
+                            setShowAddInvoiceStep2(true);
+                            setNewInvoiceSupplierId(activeTab); // Pre-select current supplier if any
+                            setNewExpenseData({
+                                item: '',
+                                price: '',
+                                date: new Date().toISOString().split('T')[0],
+                                status: 'pending',
+                                quantity: '1'
+                            });
+                            setInvoiceItems([]);
+                        }}
+                        className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-slate-900 transition-colors flex flex-col items-center gap-3 text-center"
+                    >
+                        <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center">
+                            <Keyboard className="h-6 w-6" />
+                        </div>
+                        <div>
+                            <p className="font-semibold text-slate-900 text-sm mb-0.5">Ajout manuel</p>
+                            <p className="text-xs text-slate-500 leading-relaxed">Saisissez les informations de la facture vous-même</p>
+                        </div>
+                    </button>
+                </div>
+            </Modal>
 
             {/* Step 2 Modal: Basic Info */}
-            {showAddInvoiceStep2 && (
-                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                    <div className="bg-white rounded-[3rem] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-                        <div className="bg-slate-900 p-8 text-white flex justify-between items-center relative">
-                            <div>
-                                <h3 className="text-xl font-black uppercase tracking-tight">Nouvelle Facture / Bon</h3>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Informations du document</p>
-                            </div>
-                            <button onClick={() => setShowAddInvoiceStep2(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-                                <X className="h-6 w-6" />
-                            </button>
-                        </div>
-
-                        <div className="p-8 overflow-y-auto custom-scrollbar space-y-6">
-                            {/* Supplier Selection */}
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Fournisseur</label>
-                                <div className="relative">
-                                    <select
-                                        className="w-full bg-slate-50 border-none p-4 pr-12 rounded-2xl font-black text-slate-900 focus:ring-2 focus:ring-slate-900 outline-none transition-all uppercase text-sm appearance-none"
-                                        value={newInvoiceSupplierId}
-                                        onChange={(e) => {
-                                            if (e.target.value === 'new') {
-                                                setIsCreatingNewSupplier(true);
-                                            } else {
-                                                setNewInvoiceSupplierId(e.target.value);
-                                                setIsCreatingNewSupplier(false);
-                                            }
-                                        }}
-                                    >
-                                        <option value="">SÉLECTIONNER...</option>
-                                        {allAvailableSuppliers.map(s => (
-                                            <option key={s.id} value={s.id}>{s.name}</option>
-                                        ))}
-                                        <option value="new" className="text-blue-600 font-black">+ AJOUTER NOUVEAU</option>
-                                    </select>
-                                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 pointer-events-none" />
-                                </div>
-
-                                {isCreatingNewSupplier && (
-                                    <div className="flex gap-2 animate-in slide-in-from-top-2 duration-300 mt-2">
-                                        <input
-                                            className="flex-1 bg-blue-50 border-none p-4 rounded-2xl font-black text-blue-900 placeholder:text-blue-200 outline-none text-sm uppercase"
-                                            placeholder="NOM DU FOURNISSEUR..."
-                                            value={newSupplierName}
-                                            onChange={(e) => setNewSupplierName(e.target.value)}
-                                            autoFocus
-                                        />
-                                        <button
-                                            onClick={() => {
-                                                if (!newSupplierName) return;
-                                                setNewInvoiceSupplierId('CREATING_NEW');
-                                                setIsCreatingNewSupplier(false);
-                                            }}
-                                            className="bg-blue-600 text-white px-6 rounded-2xl font-black text-[10px] uppercase hover:bg-blue-700 transition-colors"
-                                        >
-                                            Appliquer
-                                        </button>
-                                    </div>
-                                )}
-
-                                {newInvoiceSupplierId === 'CREATING_NEW' && (
-                                    <div className="mt-2 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center justify-between animate-in fade-in slide-in-from-top-1">
-                                        <div>
-                                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Nouveau Fournisseur</p>
-                                            <p className="text-sm font-black text-slate-900 uppercase">{newSupplierName}</p>
-                                        </div>
-                                        <button
-                                            onClick={() => {
-                                                setNewInvoiceSupplierId('');
-                                                setIsCreatingNewSupplier(true);
-                                            }}
-                                            className="p-2 hover:bg-emerald-100 rounded-full text-emerald-600 transition-colors"
-                                        >
-                                            <Pencil className="h-4 w-4" />
-                                        </button>
-                                    </div>
-                                )}
-
-                            </div>
-
-                            {/* Drag & Drop */}
-                            <div
-                                className="border-2 border-dashed border-slate-200 rounded-3xl p-8 text-center bg-slate-50/50 group hover:border-slate-300 transition-all cursor-pointer relative"
-                                onClick={() => invoiceFileInputRef.current?.click()}
-                            >
-                                <div className="p-4 bg-white rounded-2xl w-fit mx-auto mb-3 shadow-sm group-hover:scale-110 transition-transform">
-                                    {tempInvoiceFile ? (
-                                        <div className="relative">
-                                            <CheckCircle2 className="h-6 w-6 text-emerald-500" />
-                                        </div>
-                                    ) : (
-                                        <ImagePlus className="h-6 w-6 text-slate-400" />
-                                    )}
-                                </div>
-                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                                    {tempInvoiceFile
-                                        ? `Fichier sélectionné: ${tempInvoiceFile.name}`
-                                        : "Glisser une image ou l'ajouter de mon PC (Optionnel)"
+            <Modal
+                open={showAddInvoiceStep2}
+                onClose={() => setShowAddInvoiceStep2(false)}
+                title="Nouvelle facture / bon"
+                description="Informations du document"
+                size="lg"
+                footer={<>
+                    <button
+                        onClick={() => setShowAddInvoiceStep2(false)}
+                        className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
+                    >
+                        Annuler
+                    </button>
+                    <button
+                        onClick={() => {
+                            if (!newInvoiceSupplierId && !newSupplierName) {
+                                alert("Veuillez sélectionner un fournisseur");
+                                return;
+                            }
+                            if (newInvoiceSupplierId === 'new' || (newInvoiceSupplierId === 'CREATING_NEW' && !newSupplierName)) {
+                                alert("Veuillez entrer un nom pour le nouveau fournisseur");
+                                return;
+                            }
+                            if (!newExpenseData.item) {
+                                alert("Veuillez entrer une désignation");
+                                return;
+                            }
+                            setShowAddInvoiceStep2(false);
+                            setShowAddInvoiceItemsStep(true);
+                        }}
+                        className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors"
+                    >
+                        Continuer
+                        <ArrowRight className="h-4 w-4" />
+                    </button>
+                </>}
+            >
+                <div className="space-y-4">
+                    {/* Supplier Selection */}
+                    <div>
+                        <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Fournisseur</label>
+                        <div className="relative">
+                            <select
+                                className="w-full h-10 px-3 pr-10 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition appearance-none"
+                                value={newInvoiceSupplierId}
+                                onChange={(e) => {
+                                    if (e.target.value === 'new') {
+                                        setIsCreatingNewSupplier(true);
+                                    } else {
+                                        setNewInvoiceSupplierId(e.target.value);
+                                        setIsCreatingNewSupplier(false);
                                     }
-                                </p>
-                                <input
-                                    type="file"
-                                    ref={invoiceFileInputRef}
-                                    className="hidden"
-                                    accept="image/*,application/pdf"
-                                    onChange={handleInvoiceFileSelect}
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-6">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Désignation (N° Facture/Bon)</label>
-                                    <input
-                                        type="text"
-                                        className="w-full bg-slate-50 border-none p-4 rounded-2xl font-black text-slate-900 focus:ring-2 focus:ring-slate-900 outline-none transition-all uppercase text-sm"
-                                        placeholder="EX: FACTURE 123"
-                                        value={newExpenseData.item}
-                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, item: e.target.value })}
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Montant (DT)</label>
-                                        <input
-                                            type="number"
-                                            step="0.001"
-                                            className="w-full bg-slate-900 text-white border-none p-4 rounded-2xl font-black text-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                            placeholder="0.000"
-                                            value={newExpenseData.price}
-                                            onChange={(e) => setNewExpenseData({ ...newExpenseData, price: e.target.value })}
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Date</label>
-                                        <input
-                                            type="date"
-                                            className="w-full bg-slate-50 border-none p-4 rounded-2xl font-black text-slate-900 focus:ring-2 focus:ring-slate-900 outline-none transition-all text-sm uppercase"
-                                            value={newExpenseData.date}
-                                            onChange={(e) => setNewExpenseData({ ...newExpenseData, date: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">État du paiement</label>
-                                    <div className="flex bg-slate-50 p-1 rounded-2xl">
-                                        <button
-                                            onClick={() => setNewExpenseData({ ...newExpenseData, status: 'pending' })}
-                                            className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${newExpenseData.status === 'pending' ? 'bg-amber-500 text-white shadow-lg shadow-amber-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                        >
-                                            Attente
-                                        </button>
-                                        <button
-                                            onClick={() => setNewExpenseData({ ...newExpenseData, status: 'paid' })}
-                                            className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${newExpenseData.status === 'paid' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                        >
-                                            Payé
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="p-8 bg-slate-50 border-t border-slate-100 flex gap-4 shrink-0">
-                            <button
-                                onClick={() => setShowAddInvoiceStep2(false)}
-                                className="flex-1 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
-                            >
-                                Annuler
-                            </button>
-                            <button
-                                onClick={() => {
-                                    if (!newInvoiceSupplierId && !newSupplierName) {
-                                        alert("Veuillez sélectionner un fournisseur");
-                                        return;
-                                    }
-                                    if (newInvoiceSupplierId === 'new' || (newInvoiceSupplierId === 'CREATING_NEW' && !newSupplierName)) {
-                                        alert("Veuillez entrer un nom pour le nouveau fournisseur");
-                                        return;
-                                    }
-                                    if (!newExpenseData.item) {
-                                        alert("Veuillez entrer une désignation");
-                                        return;
-                                    }
-                                    setShowAddInvoiceStep2(false);
-                                    setShowAddInvoiceItemsStep(true);
                                 }}
-                                className="flex-[2] py-4 bg-slate-900 text-white rounded-[1.5rem] font-black uppercase tracking-widest text-[11px] shadow-xl shadow-slate-900/20 hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
                             >
-                                Continuer
-                                <ArrowRight className="h-4 w-4" />
+                                <option value="">Sélectionner...</option>
+                                {allAvailableSuppliers.map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                                <option value="new">+ Ajouter nouveau</option>
+                            </select>
+                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                        </div>
+
+                        {isCreatingNewSupplier && (
+                            <div className="flex gap-2 mt-2">
+                                <input
+                                    className="flex-1 h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                    placeholder="Nom du fournisseur..."
+                                    value={newSupplierName}
+                                    onChange={(e) => setNewSupplierName(e.target.value)}
+                                    autoFocus
+                                />
+                                <button
+                                    onClick={() => {
+                                        if (!newSupplierName) return;
+                                        setNewInvoiceSupplierId('CREATING_NEW');
+                                        setIsCreatingNewSupplier(false);
+                                    }}
+                                    className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors"
+                                >
+                                    Appliquer
+                                </button>
+                            </div>
+                        )}
+
+                        {newInvoiceSupplierId === 'CREATING_NEW' && (
+                            <div className="mt-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs font-medium text-emerald-700">Nouveau fournisseur</p>
+                                    <p className="text-sm font-semibold text-slate-900">{newSupplierName}</p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setNewInvoiceSupplierId('');
+                                        setIsCreatingNewSupplier(true);
+                                    }}
+                                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-emerald-600 hover:bg-emerald-100 transition-colors"
+                                >
+                                    <Pencil className="h-4 w-4" />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Drag & Drop */}
+                    <div
+                        className="border border-dashed border-slate-300 rounded-xl p-5 text-center bg-slate-50/50 hover:border-slate-400 transition-colors cursor-pointer"
+                        onClick={() => invoiceFileInputRef.current?.click()}
+                    >
+                        <div className="w-10 h-10 bg-white border border-slate-200 rounded-xl flex items-center justify-center mx-auto mb-2">
+                            {tempInvoiceFile ? (
+                                <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                            ) : (
+                                <ImagePlus className="h-5 w-5 text-slate-400" />
+                            )}
+                        </div>
+                        <p className="text-xs text-slate-500">
+                            {tempInvoiceFile
+                                ? `Fichier sélectionné: ${tempInvoiceFile.name}`
+                                : "Glisser une image ou l'ajouter de mon PC (optionnel)"
+                            }
+                        </p>
+                        <input
+                            type="file"
+                            ref={invoiceFileInputRef}
+                            className="hidden"
+                            accept="image/*,application/pdf"
+                            onChange={handleInvoiceFileSelect}
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Désignation (N° facture/bon)</label>
+                        <input
+                            type="text"
+                            className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                            placeholder="Ex: Facture 123"
+                            value={newExpenseData.item}
+                            onChange={(e) => setNewExpenseData({ ...newExpenseData, item: e.target.value })}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Montant (DT)</label>
+                            <input
+                                type="number"
+                                step="0.001"
+                                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-900 tabular-nums placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                placeholder="0.000"
+                                value={newExpenseData.price}
+                                onChange={(e) => setNewExpenseData({ ...newExpenseData, price: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Date</label>
+                            <input
+                                type="date"
+                                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                value={newExpenseData.date}
+                                onChange={(e) => setNewExpenseData({ ...newExpenseData, date: e.target.value })}
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-[13px] font-medium text-slate-700 mb-1.5">État du paiement</label>
+                        <div className="flex bg-slate-100 p-1 rounded-xl">
+                            <button
+                                onClick={() => setNewExpenseData({ ...newExpenseData, status: 'pending' })}
+                                className={`flex-1 h-9 rounded-lg text-sm font-medium transition-colors ${newExpenseData.status === 'pending' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Attente
+                            </button>
+                            <button
+                                onClick={() => setNewExpenseData({ ...newExpenseData, status: 'paid' })}
+                                className={`flex-1 h-9 rounded-lg text-sm font-medium transition-colors ${newExpenseData.status === 'paid' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Payé
                             </button>
                         </div>
                     </div>
                 </div>
-            )}
+            </Modal>
 
             {/* Step 3 Modal: Items addition */}
-            {showAddInvoiceItemsStep && (
-                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                    <div className="bg-white rounded-[3rem] w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-                        <div className="bg-slate-900 p-8 text-white flex justify-between items-center shrink-0">
-                            <div>
-                                <h2 className="text-xl font-black uppercase tracking-tight">Détails de la Facture</h2>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Éléments de la facture un par un</p>
-                            </div>
-                            <button onClick={() => setShowAddInvoiceItemsStep(false)} className="p-3 hover:bg-white/10 rounded-full transition-colors">
-                                <X className="h-6 w-6" />
-                            </button>
-                        </div>
-
-                        <div className="p-8 overflow-y-auto custom-scrollbar flex-1">
-                            <div className="space-y-4">
-                                {invoiceItems.length === 0 && (
-                                    <div className="text-center py-12 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
-                                        <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mb-4">Aucun détail ajouté pour le moment</p>
-                                        <button
-                                            onClick={() => setInvoiceItems([{ designation: '', quantity: 1, unit: 'pcs', unitPrice: 0, totalTTC: 0, code: '' }])}
-                                            className="bg-slate-900 text-white px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-800 transition-all"
-                                        >
-                                            Commencer l'ajout
-                                        </button>
-                                    </div>
-                                )}
-
-                                {invoiceItems.map((item, idx) => (
-                                    <div key={idx} className="bg-slate-50 p-5 rounded-2xl border border-transparent hover:border-slate-200 transition-all space-y-4">
-                                        <div className="flex justify-between items-center">
-                                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Élément #{idx + 1}</h4>
-                                            <button
-                                                onClick={() => setInvoiceItems(invoiceItems.filter((_, i) => i !== idx))}
-                                                className="p-2 text-slate-300 hover:text-red-500 transition-colors"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </button>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="md:col-span-2 relative">
-                                                <input
-                                                    placeholder="DÉSIGNATION ARTICLE (RECHERCHER...)"
-                                                    className="w-full bg-white border-none p-4 rounded-xl font-black text-slate-900 focus:ring-2 focus:ring-[#FFB800] outline-none text-sm uppercase"
-                                                    value={item.designation}
-                                                    onFocus={() => setActiveArticleSearchIdx(idx)}
-                                                    onChange={(e) => {
-                                                        const updated = [...invoiceItems];
-                                                        updated[idx].designation = e.target.value.toUpperCase();
-                                                        setInvoiceItems(updated);
-                                                        setActiveArticleSearchIdx(idx);
-                                                    }}
-                                                />
-                                                {activeArticleSearchIdx === idx && (
-                                                    <div className="absolute left-0 top-full z-[150] w-full bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden mt-1 animate-in fade-in slide-in-from-top-2 duration-200">
-                                                        <div className="max-h-[250px] overflow-y-auto no-scrollbar pb-2">
-                                                            {availableArticles
-                                                                .filter((a: any) => {
-                                                                    const search = item.designation.toUpperCase().trim();
-                                                                    if (search === '') return true;
-                                                                    return a.name.toUpperCase().includes(search) || a.supplier.toUpperCase().includes(search);
-                                                                })
-                                                                .slice(0, 30)
-                                                                .map((article: any, aIdx) => (
-                                                                    <button
-                                                                        key={aIdx}
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            const updated = [...invoiceItems];
-                                                                            updated[idx].designation = article.name;
-                                                                            updated[idx].unitPrice = article.price;
-                                                                            updated[idx].totalTTC = updated[idx].quantity * article.price;
-                                                                            setInvoiceItems(updated);
-                                                                            setActiveArticleSearchIdx(null);
-                                                                        }}
-                                                                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors group"
-                                                                    >
-                                                                        <div className="flex flex-col items-start gap-1">
-                                                                            <div className="flex items-center gap-2">
-                                                                                <span className="text-[10px] font-black text-slate-900 group-hover:text-[#FFB800] transition-colors">{article.name}</span>
-                                                                                {article.isOfficial && (
-                                                                                    <span className="text-[7px] bg-[#FFB800]/10 text-[#FFB800] px-1.5 py-0.5 rounded-md font-black tracking-tighter uppercase whitespace-nowrap">Officiel</span>
-                                                                                )}
-                                                                            </div>
-                                                                            <div className="flex items-center gap-1.5">
-                                                                                <Store className="h-2.5 w-2.5 text-slate-400" />
-                                                                                <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wider">{article.supplier}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="flex flex-col items-end">
-                                                                            <span className="text-[11px] font-black text-slate-900">{article.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
-                                                                            <span className="text-[9px] font-black text-[#FFB800]">DT</span>
-                                                                        </div>
-                                                                    </button>
-                                                                ))
-                                                            }
-                                                            {availableArticles.filter((a: any) => {
-                                                                const s = item.designation.toUpperCase().trim();
-                                                                return a.name.toUpperCase().includes(s) || a.supplier.toUpperCase().includes(s);
-                                                            }).length === 0 && (
-                                                                <div className="px-4 py-4 text-center text-[10px] font-black text-slate-300 uppercase italic">
-                                                                    Nouvelle Désignation...
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                        <button 
-                                                            type="button"
-                                                            onClick={() => setActiveArticleSearchIdx(null)}
-                                                            className="w-full bg-slate-50 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors"
-                                                        >
-                                                            Fermer
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <div className="grid grid-cols-3 gap-3 md:col-span-2">
-                                                <div>
-                                                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1 mb-1 block">Qté</label>
-                                                    <input
-                                                        type="number"
-                                                        className="w-full bg-white border-none p-4 rounded-xl font-black text-slate-900 text-center outline-none"
-                                                        value={item.quantity}
-                                                        onChange={(e) => {
-                                                            const updated = [...invoiceItems];
-                                                            updated[idx].quantity = Number(e.target.value);
-                                                            updated[idx].totalTTC = updated[idx].quantity * updated[idx].unitPrice;
-                                                            setInvoiceItems(updated);
-                                                        }}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1 mb-1 block">Prix Unit.</label>
-                                                    <input
-                                                        type="number"
-                                                        step="0.001"
-                                                        className="w-full bg-white border-none p-4 rounded-xl font-black text-slate-900 text-center outline-none"
-                                                        value={item.unitPrice}
-                                                        onChange={(e) => {
-                                                            const updated = [...invoiceItems];
-                                                            updated[idx].unitPrice = Number(e.target.value);
-                                                            updated[idx].totalTTC = updated[idx].quantity * updated[idx].unitPrice;
-                                                            setInvoiceItems(updated);
-                                                        }}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="text-[9px] font-black text-emerald-500 uppercase ml-1 mb-1 block">Total</label>
-                                                    <div className="w-full bg-emerald-50 p-4 rounded-xl font-black text-emerald-700 text-center text-sm">
-                                                        {item.totalTTC.toLocaleString(undefined, { minimumFractionDigits: 3 })}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-
-                                {invoiceItems.length > 0 && (
-                                    <button
-                                        onClick={() => setInvoiceItems([...invoiceItems, { designation: '', quantity: 1, unit: 'pcs', unitPrice: 0, totalTTC: 0, code: '' }])}
-                                        className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black text-slate-400 uppercase tracking-widest hover:border-slate-900 hover:text-slate-900 transition-all flex items-center justify-center gap-2"
-                                    >
-                                        <Plus className="h-4 w-4" />
-                                        Ajouter une nouvelle ligne
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="p-8 bg-slate-50 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
-                            <div className="text-center md:text-left">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Éléments</p>
-                                <p className="text-2xl font-black text-slate-900">
-                                    {invoiceItems.reduce((sum, item) => sum + item.totalTTC, 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-400">DT</span>
-                                </p>
-                            </div>
-                            <div className="flex gap-4 w-full md:w-auto">
-                                <button
-                                    onClick={() => {
-                                        setShowAddInvoiceItemsStep(false);
-                                        setShowAddInvoiceStep2(true);
-                                    }}
-                                    className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
-                                >
-                                    Retour
-                                </button>
-                                <button
-                                    onClick={async () => {
+            <Modal
+                open={showAddInvoiceItemsStep}
+                onClose={() => setShowAddInvoiceItemsStep(false)}
+                title="Détails de la facture"
+                description="Éléments de la facture un par un"
+                size="xl"
+                footer={<>
+                    <div className="mr-auto text-left">
+                        <p className="text-xs text-slate-500">Total éléments</p>
+                        <p className="text-base font-semibold text-slate-900 tabular-nums">
+                            {invoiceItems.reduce((sum, item) => sum + item.totalTTC, 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs text-slate-400">DT</span>
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => {
+                            setShowAddInvoiceItemsStep(false);
+                            setShowAddInvoiceStep2(true);
+                        }}
+                        className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
+                    >
+                        Retour
+                    </button>
+                    <button
+                        onClick={async () => {
+                                        if (!isAdmin) return;
                                         const totalFromItems = invoiceItems.reduce((sum, i) => sum + i.totalTTC, 0);
                                         const finalPrice = totalFromItems > 0 ? totalFromItems : parseFloat(newExpenseData.price);
 
@@ -2424,675 +2411,766 @@ function ExpensesContentMain() {
                                             console.error("Error saving invoice flow:", error);
                                             alert("Erreur lors de l'enregistrement");
                                         }
-                                    }}
-                                    className="flex-1 bg-emerald-600 text-white px-10 py-4 rounded-[1.5rem] font-black uppercase tracking-widest text-[11px] shadow-xl shadow-emerald-900/20 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
+                    }}
+                    className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors"
+                >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Terminer
+                </button>
+                </>}
+            >
+                <div className="space-y-3">
+                    {invoiceItems.length === 0 && (
+                        <div className="text-center py-10 rounded-2xl border border-dashed border-slate-200 bg-white">
+                            <p className="text-sm text-slate-500 mb-3">Aucun détail ajouté pour le moment</p>
+                            <button
+                                onClick={() => setInvoiceItems([{ designation: '', quantity: 1, unit: 'pcs', unitPrice: 0, totalTTC: 0, code: '' }])}
+                                className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors"
+                            >
+                                Commencer l'ajout
+                            </button>
+                        </div>
+                    )}
+
+                    {invoiceItems.map((item, idx) => (
+                        <div key={idx} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                            <div className="flex justify-between items-center">
+                                <h4 className="text-xs font-medium text-slate-500">Élément #{idx + 1}</h4>
+                                <button
+                                    onClick={() => setInvoiceItems(invoiceItems.filter((_, i) => i !== idx))}
+                                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                                 >
-                                    <CheckCircle2 className="h-4 w-4" />
-                                    Terminer & Ajouter
+                                    <Trash2 className="h-4 w-4" />
                                 </button>
                             </div>
+
+                            <div className="relative">
+                                <input
+                                    placeholder="Désignation article (rechercher...)"
+                                    className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                    value={item.designation}
+                                    onFocus={(e) => { setArticleSearchAnchorEl(e.currentTarget); setActiveArticleSearchIdx(idx); }}
+                                    onChange={(e) => {
+                                        const updated = [...invoiceItems];
+                                        updated[idx].designation = e.target.value.toUpperCase();
+                                        setInvoiceItems(updated);
+                                        setActiveArticleSearchIdx(idx);
+                                    }}
+                                />
+                                <AnchoredDropdown
+                                    open={activeArticleSearchIdx === idx}
+                                    anchorEl={articleSearchAnchorEl}
+                                    onClose={() => setActiveArticleSearchIdx(null)}
+                                    maxHeight={300}
+                                >
+                                        <div className="pb-1">
+                                            {availableArticles
+                                                .filter((a: any) => {
+                                                    const search = item.designation.toUpperCase().trim();
+                                                    if (search === '') return true;
+                                                    return a.name.toUpperCase().includes(search) || a.supplier.toUpperCase().includes(search);
+                                                })
+                                                .slice(0, 30)
+                                                .map((article: any, aIdx) => (
+                                                    <button
+                                                        key={aIdx}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const updated = [...invoiceItems];
+                                                            updated[idx].designation = article.name;
+                                                            updated[idx].unitPrice = article.price;
+                                                            updated[idx].totalTTC = updated[idx].quantity * article.price;
+                                                            setInvoiceItems(updated);
+                                                            setActiveArticleSearchIdx(null);
+                                                        }}
+                                                        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors"
+                                                    >
+                                                        <div className="flex flex-col items-start gap-0.5">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xs font-medium text-slate-900">{article.name}</span>
+                                                                {article.isOfficial && (
+                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700">Officiel</span>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <Store className="h-3 w-3 text-slate-400" />
+                                                                <span className="text-[11px] text-slate-500">{article.supplier}</span>
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-xs font-medium text-slate-900 tabular-nums">{article.price.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT</span>
+                                                    </button>
+                                                ))
+                                            }
+                                            {availableArticles.filter((a: any) => {
+                                                const s = item.designation.toUpperCase().trim();
+                                                return a.name.toUpperCase().includes(s) || a.supplier.toUpperCase().includes(s);
+                                            }).length === 0 && (
+                                                <div className="px-3 py-3 text-center text-xs text-slate-400">
+                                                    Nouvelle désignation...
+                                                </div>
+                                            )}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveArticleSearchIdx(null)}
+                                            className="w-full bg-slate-50 py-2 text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors"
+                                        >
+                                            Fermer
+                                        </button>
+                                </AnchoredDropdown>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                    <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Qté</label>
+                                    <input
+                                        type="number"
+                                        className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 text-center tabular-nums focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                        value={item.quantity}
+                                        onChange={(e) => {
+                                            const updated = [...invoiceItems];
+                                            updated[idx].quantity = Number(e.target.value);
+                                            updated[idx].totalTTC = updated[idx].quantity * updated[idx].unitPrice;
+                                            setInvoiceItems(updated);
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Prix unit.</label>
+                                    <input
+                                        type="number"
+                                        step="0.001"
+                                        className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 text-center tabular-nums focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                        value={item.unitPrice}
+                                        onChange={(e) => {
+                                            const updated = [...invoiceItems];
+                                            updated[idx].unitPrice = Number(e.target.value);
+                                            updated[idx].totalTTC = updated[idx].quantity * updated[idx].unitPrice;
+                                            setInvoiceItems(updated);
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Total</label>
+                                    <div className="w-full h-10 px-3 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center font-medium text-emerald-700 text-sm tabular-nums">
+                                        {item.totalTTC.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    ))}
+
+                    {invoiceItems.length > 0 && (
+                        <button
+                            onClick={() => setInvoiceItems([...invoiceItems, { designation: '', quantity: 1, unit: 'pcs', unitPrice: 0, totalTTC: 0, code: '' }])}
+                            className="w-full h-10 border border-dashed border-slate-300 rounded-xl text-sm font-medium text-slate-500 hover:border-slate-900 hover:text-slate-900 transition-colors flex items-center justify-center gap-2"
+                        >
+                            <Plus className="h-4 w-4" />
+                            Ajouter une nouvelle ligne
+                        </button>
+                    )}
                 </div>
-            )}
+            </Modal>
 
 
 
 
             {isEmpty ? (
-                <div className="min-h-[80vh] flex flex-col items-center justify-center p-6 text-center">
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="relative mb-12"
-                    >
-                        <div className="absolute inset-0 bg-[#FFB800]/10 blur-[120px] rounded-full animate-pulse" />
-                        <div className="w-56 h-56 bg-white rounded-[4rem] flex items-center justify-center mx-auto border border-slate-100 shadow-2xl relative mb-8 rotate-3 hover:rotate-0 transition-transform duration-700">
-                            <ClipboardList className="w-24 h-24 text-slate-100" strokeWidth={1} />
-                            <motion.div
-                                initial={{ y: 20, opacity: 0 }}
-                                animate={{ y: 0, opacity: 1 }}
-                                transition={{ delay: 0.3 }}
-                                className="absolute -right-6 -bottom-6 bg-[#FFB800] p-6 rounded-3xl shadow-2xl shadow-amber-500/20 border-4 border-white"
-                            >
-                                <Plus className="w-8 h-8 text-slate-900" strokeWidth={3} />
-                            </motion.div>
-                        </div>
-                    </motion.div>
-
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.2 }}
-                    >
-                        <h2 className="text-4xl md:text-5xl font-black text-slate-900 uppercase tracking-tighter mb-4 leading-none">
-                            Prêt pour le <span className="text-[#FFB800]">Chantier</span>
-                        </h2>
-                        <p className="text-slate-400 font-bold mb-12 max-w-sm mx-auto uppercase text-[10px] tracking-[0.2em] leading-relaxed">
-                            Commencez par ajouter un fournisseur ou enregistrez votre première facture pour suivre vos dépenses en temps réel.
-                        </p>
-
-                        <div className="flex flex-col sm:flex-row gap-6 w-full max-w-md mx-auto">
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 px-6 flex flex-col items-center justify-center text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center mb-4">
+                        <ClipboardList className="w-7 h-7 text-slate-300" strokeWidth={1.5} />
+                    </div>
+                    <h2 className="text-lg font-semibold tracking-tight text-slate-900 mb-1">Prêt pour le chantier</h2>
+                    <p className="text-sm text-slate-500 mb-6 max-w-sm">
+                        Commencez par ajouter un fournisseur ou enregistrez votre première facture pour suivre vos dépenses.
+                    </p>
+                    {isAdmin && (
+                        <div className="flex flex-col sm:flex-row gap-2.5">
                             <button
                                 onClick={() => setShowAddSupplierModal(true)}
-                                className="luxury-button-secondary flex-1 p-8 rounded-[2.5rem] flex flex-col items-center gap-4 group transition-all duration-500"
+                                className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
                             >
-                                <div className="p-4 bg-slate-50 rounded-2xl group-hover:bg-slate-900 group-hover:text-white transition-all duration-500 group-hover:rotate-6">
-                                    <Store className="h-6 w-6" />
-                                </div>
-                                <span className="text-[10px] font-black uppercase tracking-widest tracking-[0.2em]">Fournisseur</span>
+                                <Store className="h-4 w-4" /> Fournisseur
                             </button>
                             <button
                                 onClick={() => setShowAddInvoiceStep1(true)}
-                                className="luxury-button-gold flex-1 p-8 rounded-[2.5rem] flex flex-col items-center gap-4 group transition-all duration-500"
+                                className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors"
                             >
-                                <div className="p-4 bg-white/20 rounded-2xl group-hover:bg-white group-hover:text-black transition-all duration-500 group-hover:-rotate-6">
-                                    <FilePlus className="h-6 w-6" />
-                                </div>
-                                <span className="text-[10px] font-black uppercase tracking-widest tracking-[0.2em]">Facture</span>
+                                <FilePlus className="h-4 w-4" /> Facture
                             </button>
                         </div>
-                    </motion.div>
+                    )}
                 </div>
             ) : (
                 <>
-                    {/* Global Stats - Luxury Grid */}
-                    <div className="relative mb-12">
-                        {/* Privacy Toggle Floating */}
-                        <motion.button
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            onClick={() => setPrivacyMode(!privacyMode)}
-                            className={`absolute -top-12 right-0 p-2.5 rounded-2xl transition-all flex items-center gap-3 group z-50 ${privacyMode ? 'bg-slate-900 text-[#FFB800] shadow-xl shadow-amber-500/10 border border-slate-800' : 'bg-white text-slate-400 border border-slate-200 shadow-sm'}`}
-                        >
-                            {privacyMode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            <span className="text-[9px] font-black uppercase tracking-[0.2em] hidden md:block">
-                                {privacyMode ? 'Mode Visible' : 'Mode Discret'}
-                            </span>
-                        </motion.button>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                            {[
-                                {
-                                    label: 'Total Chantier',
-                                    value: grandTotal,
-                                    onClick: () => setShowAllExpenses(true),
-                                    color: 'slate',
-                                    icon: Receipt
-                                },
-                                {
-                                    label: 'Total Payé',
-                                    value: totalPaidGlobal,
-                                    onClick: () => setShowAllPaid(true),
-                                    color: 'emerald',
-                                    icon: CheckCircle2
-                                },
-                                {
-                                    label: 'Solde Restant',
-                                    value: totalRemainingGlobal,
-                                    onClick: () => setShowAllPending(true),
-                                    color: totalRemainingGlobal < 0 ? 'rose' : 'emerald',
-                                    icon: TrendingUp
-                                },
-                                {
-                                    label: 'Export Bilan',
-                                    value: null,
-                                    onClick: handleExportPDF,
-                                    color: 'amber',
-                                    icon: FileDown,
-                                    isAction: true
-                                }
-                            ].map((stat, i) => (
-                                <motion.div
-                                    key={stat.label}
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: i * 0.1 }}
-                                >
-                                    <button
-                                        onClick={stat.onClick}
-                                        className="luxury-card w-full p-8 text-left bg-white group relative overflow-hidden h-full flex flex-col justify-between"
-                                    >
-                                        <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-full translate-x-1/2 -translate-y-1/2 group-hover:scale-150 transition-transform duration-700 pointer-events-none" />
-
-                                        <div className="relative">
-                                            <div className={`w-12 h-12 rounded-2xl mb-6 flex items-center justify-center transition-all duration-500 ${stat.color === 'emerald' ? 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white' :
-                                                stat.color === 'rose' ? 'bg-rose-50 text-rose-600 group-hover:bg-rose-600 group-hover:text-white' :
-                                                    stat.color === 'amber' ? 'bg-amber-50 text-amber-600 group-hover:bg-amber-600 group-hover:text-white' :
-                                                        'bg-slate-900 text-white group-hover:bg-[#FFB800] group-hover:text-slate-900'
-                                                }`}>
-                                                <stat.icon className="h-6 w-6" strokeWidth={2.5} />
-                                            </div>
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">{stat.label}</p>
-                                        </div>
-
-                                        <div className="relative mt-auto">
-                                            {stat.isAction ? (
-                                                <span className="text-[11px] font-black uppercase tracking-widest text-slate-900 flex items-center gap-2 group-hover:translate-x-2 transition-transform">
-                                                    Générer PDF <ArrowRight className="h-4 w-4" />
-                                                </span>
-                                            ) : (
-                                                <div className="flex items-baseline gap-2">
-                                                    <span className={`text-2xl font-black tracking-tighter ${stat.label === 'Solde Restant' && (stat.value || 0) < 0 ? 'text-rose-600' : 'text-slate-900'
-                                                        }`}>
-                                                        {formatValue(stat.value ?? 0)}
-                                                    </span>
-                                                    <span className="text-[10px] font-black text-slate-400">DT</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </button>
-                                </motion.div>
-                            ))}
-                        </div>
+                    {/* Global Stats */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        {[
+                            {
+                                label: 'Total chantier',
+                                value: grandTotal,
+                                onClick: () => setShowAllExpenses(true),
+                                color: 'slate',
+                                icon: Receipt
+                            },
+                            {
+                                label: 'Total payé',
+                                value: totalPaidGlobal,
+                                onClick: () => setShowAllPaid(true),
+                                color: 'emerald',
+                                icon: CheckCircle2
+                            },
+                            {
+                                label: 'Solde restant',
+                                value: totalRemainingGlobal,
+                                onClick: () => setShowAllPending(true),
+                                color: totalRemainingGlobal < 0 ? 'rose' : 'emerald',
+                                icon: TrendingUp
+                            },
+                            {
+                                label: 'Export bilan',
+                                value: null,
+                                onClick: handleExportPDF,
+                                color: 'amber',
+                                icon: FileDown,
+                                isAction: true
+                            }
+                        ].map((stat) => (
+                            <button
+                                key={stat.label}
+                                onClick={stat.onClick}
+                                className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 text-left hover:bg-slate-50 transition-colors flex flex-col"
+                            >
+                                <div className="flex items-start justify-between">
+                                    <p className="text-xs text-slate-500">{stat.label}</p>
+                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${stat.color === 'emerald' ? 'bg-emerald-50 text-emerald-600' :
+                                        stat.color === 'rose' ? 'bg-rose-50 text-rose-600' :
+                                            stat.color === 'amber' ? 'bg-amber-50 text-amber-600' :
+                                                'bg-slate-100 text-slate-600'
+                                        }`}>
+                                        <stat.icon className="h-4 w-4" />
+                                    </div>
+                                </div>
+                                {stat.isAction ? (
+                                    <span className="text-sm font-medium text-slate-900 flex items-center gap-1.5 mt-2">
+                                        Générer PDF <ArrowRight className="h-3.5 w-3.5" />
+                                    </span>
+                                ) : (
+                                    <p className={`text-xl sm:text-2xl font-semibold tabular-nums mt-1 ${stat.label === 'Solde restant' && (stat.value || 0) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+                                        {formatValue(stat.value ?? 0)} <span className="text-xs font-medium text-slate-400">DT</span>
+                                    </p>
+                                )}
+                            </button>
+                        ))}
                     </div>
                 </>
             )}
 
 
             {/* Add Supplier Modal - Searchable Picker */}
-            {showAddSupplierModal && (
-                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                    <div className="bg-white p-5 rounded-[2rem] w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
-                        <div className="flex justify-between items-center mb-4">
-                            <div>
-                                <h3 className="text-lg font-black uppercase tracking-tighter text-slate-900">Fournisseur</h3>
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Sélectionner ou Créer</p>
+            <Modal
+                open={showAddSupplierModal}
+                onClose={() => setShowAddSupplierModal(false)}
+                title="Fournisseur"
+                description="Sélectionner ou créer"
+                size="sm"
+            >
+                <div className="space-y-3">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                            className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                            placeholder="Chercher ou créer..."
+                            value={newSupplierName}
+                            onChange={(e) => setNewSupplierName(e.target.value)}
+                            autoFocus
+                        />
+                    </div>
+
+                    <div className="max-h-72 overflow-y-auto space-y-1.5 no-scrollbar">
+                        <p className="text-xs text-slate-400 px-1">Base de données fournisseurs</p>
+                        {allAvailableSuppliers
+                            .filter(s => s.name.toLowerCase().includes(newSupplierName.toLowerCase()))
+                            .map(s => {
+                                const isAlreadyInProject = suppliers[s.id];
+                                return (
+                                    <button
+                                        key={s.id}
+                                        onClick={() => handleLinkSupplierToProject(s.id)}
+                                        className={`w-full text-left p-3 rounded-xl border transition-colors flex items-center justify-between group ${isAlreadyInProject ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
+                                    >
+                                        <div>
+                                            <p className="text-sm font-medium text-slate-900">{s.name}</p>
+                                            <p className="text-xs text-slate-400 mt-0.5">
+                                                {isAlreadyInProject ? 'Actif dans ce projet' : 'Cliquer pour utiliser'}
+                                            </p>
+                                        </div>
+                                        <ArrowRight className="h-4 w-4 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </button>
+                                );
+                            })
+                        }
+
+                        {newSupplierName && !allAvailableSuppliers.some(s => s.name.toLowerCase() === newSupplierName.toLowerCase()) && (
+                            <button
+                                onClick={handleAddSupplier}
+                                className="w-full text-left p-3 rounded-xl bg-slate-900 text-white flex items-center gap-3 hover:bg-slate-800 transition-colors"
+                            >
+                                <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
+                                    <Plus className="h-4 w-4" />
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-xs text-white/60">Créer nouveau fournisseur</p>
+                                    <p className="text-sm font-medium mt-0.5">{newSupplierName}</p>
+                                </div>
+                            </button>
+                        )}
+
+                        {Object.values(suppliers).filter(s => s.name.toLowerCase().includes(newSupplierName.toLowerCase())).length === 0 && !newSupplierName && (
+                            <div className="py-8 text-center text-slate-400">
+                                <p className="text-sm">Aucun résultat</p>
                             </div>
-                            <button onClick={() => setShowAddSupplierModal(false)} className="p-2 hover:bg-slate-50 rounded-xl transition-colors">
-                                <X className="h-5 w-5 text-slate-300" />
+                        )}
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Add Deposit Modal */}
+            <Modal
+                open={showAddDepositModal}
+                onClose={closeDepositModal}
+                title={editingDepositId ? 'Modifier acompte' : 'Nouvel acompte'}
+                size="sm"
+                footer={<>
+                    <button onClick={closeDepositModal} className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Annuler</button>
+                    <button onClick={handleSaveDeposit} className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors">
+                        <CheckCircle2 className="h-4 w-4" />
+                        {editingDepositId ? 'Enregistrer' : 'Confirmer'}
+                    </button>
+                </>}
+            >
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Montant (DT)</label>
+                        <input
+                            type="number"
+                            className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-900 tabular-nums placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                            placeholder="0.000"
+                            autoFocus
+                            value={newDepositData.amount}
+                            onChange={(e) => setNewDepositData({ ...newDepositData, amount: e.target.value })}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Date</label>
+                            <input
+                                type="date"
+                                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                value={newDepositData.date}
+                                onChange={(e) => setNewDepositData({ ...newDepositData, date: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Référence</label>
+                            <input
+                                type="text"
+                                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                placeholder="Chèque/Virement..."
+                                value={newDepositData.ref}
+                                onChange={(e) => setNewDepositData({ ...newDepositData, ref: e.target.value })}
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Payeur</label>
+                        <input
+                            type="text"
+                            className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                            placeholder="Qui a payé ?"
+                            value={newDepositData.payer}
+                            onChange={(e) => setNewDepositData({ ...newDepositData, payer: e.target.value })}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Commercial</label>
+                        <input
+                            type="text"
+                            className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                            placeholder="Reçu par..."
+                            value={newDepositData.commercial}
+                            onChange={(e) => setNewDepositData({ ...newDepositData, commercial: e.target.value })}
+                        />
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Add Expense Modal */}
+            <Modal
+                open={showAddExpenseModal}
+                onClose={closeExpenseModal}
+                title={editingExpenseId ? 'Modifier facture/bon' : 'Nouvelle facture/bon'}
+                size="xl"
+                footer={<>
+                    <button onClick={closeExpenseModal} className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Annuler</button>
+                    <button onClick={handleSaveExpense} className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors">
+                        <CheckCircle2 className="h-4 w-4" />
+                        {editingExpenseId ? 'Enregistrer' : 'Confirmer'}
+                    </button>
+                </>}
+            >
+                <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Désignation (N° facture/bon)</label>
+                                <input
+                                    type="text"
+                                    className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                    placeholder="Ex: Facture 123..."
+                                    value={newExpenseData.item}
+                                    onChange={(e) => setNewExpenseData({ ...newExpenseData, item: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Date</label>
+                                    <input
+                                        type="date"
+                                        className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                        value={newExpenseData.date}
+                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, date: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Quantité totale</label>
+                                    <input
+                                        type="text"
+                                        className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                        placeholder="Ex: 1"
+                                        value={newExpenseData.quantity}
+                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, quantity: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Montant global (DT)</label>
+                                <div className="relative">
+                                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                    <input
+                                        type="number"
+                                        step="0.001"
+                                        className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-900 tabular-nums placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                        placeholder="0.000"
+                                        value={newExpenseData.price}
+                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, price: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-[13px] font-medium text-slate-700 mb-1.5">État du paiement</label>
+                                <select
+                                    value={newExpenseData.status}
+                                    onChange={(e) => setNewExpenseData({ ...newExpenseData, status: e.target.value as PaymentStatus })}
+                                    className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                >
+                                    <option value="pending">En attente</option>
+                                    <option value="paid">Payé</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3 pt-4 border-t border-slate-100">
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                                <Package className="h-4 w-4 text-slate-400" />
+                                <h4 className="text-sm font-medium text-slate-900">Articles / désignations</h4>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    const newItem: InvoiceItem = {
+                                        code: '',
+                                        designation: '',
+                                        unit: 'U',
+                                        quantity: 1,
+                                        unitPrice: 0,
+                                        totalTTC: 0
+                                    };
+                                    setInvoiceItems([...invoiceItems, newItem]);
+                                }}
+                                className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
+                            >
+                                <Plus className="h-3.5 w-3.5" />
+                                Ajouter article
                             </button>
                         </div>
 
-                        <div className="relative mb-4">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
-                            <input
-                                className="w-full bg-slate-50 border-2 border-transparent focus:border-slate-900 p-3 pl-10 rounded-xl text-xs font-black text-slate-900 placeholder:text-slate-300 outline-none transition-all uppercase"
-                                placeholder="CHERCHER OU CRÉER..."
-                                value={newSupplierName}
-                                onChange={(e) => setNewSupplierName(e.target.value)}
-                                autoFocus
-                            />
-                        </div>
-
-                        <div className="max-h-64 overflow-y-auto mb-6 space-y-2 pr-1 custom-scrollbar">
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-2 mb-2">Base de données Fournisseurs</p>
-                            {allAvailableSuppliers
-                                .filter(s => s.name.toLowerCase().includes(newSupplierName.toLowerCase()))
-                                .map(s => {
-                                    const isAlreadyInProject = suppliers[s.id];
-                                    return (
-                                        <button
-                                            key={s.id}
-                                            onClick={() => handleLinkSupplierToProject(s.id)}
-                                            className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center justify-between group ${isAlreadyInProject ? 'bg-slate-50 border-slate-100' : 'bg-white border-transparent hover:bg-slate-50 hover:border-slate-100'}`}
-                                        >
-                                            <div className="flex items-center gap-4">
-                                                <div>
-                                                    <p className="text-sm font-black text-slate-800 uppercase leading-none">{s.name}</p>
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">
-                                                        {isAlreadyInProject ? 'Actif dans ce projet' : 'Cliquer pour utiliser'}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <div className="bg-white p-2 rounded-lg shadow-sm border border-slate-100 opacity-0 group-hover:opacity-100 transition-all">
-                                                <ArrowRight className="h-4 w-4 text-slate-900" />
-                                            </div>
-                                        </button>
-                                    );
-                                })
-                            }
-
-                            {newSupplierName && !allAvailableSuppliers.some(s => s.name.toLowerCase() === newSupplierName.toLowerCase()) && (
-                                <button
-                                    onClick={handleAddSupplier}
-                                    className="w-full text-left p-5 rounded-3xl bg-slate-900 text-white flex items-center gap-5 hover:bg-slate-800 shadow-xl shadow-slate-200 transition-all"
-                                >
-                                    <div className="bg-white/20 p-3 rounded-xl">
-                                        <Plus className="h-5 w-5" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Créer Nouveau Fournisseur</p>
-                                        <p className="text-sm font-black uppercase mt-0.5">{newSupplierName}</p>
-                                    </div>
-                                </button>
-                            )}
-
-                            {Object.values(suppliers).filter(s => s.name.toLowerCase().includes(newSupplierName.toLowerCase())).length === 0 && !newSupplierName && (
-                                <div className="p-8 text-center text-slate-300">
-                                    <p className="text-xs font-bold uppercase tracking-widest">Aucun résultat</p>
-                                </div>
-                            )}
-                        </div>
-
-                        <button
-                            onClick={() => setShowAddSupplierModal(false)}
-                            className="w-full py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors bg-slate-50/50 rounded-2xl"
-                        >
-                            Annuler
-                        </button>
-                    </div>
-                </div>
-            )
-            }
-
-            {/* Add Deposit Modal */}
-            {
-                showAddDepositModal && (
-                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                        <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
-                            <h3 className="text-lg font-black mb-4 text-slate-900 uppercase tracking-tight">
-                                {editingDepositId ? 'Modifier Acompte' : 'Nouvel Acompte'}
-                            </h3>
-
-                            <div className="space-y-3">
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Montant (DT)</label>
-                                    <input
-                                        type="number"
-                                        className="w-full border border-slate-200 p-3 rounded-xl text-lg font-black text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
-                                        placeholder="0.000"
-                                        autoFocus
-                                        value={newDepositData.amount}
-                                        onChange={(e) => setNewDepositData({ ...newDepositData, amount: e.target.value })}
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Date</label>
-                                        <input
-                                            type="date"
-                                            className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
-                                            value={newDepositData.date}
-                                            onChange={(e) => setNewDepositData({ ...newDepositData, date: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Référence</label>
-                                        <input
-                                            type="text"
-                                            className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
-                                            placeholder="Chèque/Virement..."
-                                            value={newDepositData.ref}
-                                            onChange={(e) => setNewDepositData({ ...newDepositData, ref: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Payeur</label>
-                                    <input
-                                        type="text"
-                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
-                                        placeholder="Qui a payé ?"
-                                        value={newDepositData.payer}
-                                        onChange={(e) => setNewDepositData({ ...newDepositData, payer: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Commercial</label>
-                                    <input
-                                        type="text"
-                                        className="w-full border border-slate-200 p-2 rounded-lg text-sm font-bold"
-                                        placeholder="Reçu par..."
-                                        value={newDepositData.commercial}
-                                        onChange={(e) => setNewDepositData({ ...newDepositData, commercial: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex justify-end gap-2 mt-6">
-                                <button onClick={closeDepositModal} className="text-xs font-bold px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Annuler</button>
-                                <button onClick={handleSaveDeposit} className="text-xs font-bold px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-lg shadow-emerald-200 transition-all flex items-center gap-2">
-                                    <CheckCircle2 className="h-4 w-4" />
-                                    {editingDepositId ? 'Enregistrer' : 'Confirmer'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
-
-            {/* Add Expense Modal */}
-            {
-                showAddExpenseModal && (
-                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 no-scrollbar overflow-y-auto">
-                        <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-2xl shadow-2xl animate-in zoom-in-95 my-auto flex flex-col max-h-[90vh] relative">
-                            <div className="flex justify-between items-center mb-6">
-                                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
-                                    {editingExpenseId ? 'Modifier Facture/Bon' : 'Nouvelle Facture/Bon'}
-                                </h3>
-                                <button onClick={closeExpenseModal} className="p-2 hover:bg-slate-50 rounded-full transition-colors">
-                                    <X className="h-6 w-6 text-slate-400" />
-                                </button>
-                            </div>
-
-                            <div className="overflow-y-auto pr-2 no-scrollbar flex-1">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 block tracking-widest ml-1">Désignation (N° Facture/Bon)</label>
-                                            <input
-                                                type="text"
-                                                className="w-full border-2 border-slate-100 p-3 rounded-2xl text-sm font-black uppercase focus:border-slate-900 transition-all outline-none"
-                                                placeholder="Ex: Facture 123..."
-                                                value={newExpenseData.item}
-                                                onChange={(e) => setNewExpenseData({ ...newExpenseData, item: e.target.value })}
-                                            />
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 block tracking-widest ml-1">Date</label>
+                        <div className="rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                            <table className="w-full border-collapse">
+                                <thead className="bg-slate-50 text-xs font-medium text-slate-500">
+                                    <tr>
+                                        <th className="px-4 py-2.5 text-left">Article</th>
+                                        <th className="px-4 py-2.5 text-center w-20">Qté</th>
+                                        <th className="px-4 py-2.5 text-right w-28">P.U TTC</th>
+                                        <th className="px-4 py-2.5 text-right w-28">Total</th>
+                                        <th className="px-4 py-2.5 w-12"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {invoiceItems.map((item, idx) => (
+                                        <tr key={idx} className="border-t border-slate-100">
+                                            <td className="px-3 py-2 relative">
                                                 <input
-                                                    type="date"
-                                                    className="w-full border-2 border-slate-100 p-3 rounded-2xl text-sm font-black focus:border-slate-900 transition-all outline-none"
-                                                    value={newExpenseData.date}
-                                                    onChange={(e) => setNewExpenseData({ ...newExpenseData, date: e.target.value })}
+                                                    className="w-full bg-transparent border-b border-transparent focus:border-slate-300 px-1 py-1 text-sm text-slate-900 outline-none"
+                                                    value={item.designation}
+                                                    onFocus={(e) => { setArticleSearchAnchorEl(e.currentTarget); setActiveArticleSearchIdx(idx); }}
+                                                    onChange={(e) => {
+                                                        const updated = [...invoiceItems];
+                                                        updated[idx].designation = e.target.value.toUpperCase();
+                                                        setInvoiceItems(updated);
+                                                        setActiveArticleSearchIdx(idx);
+                                                    }}
+                                                    placeholder="Rechercher article..."
                                                 />
-                                            </div>
-                                            <div>
-                                                <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 block tracking-widest ml-1">Quantité Totale</label>
+                                                <AnchoredDropdown
+                                                    open={activeArticleSearchIdx === idx}
+                                                    anchorEl={articleSearchAnchorEl}
+                                                    onClose={() => setActiveArticleSearchIdx(null)}
+                                                    width={320}
+                                                    maxHeight={300}
+                                                >
+                                                        <div className="pb-1">
+                                                            {availableArticles
+                                                                .filter((a: any) => {
+                                                                    const search = item.designation.toUpperCase().trim();
+                                                                    if (search === '') return true;
+                                                                    return a.name.toUpperCase().includes(search) || a.supplier.toUpperCase().includes(search);
+                                                                })
+                                                                .slice(0, 30)
+                                                                .map((article: any, aIdx) => (
+                                                                    <button
+                                                                        key={aIdx}
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const updated = [...invoiceItems];
+                                                                            updated[idx].designation = article.name;
+                                                                            updated[idx].unitPrice = article.price;
+                                                                            updated[idx].totalTTC = updated[idx].quantity * article.price;
+                                                                            setInvoiceItems(updated);
+                                                                            setActiveArticleSearchIdx(null);
+                                                                        }}
+                                                                        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors"
+                                                                    >
+                                                                        <div className="flex flex-col items-start gap-0.5">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="text-xs font-medium text-slate-900">{article.name}</span>
+                                                                                {article.isOfficial && (
+                                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700">Officiel</span>
+                                                                                )}
+                                                                            </div>
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <Store className="h-3 w-3 text-slate-400" />
+                                                                                <span className="text-[11px] text-slate-500">{article.supplier}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                        <span className="text-xs font-medium text-slate-900 tabular-nums">{article.price.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT</span>
+                                                                    </button>
+                                                                ))
+                                                            }
+                                                            {availableArticles.filter((a: any) => {
+                                                                const s = item.designation.toUpperCase().trim();
+                                                                return a.name.toUpperCase().includes(s) || a.supplier.toUpperCase().includes(s);
+                                                            }).length === 0 && (
+                                                                <div className="px-3 py-3 text-center text-xs text-slate-400">
+                                                                    Nouvel article...
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setActiveArticleSearchIdx(null)}
+                                                            className="w-full bg-slate-50 py-2 text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors"
+                                                        >
+                                                            Fermer
+                                                        </button>
+                                                </AnchoredDropdown>
+                                            </td>
+                                            <td className="px-3 py-2">
                                                 <input
-                                                    type="text"
-                                                    className="w-full border-2 border-slate-100 p-3 rounded-2xl text-sm font-black focus:border-slate-900 transition-all outline-none"
-                                                    placeholder="Ex: 1"
-                                                    value={newExpenseData.quantity}
-                                                    onChange={(e) => setNewExpenseData({ ...newExpenseData, quantity: e.target.value })}
+                                                    type="number"
+                                                    className="w-full text-center bg-transparent border-b border-transparent focus:border-slate-300 px-1 py-1 text-sm text-slate-900 tabular-nums outline-none"
+                                                    value={item.quantity}
+                                                    onChange={(e) => {
+                                                        const updated = [...invoiceItems];
+                                                        updated[idx].quantity = parseFloat(e.target.value) || 0;
+                                                        updated[idx].totalTTC = updated[idx].quantity * updated[idx].unitPrice;
+                                                        setInvoiceItems(updated);
+                                                    }}
                                                 />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 block tracking-widest ml-1">Montant Global (DT)</label>
-                                            <div className="relative">
+                                            </td>
+                                            <td className="px-3 py-2">
                                                 <input
                                                     type="number"
                                                     step="0.001"
-                                                    className="w-full border-2 border-slate-100 p-3 pl-12 rounded-2xl text-xl font-black text-slate-900 focus:border-slate-900 transition-all outline-none"
-                                                    placeholder="0.000"
-                                                    value={newExpenseData.price}
-                                                    onChange={(e) => setNewExpenseData({ ...newExpenseData, price: e.target.value })}
+                                                    className="w-full text-right bg-transparent border-b border-transparent focus:border-slate-300 px-1 py-1 text-sm text-slate-900 tabular-nums outline-none"
+                                                    value={item.unitPrice}
+                                                    onChange={(e) => {
+                                                        const updated = [...invoiceItems];
+                                                        updated[idx].unitPrice = parseFloat(e.target.value) || 0;
+                                                        updated[idx].totalTTC = updated[idx].quantity * updated[idx].unitPrice;
+                                                        setInvoiceItems(updated);
+                                                    }}
                                                 />
-                                                <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#FFB800]" />
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 block tracking-widest ml-1">État du Paiement</label>
-                                            <select
-                                                value={newExpenseData.status}
-                                                onChange={(e) => setNewExpenseData({ ...newExpenseData, status: e.target.value as PaymentStatus })}
-                                                className="w-full border-2 border-slate-100 p-3 rounded-2xl text-sm font-black bg-white focus:border-slate-900 transition-all outline-none uppercase"
-                                            >
-                                                <option value="pending">🟡 EN ATTENTE</option>
-                                                <option value="paid">🟢 PAYÉ</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4 pt-4 border-t-2 border-slate-50">
-                                    <div className="flex justify-between items-center">
-                                        <div className="flex items-center gap-2">
-                                            <Package className="h-4 w-4 text-[#FFB800]" />
-                                            <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-900">Articles / Désignations</h4>
-                                        </div>
-                                        <button
-                                            onClick={() => {
-                                                const newItem: InvoiceItem = {
-                                                    code: '',
-                                                    designation: '',
-                                                    unit: 'U',
-                                                    quantity: 1,
-                                                    unitPrice: 0,
-                                                    totalTTC: 0
-                                                };
-                                                setInvoiceItems([...invoiceItems, newItem]);
-                                            }}
-                                            className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center gap-2 shadow-lg shadow-slate-900/10"
-                                        >
-                                            <Plus className="h-3 w-3" />
-                                            Ajouter Article
-                                        </button>
-                                    </div>
-
-                                    <div className="rounded-2xl border-2 border-slate-50">
-                                        <table className="w-full border-collapse">
-                                            <thead className="bg-slate-50 text-[8px] font-black uppercase tracking-widest text-slate-400">
-                                                <tr>
-                                                    <th className="px-4 py-3 text-left">Article</th>
-                                                    <th className="px-4 py-3 text-center w-20">Qté</th>
-                                                    <th className="px-4 py-3 text-right w-32">P.U TTC</th>
-                                                    <th className="px-4 py-3 text-right w-32">Total</th>
-                                                    <th className="px-4 py-3 w-12"></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-50">
-                                                {invoiceItems.map((item, idx) => (
-                                                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                                                        <td className="px-3 py-2 relative">
-                                                            <input
-                                                                className="w-full bg-transparent border-b-2 border-transparent focus:border-[#FFB800] p-1 text-[11px] font-black uppercase outline-none"
-                                                                value={item.designation}
-                                                                onFocus={() => setActiveArticleSearchIdx(idx)}
-                                                                onChange={(e) => {
-                                                                    const updated = [...invoiceItems];
-                                                                    updated[idx].designation = e.target.value.toUpperCase();
-                                                                    setInvoiceItems(updated);
-                                                                    setActiveArticleSearchIdx(idx);
-                                                                }}
-                                                                placeholder="RECHERCHER ARTICLE..."
-                                                            />
-                                                            {activeArticleSearchIdx === idx && (
-                                                                <div className="absolute left-0 top-full z-[150] w-[350px] bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden mt-1 animate-in fade-in slide-in-from-top-2 duration-200">
-                                                                    <div className="max-h-[250px] overflow-y-auto no-scrollbar pb-2">
-                                                                        {availableArticles
-                                                                            .filter((a: any) => {
-                                                                                const search = item.designation.toUpperCase().trim();
-                                                                                if (search === '') return true;
-                                                                                return a.name.toUpperCase().includes(search) || a.supplier.toUpperCase().includes(search);
-                                                                            })
-                                                                            .slice(0, 30)
-                                                                            .map((article: any, aIdx) => (
-                                                                                <button
-                                                                                    key={aIdx}
-                                                                                    type="button"
-                                                                                    onClick={() => {
-                                                                                        const updated = [...invoiceItems];
-                                                                                        updated[idx].designation = article.name;
-                                                                                        updated[idx].unitPrice = article.price;
-                                                                                        updated[idx].totalTTC = updated[idx].quantity * article.price;
-                                                                                        setInvoiceItems(updated);
-                                                                                        setActiveArticleSearchIdx(null);
-                                                                                    }}
-                                                                                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors group"
-                                                                                >
-                                                                                    <div className="flex flex-col items-start gap-1">
-                                                                                        <div className="flex items-center gap-2">
-                                                                                            <span className="text-[10px] font-black text-slate-900 group-hover:text-[#FFB800] transition-colors">{article.name}</span>
-                                                                                            {article.isOfficial && (
-                                                                                                <span className="text-[7px] bg-[#FFB800]/10 text-[#FFB800] px-1.5 py-0.5 rounded-md font-black tracking-tighter uppercase whitespace-nowrap">Officiel</span>
-                                                                                            )}
-                                                                                        </div>
-                                                                                        <div className="flex items-center gap-1.5">
-                                                                                            <Store className="h-2.5 w-2.5 text-slate-400" />
-                                                                                            <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wider">{article.supplier}</span>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    <div className="flex flex-col items-end">
-                                                                                        <span className="text-[11px] font-black text-slate-900">{article.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
-                                                                                        <span className="text-[9px] font-black text-[#FFB800]">DT</span>
-                                                                                    </div>
-                                                                                </button>
-                                                                            ))
-                                                                        }
-                                                                        {availableArticles.filter((a: any) => {
-                                                                            const s = item.designation.toUpperCase().trim();
-                                                                            return a.name.toUpperCase().includes(s) || a.supplier.toUpperCase().includes(s);
-                                                                        }).length === 0 && (
-                                                                            <div className="px-4 py-4 text-center text-[10px] font-black text-slate-300 uppercase italic">
-                                                                                Nouvel Article...
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                    <button 
-                                                                        type="button"
-                                                                        onClick={() => setActiveArticleSearchIdx(null)}
-                                                                        className="w-full bg-slate-50 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors"
-                                                                    >
-                                                                        Fermer
-                                                                    </button>
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-3 py-2">
-                                                            <input
-                                                                type="number"
-                                                                className="w-full text-center bg-transparent border-b-2 border-transparent focus:border-[#FFB800] p-1 text-[11px] font-black outline-none"
-                                                                value={item.quantity}
-                                                                onChange={(e) => {
-                                                                    const updated = [...invoiceItems];
-                                                                    updated[idx].quantity = parseFloat(e.target.value) || 0;
-                                                                    updated[idx].totalTTC = updated[idx].quantity * updated[idx].unitPrice;
-                                                                    setInvoiceItems(updated);
-                                                                }}
-                                                            />
-                                                        </td>
-                                                        <td className="px-3 py-2">
-                                                            <input
-                                                                type="number"
-                                                                step="0.001"
-                                                                className="w-full text-right bg-transparent border-b-2 border-transparent focus:border-[#FFB800] p-1 text-[11px] font-black outline-none"
-                                                                value={item.unitPrice}
-                                                                onChange={(e) => {
-                                                                    const updated = [...invoiceItems];
-                                                                    updated[idx].unitPrice = parseFloat(e.target.value) || 0;
-                                                                    updated[idx].totalTTC = updated[idx].quantity * updated[idx].unitPrice;
-                                                                    setInvoiceItems(updated);
-                                                                }}
-                                                            />
-                                                        </td>
-                                                        <td className="px-3 py-2 text-right">
-                                                            <span className="text-[11px] font-black text-slate-900">{item.totalTTC.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
-                                                        </td>
-                                                        <td className="px-3 py-2 text-center">
-                                                            <button 
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    const updated = invoiceItems.filter((_, i) => i !== idx);
-                                                                    setInvoiceItems(updated);
-                                                                }}
-                                                                className="p-1.5 text-slate-300 hover:text-rose-500 transition-colors"
-                                                            >
-                                                                <Trash2 className="h-3.5 w-3.5" />
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                                {invoiceItems.length === 0 && (
-                                                    <tr>
-                                                        <td colSpan={5} className="py-8 text-center text-[10px] font-black text-slate-300 uppercase tracking-widest italic">
-                                                            Aucun article détaillé
-                                                        </td>
-                                                    </tr>
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
-
-                                    {/* Auto-sum feature */}
-                                    {invoiceItems.length > 0 && (
-                                        <div className="flex justify-end p-2 pb-32">
-                                            <button 
-                                                type="button"
-                                                onClick={() => {
-                                                    const total = invoiceItems.reduce((sum, item) => sum + item.totalTTC, 0);
-                                                    setNewExpenseData({ ...newExpenseData, price: total.toFixed(3) });
-                                                }}
-                                                className="text-[9px] font-black text-[#FFB800] uppercase hover:underline"
-                                            >
-                                                Appliquer le total des articles ({invoiceItems.reduce((sum, item) => sum + item.totalTTC, 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} DT)
-                                            </button>
-                                        </div>
+                                            </td>
+                                            <td className="px-3 py-2 text-right">
+                                                <span className="text-sm font-medium text-slate-900 tabular-nums">{item.totalTTC.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                                            </td>
+                                            <td className="px-3 py-2 text-center">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const updated = invoiceItems.filter((_, i) => i !== idx);
+                                                        setInvoiceItems(updated);
+                                                    }}
+                                                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                                >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {invoiceItems.length === 0 && (
+                                        <tr>
+                                            <td colSpan={5} className="py-8 text-center text-sm text-slate-400">
+                                                Aucun article détaillé
+                                            </td>
+                                        </tr>
                                     )}
-                                </div>
-                            </div>
+                                </tbody>
+                            </table>
+                        </div>
 
-                            <div className="flex justify-end gap-3 mt-8 pt-6 border-t-2 border-slate-50">
-                                <button onClick={closeExpenseModal} className="text-[10px] font-black uppercase tracking-widest px-6 py-4 text-slate-400 hover:text-slate-900 transition-colors">Annuler</button>
-                                <button onClick={handleSaveExpense} className="text-[10px] font-black uppercase tracking-widest px-10 py-4 bg-slate-900 text-white rounded-2xl shadow-xl shadow-slate-900/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3">
-                                    <CheckCircle2 className="h-4 w-4" />
-                                    {editingExpenseId ? 'Enregistrer' : 'Confirmer'}
+                        {/* Auto-sum feature */}
+                        {invoiceItems.length > 0 && (
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const total = invoiceItems.reduce((sum, item) => sum + item.totalTTC, 0);
+                                        setNewExpenseData({ ...newExpenseData, price: total.toFixed(3) });
+                                    }}
+                                    className="text-xs font-medium text-slate-600 hover:text-slate-900 hover:underline"
+                                >
+                                    Appliquer le total des articles ({invoiceItems.reduce((sum, item) => sum + item.totalTTC, 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} DT)
                                 </button>
                             </div>
-                        </div>
+                        )}
                     </div>
-                )
-            }
+
+                    {/* Image de la facture / bon — ajout direct */}
+                    <div className="space-y-2 pt-4 border-t border-slate-100">
+                        <div className="flex items-center gap-2">
+                            <ImageIcon className="h-4 w-4 text-slate-400" />
+                            <h4 className="text-sm font-medium text-slate-900">Image de la facture / bon</h4>
+                        </div>
+                        {(expenseImagePreview || expenseExistingImage) ? (
+                            <div className="relative inline-block">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                    src={(expenseImagePreview || expenseExistingImage) as string}
+                                    alt="Aperçu facture"
+                                    className="h-40 w-auto max-w-full rounded-xl border border-slate-200 object-contain bg-slate-50"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={clearExpenseImage}
+                                    className="absolute -top-2 -right-2 inline-flex items-center justify-center w-7 h-7 rounded-full bg-white border border-slate-200 text-slate-500 shadow-sm hover:text-rose-600 hover:border-rose-200 transition-colors"
+                                    aria-label="Retirer l'image"
+                                >
+                                    <X className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+                        ) : (
+                            <label className="flex flex-col items-center justify-center gap-1.5 h-32 rounded-xl border border-dashed border-slate-300 bg-slate-50 cursor-pointer hover:border-slate-400 hover:bg-slate-100 transition-colors">
+                                <Upload className="h-5 w-5 text-slate-400" />
+                                <span className="text-sm font-medium text-slate-600">Ajouter une image</span>
+                                <span className="text-xs text-slate-400">JPG, PNG — directement depuis votre appareil</span>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => handleExpenseImageSelect(e.target.files?.[0] || null)}
+                                />
+                            </label>
+                        )}
+                    </div>
+                </div>
+            </Modal>
 
             {/* Breakdown Modal */}
-            {
-                showBreakdown && (
-                    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowBreakdown(false)}>
-                        <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                            <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
+            <Modal
+                open={showBreakdown}
+                onClose={() => setShowBreakdown(false)}
+                title="Bilan par fournisseur"
+                description="Payé − Total montant = Solde (dette si négatif)"
+                size="lg"
+                footer={
+                    <div className="flex w-full justify-between items-center">
+                        <span className="text-sm text-slate-600">Solde général</span>
+                        <span className={`text-lg font-semibold tabular-nums ${totalRemainingGlobal < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{totalRemainingGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT</span>
+                    </div>
+                }
+            >
+                <div className="space-y-2">
+                    {supplierStats.map(s => (
+                        <div key={s.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                            <div className="flex items-center gap-2 mb-2">
+                                <div className={`w-2 h-2 rounded-full ${s.color}`} />
+                                <span className="text-sm font-medium text-slate-900">{s.name}</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
                                 <div>
-                                    <h2 className="text-xl font-black uppercase tracking-tighter">Bilan par Fournisseur</h2>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase">Payé - Total Montant = Solde (Dette si négatif)</p>
+                                    <p className="text-xs text-slate-400">Total montant</p>
+                                    <p className="text-sm font-medium text-slate-700 tabular-nums">{s.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
                                 </div>
-                                <X className="h-6 w-6 cursor-pointer hover:text-red-400 transition-colors" onClick={() => setShowBreakdown(false)} />
-                            </div>
-                            <div className="p-4 space-y-3">
-                                {supplierStats.map(s => (
-                                    <div key={s.id} className="flex flex-col p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <div className="flex items-center gap-2">
-                                                <div className={`w-2 h-2 rounded-full ${s.color}`} />
-                                                <span className="text-sm font-black text-slate-900 uppercase">{s.name}</span>
-                                            </div>
-                                            <div>
-                                                <p className="text-[8px] font-bold text-slate-400 uppercase">Total Montant</p>
-                                                <p className="text-xs font-black text-slate-700">{s.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-[8px] font-bold text-slate-400 uppercase">Payé</p>
-                                                <p className="text-xs font-black text-emerald-600">{s.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-[8px] font-bold text-slate-400 uppercase">Solde</p>
-                                                <p className={`text-sm font-black ${s.remaining < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{s.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-                                <span className="text-xs font-bold text-slate-500 uppercase">Solde Général</span>
-                                <span className={`text-xl font-black ${totalRemainingGlobal < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{totalRemainingGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT</span>
+                                <div>
+                                    <p className="text-xs text-slate-400">Payé</p>
+                                    <p className="text-sm font-medium text-emerald-600 tabular-nums">{s.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-xs text-slate-400">Solde</p>
+                                    <p className={`text-sm font-semibold tabular-nums ${s.remaining < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{s.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )
-            }
+                    ))}
+                </div>
+            </Modal>
 
             {/* Pending Expenses Modal */}
-            {
-                showAllPending && (
-                    <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowAllPending(false)}>
-                        <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
-                            <div className="bg-amber-500 p-4 text-white flex justify-between items-center shrink-0">
-                                <div>
-                                    <h2 className="text-lg font-black uppercase tracking-tight">Factures En Attente</h2>
-                                    <p className="text-[9px] text-amber-100 font-bold uppercase">Par Fournisseur</p>
-                                </div>
-                                <X className="h-5 w-5 cursor-pointer hover:text-amber-200 transition-colors" onClick={() => setShowAllPending(false)} />
-                            </div>
-
-                            <div className="p-4 overflow-y-auto custom-scrollbar bg-white">
+            <Modal
+                open={showAllPending}
+                onClose={() => setShowAllPending(false)}
+                title="Factures en attente"
+                description="Par fournisseur"
+                size="xl"
+                footer={
+                    <div className="flex w-full justify-between items-center">
+                        <span className="text-sm text-slate-600">Bilan total solde</span>
+                        <span className={`text-lg font-semibold tabular-nums ${totalRemainingGlobal < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                            {totalRemainingGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm">DT</span>
+                        </span>
+                    </div>
+                }
+            >
+                <div className="space-y-4">
                                 {supplierStats
                                     .filter(stat => {
                                         const supplier = suppliers[stat.id];
@@ -3104,37 +3182,37 @@ function ExpensesContentMain() {
                                         const isExpanded = expandedSuppliers[`pending-${supplier.id}`] ?? true;
                                         const solde = stat.remaining;
                                         return (
-                                            <div key={supplier.id} className="mb-4 last:mb-0">
+                                            <div key={supplier.id}>
                                                 <div
-                                                    className="flex items-center justify-between mb-2 pb-2 border-b-2 border-amber-100 cursor-pointer hover:bg-amber-50/30 -mx-2 px-2 rounded-lg transition-colors"
+                                                    className="flex items-center justify-between mb-2 pb-2 border-b border-slate-100 cursor-pointer hover:bg-slate-50 -mx-2 px-2 rounded-lg transition-colors"
                                                     onClick={() => setExpandedSuppliers(prev => ({ ...prev, [`pending-${supplier.id}`]: !isExpanded }))}
                                                 >
                                                     <div className="flex items-center gap-2">
                                                         <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
-                                                        <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
+                                                        <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-semibold`}>
                                                             {supplier.name.charAt(0)}
                                                         </div>
                                                         <div>
-                                                            <h3 className="text-sm font-black text-slate-900 uppercase">{supplier.name}</h3>
-                                                            <p className="text-[9px] font-bold text-slate-400">{pendingExpenses.length} facture{pendingExpenses.length > 1 ? 's' : ''}</p>
+                                                            <h3 className="text-sm font-medium text-slate-900">{supplier.name}</h3>
+                                                            <p className="text-xs text-slate-400">{pendingExpenses.length} facture{pendingExpenses.length > 1 ? 's' : ''}</p>
                                                         </div>
                                                     </div>
                                                     <div className="text-right">
-                                                        <p className={`text-base font-black ${solde < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                                            {solde.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span>
+                                                        <p className={`text-sm font-semibold tabular-nums ${solde < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                            {solde.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs">DT</span>
                                                         </p>
-                                                        <p className="text-[8px] font-bold text-slate-400 uppercase">Solde Actuel</p>
+                                                        <p className="text-xs text-slate-400">Solde actuel</p>
                                                     </div>
                                                 </div>
                                                 {isExpanded && (
-                                                    <div className="space-y-1 pl-10 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                    <div className="space-y-0.5 pl-10">
                                                         {pendingExpenses.map((e, i) => (
-                                                            <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-amber-50/50 rounded-lg transition-colors group">
+                                                            <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-slate-50 rounded-lg transition-colors">
                                                                 <div className="flex-1 min-w-0">
-                                                                    <p className="text-xs font-bold text-slate-800 uppercase truncate">{e.item}</p>
-                                                                    <p className="text-[9px] font-medium text-slate-400">{e.date}</p>
+                                                                    <p className="text-sm text-slate-700 truncate">{e.item}</p>
+                                                                    <p className="text-xs text-slate-400">{e.date}</p>
                                                                 </div>
-                                                                <p className="text-sm font-black text-red-600 ml-3">{e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                                                <p className="text-sm font-medium text-rose-600 ml-3 tabular-nums">{e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
                                                             </div>
                                                         ))}
                                                     </div>
@@ -3144,38 +3222,31 @@ function ExpensesContentMain() {
                                     })
                                 }
                                 {Object.values(suppliers).every(s => s.expenses.every(e => e.status !== 'pending')) && (
-                                    <div className="p-8 text-center text-slate-400 flex flex-col items-center">
-                                        <CheckCircle2 className="h-12 w-12 mb-3 text-emerald-100" />
-                                        <p className="text-sm font-black uppercase text-emerald-600">Tout est payé !</p>
+                                    <div className="py-12 text-center text-slate-500 flex flex-col items-center">
+                                        <CheckCircle2 className="h-10 w-10 mb-3 text-emerald-200" />
+                                        <p className="text-sm font-medium text-emerald-600">Tout est payé !</p>
                                     </div>
                                 )}
-                            </div>
-
-                            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
-                                <span className="text-xs font-bold text-slate-500 uppercase">Bilan Total Solde</span>
-                                <span className={`text-xl font-black ${totalRemainingGlobal < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                    {totalRemainingGlobal.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm">DT</span>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+                </div>
+            </Modal>
 
             {/* Paid Expenses Modal */}
-            {
-                showAllPaid && (
-                    <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowAllPaid(false)}>
-                        <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
-                            <div className="bg-emerald-500 p-4 text-white flex justify-between items-center shrink-0">
-                                <div>
-                                    <h2 className="text-lg font-black uppercase tracking-tight">Factures Payées</h2>
-                                    <p className="text-[9px] text-emerald-100 font-bold uppercase">Par Fournisseur</p>
-                                </div>
-                                <X className="h-5 w-5 cursor-pointer hover:text-emerald-200 transition-colors" onClick={() => setShowAllPaid(false)} />
-                            </div>
-
-                            <div className="p-4 overflow-y-auto custom-scrollbar bg-white">
+            <Modal
+                open={showAllPaid}
+                onClose={() => setShowAllPaid(false)}
+                title="Factures payées"
+                description="Par fournisseur"
+                size="xl"
+                footer={
+                    <div className="flex w-full justify-between items-center">
+                        <span className="text-sm text-slate-600">Total payé</span>
+                        <span className="text-lg font-semibold text-emerald-600 tabular-nums">
+                            {Object.values(suppliers).reduce((acc, s) => acc + s.expenses.filter(e => e.status === 'paid').reduce((sum, e) => sum + e.price, 0), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm">DT</span>
+                        </span>
+                    </div>
+                }
+            >
+                <div className="space-y-4">
                                 {Object.values(suppliers)
                                     .filter(s => s.expenses.some(e => e.status === 'paid'))
                                     .map(supplier => {
@@ -3183,35 +3254,34 @@ function ExpensesContentMain() {
                                         const total = paidExpenses.reduce((sum, e) => sum + e.price, 0);
                                         const isExpanded = expandedSuppliers[`paid-${supplier.id}`] ?? true;
                                         return (
-                                            <div key={supplier.id} className="mb-4 last:mb-0">
+                                            <div key={supplier.id}>
                                                 <div
-                                                    className="flex items-center justify-between mb-2 pb-2 border-b-2 border-emerald-100 cursor-pointer hover:bg-emerald-50/30 -mx-2 px-2 rounded-lg transition-colors"
+                                                    className="flex items-center justify-between mb-2 pb-2 border-b border-slate-100 cursor-pointer hover:bg-slate-50 -mx-2 px-2 rounded-lg transition-colors"
                                                     onClick={() => setExpandedSuppliers(prev => ({ ...prev, [`paid-${supplier.id}`]: !isExpanded }))}
                                                 >
                                                     <div className="flex items-center gap-2">
                                                         <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
-                                                        <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
+                                                        <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-semibold`}>
                                                             {supplier.name.charAt(0)}
                                                         </div>
                                                         <div>
-                                                            <h3 className="text-sm font-black text-slate-900 uppercase">{supplier.name}</h3>
-                                                            <p className="text-[9px] font-bold text-slate-400">{paidExpenses.length} facture{paidExpenses.length > 1 ? 's' : ''}</p>
+                                                            <h3 className="text-sm font-medium text-slate-900">{supplier.name}</h3>
+                                                            <p className="text-xs text-slate-400">{paidExpenses.length} facture{paidExpenses.length > 1 ? 's' : ''}</p>
                                                         </div>
                                                     </div>
                                                     <div className="text-right">
-                                                        <p className="text-base font-black text-emerald-600">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span></p>
-                                                        <p className="text-base font-black text-emerald-600">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span></p>
+                                                        <p className="text-sm font-semibold text-emerald-600 tabular-nums">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs">DT</span></p>
                                                     </div>
                                                 </div>
                                                 {isExpanded && (
-                                                    <div className="space-y-1 pl-10 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                    <div className="space-y-0.5 pl-10">
                                                         {paidExpenses.map((e, i) => (
-                                                            <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-emerald-50/50 rounded-lg transition-colors group">
+                                                            <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-slate-50 rounded-lg transition-colors">
                                                                 <div className="flex-1 min-w-0">
-                                                                    <p className="text-xs font-bold text-slate-800 uppercase truncate">{e.item}</p>
-                                                                    <p className="text-[9px] font-medium text-slate-400">{e.date}</p>
+                                                                    <p className="text-sm text-slate-700 truncate">{e.item}</p>
+                                                                    <p className="text-xs text-slate-400">{e.date}</p>
                                                                 </div>
-                                                                <p className="text-sm font-black text-emerald-600 ml-3">{e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                                                <p className="text-sm font-medium text-emerald-600 ml-3 tabular-nums">{e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
                                                             </div>
                                                         ))}
                                                     </div>
@@ -3221,38 +3291,31 @@ function ExpensesContentMain() {
                                     })
                                 }
                                 {Object.values(suppliers).every(s => s.expenses.every(e => e.status !== 'paid')) && (
-                                    <div className="p-8 text-center text-slate-400 flex flex-col items-center">
-                                        <AlertCircle className="h-12 w-12 mb-3 text-slate-100" />
-                                        <p className="text-sm font-black uppercase text-slate-600">Aucun paiement</p>
+                                    <div className="py-12 text-center text-slate-500 flex flex-col items-center">
+                                        <AlertCircle className="h-10 w-10 mb-3 text-slate-200" />
+                                        <p className="text-sm font-medium text-slate-600">Aucun paiement</p>
                                     </div>
                                 )}
-                            </div>
-
-                            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
-                                <span className="text-xs font-bold text-slate-500 uppercase">Total Payé</span>
-                                <span className="text-xl font-black text-emerald-600">
-                                    {Object.values(suppliers).reduce((acc, s) => acc + s.expenses.filter(e => e.status === 'paid').reduce((sum, e) => sum + e.price, 0), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-emerald-400">DT</span>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+                </div>
+            </Modal>
 
             {/* All Expenses Modal */}
-            {
-                showAllExpenses && (
-                    <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowAllExpenses(false)}>
-                        <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
-                            <div className="bg-slate-900 p-4 text-white flex justify-between items-center shrink-0">
-                                <div>
-                                    <h2 className="text-lg font-black uppercase tracking-tight">Toutes les Factures</h2>
-                                    <p className="text-[9px] text-slate-400 font-bold uppercase">Par Fournisseur</p>
-                                </div>
-                                <X className="h-5 w-5 cursor-pointer hover:text-slate-400 transition-colors" onClick={() => setShowAllExpenses(false)} />
-                            </div>
-
-                            <div className="p-4 overflow-y-auto custom-scrollbar bg-white">
+            <Modal
+                open={showAllExpenses}
+                onClose={() => setShowAllExpenses(false)}
+                title="Toutes les factures"
+                description="Par fournisseur"
+                size="xl"
+                footer={
+                    <div className="flex w-full justify-between items-center">
+                        <span className="text-sm text-slate-600">Total chantier</span>
+                        <span className="text-lg font-semibold text-slate-900 tabular-nums">
+                            {Object.values(suppliers).reduce((acc, s) => acc + s.expenses.reduce((sum, e) => sum + e.price, 0), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-slate-500">DT</span>
+                        </span>
+                    </div>
+                }
+            >
+                <div className="space-y-4">
                                 {Object.values(suppliers)
                                     .filter(s => s.expenses.length > 0)
                                     .map(supplier => {
@@ -3261,52 +3324,52 @@ function ExpensesContentMain() {
                                         const pendingCount = supplier.expenses.filter(e => e.status === 'pending').length;
                                         const isExpanded = expandedSuppliers[`all-${supplier.id}`] ?? true;
                                         return (
-                                            <div key={supplier.id} className="mb-4 last:mb-0">
+                                            <div key={supplier.id}>
                                                 <div
-                                                    className="flex items-center justify-between mb-2 pb-2 border-b-2 border-slate-200 cursor-pointer hover:bg-slate-50 -mx-2 px-2 rounded-lg transition-colors"
+                                                    className="flex items-center justify-between mb-2 pb-2 border-b border-slate-100 cursor-pointer hover:bg-slate-50 -mx-2 px-2 rounded-lg transition-colors"
                                                     onClick={() => setExpandedSuppliers(prev => ({ ...prev, [`all-${supplier.id}`]: !isExpanded }))}
                                                 >
                                                     <div className="flex items-center gap-2">
                                                         <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
-                                                        <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
+                                                        <div className={`w-8 h-8 rounded-lg ${supplier.color} flex items-center justify-center text-white text-xs font-semibold`}>
                                                             {supplier.name.charAt(0)}
                                                         </div>
                                                         <div>
-                                                            <h3 className="text-sm font-black text-slate-900 uppercase">{supplier.name}</h3>
-                                                            <div className="flex items-center gap-2">
-                                                                <p className="text-[9px] font-bold text-slate-400">{supplier.expenses.length} facture{supplier.expenses.length > 1 ? 's' : ''}</p>
-                                                                {paidCount > 0 && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">{paidCount} payé{paidCount > 1 ? 's' : ''}</span>}
-                                                                {pendingCount > 0 && <span className="text-[8px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">{pendingCount} en attente</span>}
+                                                            <h3 className="text-sm font-medium text-slate-900">{supplier.name}</h3>
+                                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                                <p className="text-xs text-slate-400">{supplier.expenses.length} facture{supplier.expenses.length > 1 ? 's' : ''}</p>
+                                                                {paidCount > 0 && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">{paidCount} payé{paidCount > 1 ? 's' : ''}</span>}
+                                                                {pendingCount > 0 && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700">{pendingCount} en attente</span>}
                                                             </div>
                                                         </div>
                                                     </div>
                                                     <div className="text-right">
-                                                        <p className="text-base font-black text-slate-900">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">DT</span></p>
+                                                        <p className="text-sm font-semibold text-slate-900 tabular-nums">{total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs">DT</span></p>
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 setShowAllExpenses(false);
                                                                 setActiveTab(supplier.id as SupplierType);
                                                             }}
-                                                            className="mt-1 bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all"
+                                                            className="mt-1 inline-flex items-center justify-center h-7 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium transition-colors"
                                                         >
                                                             Voir
                                                         </button>
                                                     </div>
                                                 </div>
                                                 {isExpanded && (
-                                                    <div className="space-y-1 pl-10 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                    <div className="space-y-0.5 pl-10">
                                                         {supplier.expenses.map((e, i) => (
-                                                            <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-slate-50 rounded-lg transition-colors group">
+                                                            <div key={i} className="flex items-center justify-between py-1.5 px-2 hover:bg-slate-50 rounded-lg transition-colors">
                                                                 <div className="flex-1 min-w-0 flex items-center gap-2">
-                                                                    <p className="text-xs font-bold text-slate-800 uppercase truncate flex-1">{e.item}</p>
-                                                                    <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${e.status === 'paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                                                                        {e.status === 'paid' ? 'P' : 'A'}
+                                                                    <p className="text-sm text-slate-700 truncate flex-1">{e.item}</p>
+                                                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${e.status === 'paid' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                                                        {e.status === 'paid' ? 'Payé' : 'Attente'}
                                                                     </span>
                                                                 </div>
                                                                 <div className="flex items-center gap-2 ml-3">
-                                                                    <p className="text-[9px] font-medium text-slate-400">{e.date}</p>
-                                                                    <p className={`text-sm font-black ${e.status === 'paid' ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                                                    <p className="text-xs text-slate-400">{e.date}</p>
+                                                                    <p className={`text-sm font-medium tabular-nums ${e.status === 'paid' ? 'text-emerald-600' : 'text-slate-900'}`}>
                                                                         {e.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}
                                                                     </p>
                                                                 </div>
@@ -3319,23 +3382,13 @@ function ExpensesContentMain() {
                                     })
                                 }
                                 {Object.values(suppliers).every(s => s.expenses.length === 0) && (
-                                    <div className="p-8 text-center text-slate-400 flex flex-col items-center">
-                                        <Package className="h-12 w-12 mb-3 text-slate-100" />
-                                        <p className="text-sm font-black uppercase text-slate-600">Aucune facture</p>
+                                    <div className="py-12 text-center text-slate-500 flex flex-col items-center">
+                                        <Package className="h-10 w-10 mb-3 text-slate-200" />
+                                        <p className="text-sm font-medium text-slate-600">Aucune facture</p>
                                     </div>
                                 )}
-                            </div>
-
-                            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
-                                <span className="text-xs font-bold text-slate-500 uppercase">Total Chantier</span>
-                                <span className="text-xl font-black text-slate-900">
-                                    {Object.values(suppliers).reduce((acc, s) => acc + s.expenses.reduce((sum, e) => sum + e.price, 0), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-sm text-slate-500">DT</span>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+                </div>
+            </Modal>
 
             {/* Layout Main */}
             {
@@ -3347,20 +3400,15 @@ function ExpensesContentMain() {
                             animate={{ opacity: 1, x: 0 }}
                             className="w-full lg:w-72 flex-shrink-0"
                         >
-                            <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-5 flex lg:flex-col gap-3 overflow-x-auto lg:overflow-visible no-scrollbar">
-                                <div className="flex items-center justify-between mb-4 px-2">
-                                    <div className="flex items-center gap-2">
-                                        <div className="bg-slate-900 p-1.5 rounded-lg">
-                                            <Store className="h-3 w-3 text-white" />
-                                        </div>
-                                        <span className="text-[10px] font-black uppercase text-slate-900 tracking-[0.2em]">Partenaires</span>
-                                    </div>
+                            <div className="bg-white rounded-2xl border border-slate-200 p-3 flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible no-scrollbar">
+                                <div className="hidden lg:flex items-center justify-between mb-1 px-1">
+                                    <span className="text-xs font-medium text-slate-500">Partenaires</span>
                                     {isAdmin && (
                                         <button
                                             onClick={() => setShowAddSupplierModal(true)}
-                                            className="bg-slate-50 hover:bg-slate-900 hover:text-white p-2 rounded-xl transition-all duration-300 shadow-sm"
+                                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
                                         >
-                                            <Plus className="h-3.5 w-3.5" />
+                                            <Plus className="h-4 w-4" />
                                         </button>
                                     )}
                                 </div>
@@ -3374,33 +3422,39 @@ function ExpensesContentMain() {
                                     setShowDeleteConfirmModal={setShowDeleteConfirmModal}
                                     setDeleteConfirmInput={setDeleteConfirmInput}
                                 />
+                                {isAdmin && (
+                                    <button
+                                        onClick={() => setShowAddSupplierModal(true)}
+                                        className="lg:hidden shrink-0 inline-flex items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-white border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors"
+                                    >
+                                        <Plus className="h-4 w-4" /> Ajouter
+                                    </button>
+                                )}
                             </div>
 
                             {/* General Note Sidebar Section (Desktop) */}
                             {isAdmin && (
-                                <motion.div
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: 0.3 }}
-                                    className="mt-6 hidden lg:block bg-amber-50/30 rounded-[2rem] border border-amber-100 shadow-sm overflow-hidden group cursor-pointer hover:bg-amber-50 transition-colors"
+                                <div
+                                    className="mt-4 hidden lg:block bg-white rounded-2xl border border-slate-200 overflow-hidden cursor-pointer hover:bg-slate-50 transition-colors"
                                     onClick={() => {
                                         setNoteEditorType('general');
                                         setTempNoteValue(generalNote);
                                         setShowNoteModal(true);
                                     }}
                                 >
-                                    <div className="px-6 py-4 border-b border-amber-100/50 flex justify-between items-center">
-                                        <span className="text-[10px] font-black uppercase text-amber-600 tracking-[0.2em] flex items-center gap-2">
+                                    <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center">
+                                        <span className="text-xs font-medium text-slate-500 flex items-center gap-2">
                                             <FileText className="h-3.5 w-3.5" />
-                                            MÉMO GÉNÉRAL
+                                            Mémo général
                                         </span>
+                                        <Pencil className="h-3 w-3 text-slate-400" />
                                     </div>
-                                    <div className="p-6">
-                                        <p className="text-[11px] font-medium text-slate-600 italic leading-relaxed whitespace-pre-wrap">
+                                    <div className="p-4">
+                                        <p className="text-[13px] text-slate-600 leading-relaxed whitespace-pre-wrap">
                                             {generalNote || "Aucune note générale..."}
                                         </p>
                                     </div>
-                                </motion.div>
+                                </div>
                             )}
                         </motion.div>
 
@@ -3410,69 +3464,99 @@ function ExpensesContentMain() {
                             className="flex-1 space-y-6"
                         >
                             {!currentSupplier ? (
-                                <div className="bg-white rounded-[2.5rem] p-12 border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center">
-                                    <Package className="h-16 w-16 text-slate-100 mb-6" />
-                                    <h2 className="text-2xl font-black text-slate-900 uppercase">Aucun fournisseur</h2>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest max-w-xs mt-3 leading-relaxed">
-                                        Veuillez sélectionner ou ajouter un fournisseur dans la barre latérale pour afficher ses détails.
+                                <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 flex flex-col items-center justify-center text-center">
+                                    <Package className="h-10 w-10 text-slate-300 mb-3" />
+                                    <h2 className="text-base font-semibold text-slate-900">Aucun fournisseur</h2>
+                                    <p className="text-sm text-slate-500 max-w-xs mt-1">
+                                        Sélectionnez ou ajoutez un fournisseur pour afficher ses détails.
                                     </p>
                                 </div>
                             ) : (
-                                <div className="rounded-[2.5rem] flex flex-col lg:flex-row justify-between items-center gap-8 relative">
-                                    <div className="absolute top-0 right-0 w-64 h-64 bg-slate-50 rounded-full translate-x-1/2 -translate-y-1/2 -z-10 opacity-0" />
-
-                                    <div className="flex items-center gap-6">
-                                        <div>
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-tight">{currentSupplier.name}</h1>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="bg-slate-100 p-1 rounded-md">
-                                                    <Store className="h-3 w-3 text-slate-400" />
-                                                </div>
-                                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{currentSupplier.address || 'PARTENAIRE OFFICIEL'}</p>
-                                            </div>
+                                <div className="flex flex-col lg:flex-row lg:justify-between lg:items-end gap-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0 flex-1">
+                                            <h2 className="text-xl font-semibold tracking-tight text-slate-900 truncate">{currentSupplier.name}</h2>
+                                            <p className="text-sm text-slate-500 mt-0.5 flex items-center gap-1.5">
+                                                <Store className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                                <span className="truncate">{currentSupplier.address || 'Partenaire officiel'}</span>
+                                            </p>
                                         </div>
+                                        {isAdmin && (
+                                            <button
+                                                onClick={() => {
+                                                    setSupplierToDelete({ id: currentSupplier.id, name: currentSupplier.name });
+                                                    setShowDeleteConfirmModal(true);
+                                                    setDeleteConfirmInput('');
+                                                }}
+                                                className="lg:hidden shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                                title="Retirer ce fournisseur"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        )}
                                     </div>
 
-                                    <div className="flex items-center gap-4 w-full lg:w-auto overflow-x-auto no-scrollbar pb-2 lg:pb-0">
-                                        <div className="bg-slate-900 p-6 rounded-[2rem] min-w-[140px] text-center shadow-xl shadow-slate-900/10">
-                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total</p>
-                                            <p className="text-lg font-black text-white leading-none">{formatValue(activeStat.totalCost)}</p>
+                                    <div className="grid grid-cols-3 gap-2 w-full lg:w-auto">
+                                        <div className="bg-white rounded-2xl border border-slate-200 p-3 text-center min-w-[110px]">
+                                            <p className="text-xs text-slate-500">Total</p>
+                                            <p className="text-base font-semibold text-slate-900 tabular-nums mt-0.5">{formatValue(activeStat.totalCost)}</p>
                                         </div>
-                                        <div className="bg-emerald-500 p-6 rounded-[2rem] min-w-[140px] text-center shadow-xl shadow-emerald-500/10">
-                                            <p className="text-[9px] font-black text-emerald-100 uppercase tracking-widest mb-1">Payé</p>
-                                            <p className="text-lg font-black text-white leading-none">{formatValue(activeStat.totalPaid)}</p>
+                                        <div className="bg-white rounded-2xl border border-slate-200 p-3 text-center min-w-[110px]">
+                                            <p className="text-xs text-slate-500">Payé</p>
+                                            <p className="text-base font-semibold text-emerald-600 tabular-nums mt-0.5">{formatValue(activeStat.totalPaid)}</p>
                                         </div>
-                                        <div className={`${activeStat.remaining < 0 ? 'bg-rose-500' : 'bg-[#FFB800]'} p-6 rounded-[2rem] min-w-[140px] text-center shadow-xl shadow-amber-500/10`}>
-                                            <p className={`text-[9px] font-black ${activeStat.remaining < 0 ? 'text-rose-100' : 'text-slate-900/60'} uppercase tracking-widest mb-1`}>Solde</p>
-                                            <p className={`text-lg font-black ${activeStat.remaining < 0 ? 'text-white' : 'text-slate-900'} leading-none`}>{formatValue(activeStat.remaining)}</p>
+                                        <div className="bg-white rounded-2xl border border-slate-200 p-3 text-center min-w-[110px]">
+                                            <p className="text-xs text-slate-500">Solde</p>
+                                            <p className={`text-base font-semibold tabular-nums mt-0.5 ${activeStat.remaining < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatValue(activeStat.remaining)}</p>
                                         </div>
                                     </div>
                                 </div>
                             )}
 
+                            {currentSupplier && (
+                                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto no-scrollbar">
+                                    {[
+                                        { id: 'factures', label: 'Factures & bons', count: currentSupplier.expenses?.length || 0 },
+                                        { id: 'acomptes', label: 'Acomptes', count: currentSupplier.deposits?.length || 0 },
+                                        { id: 'documents', label: 'Documents', count: uploadedDocs.filter(d => d.supplierId === activeTab).length },
+                                        { id: 'notes', label: 'Notes', count: null as number | null },
+                                    ].map((t) => (
+                                        <button
+                                            key={t.id}
+                                            onClick={() => setPanelTab(t.id as any)}
+                                            className={`flex-1 inline-flex items-center justify-center gap-1.5 whitespace-nowrap px-3 h-9 rounded-lg text-sm font-medium transition-colors ${panelTab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                        >
+                                            {t.label}
+                                            {t.count !== null && t.count > 0 && (
+                                                <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold tabular-nums ${panelTab === t.id ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                                                    {t.count}
+                                                </span>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
                             {/* General Note (Mobile Only - below supplier header) */}
+                            {currentSupplier && panelTab === 'notes' && (<>
                             {isAdmin && (
                                 <div
-                                    className="md:hidden bg-slate-50 border border-slate-200 rounded-xl overflow-hidden mb-6 cursor-pointer hover:bg-slate-100/50 transition-colors"
+                                    className="lg:hidden bg-white border border-slate-200 rounded-2xl overflow-hidden cursor-pointer hover:bg-slate-50 transition-colors"
                                     onClick={() => {
                                         setNoteEditorType('general');
                                         setTempNoteValue(generalNote);
                                         setShowNoteModal(true);
                                     }}
                                 >
-                                    <div className="bg-slate-50 px-4 py-2 border-b border-slate-100 flex justify-between items-center">
-                                        <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-                                            <FileText className="h-3 w-3" />
-                                            NOTE GÉNÉRALE
+                                    <div className="px-4 py-2.5 border-b border-slate-100 flex justify-between items-center">
+                                        <span className="text-xs font-medium text-slate-500 flex items-center gap-2">
+                                            <FileText className="h-3.5 w-3.5" />
+                                            Note générale
                                         </span>
-                                        <div className="p-1">
-                                            <Pencil className="h-2.5 w-2.5 text-slate-400" />
-                                        </div>
+                                        <Pencil className="h-3 w-3 text-slate-400" />
                                     </div>
-                                    <div className="p-4 max-h-[150px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
-                                        <p className="text-[11px] font-medium text-slate-500 italic leading-relaxed whitespace-pre-wrap">
+                                    <div className="p-4 max-h-[150px] overflow-y-auto">
+                                        <p className="text-[13px] text-slate-600 leading-relaxed whitespace-pre-wrap">
                                             {generalNote || "Aucune note générale pour le moment..."}
                                         </p>
                                     </div>
@@ -3482,219 +3566,188 @@ function ExpensesContentMain() {
                             {/* Notes Section */}
                             {isAdmin && (
                                 <div
-                                    className="bg-amber-50/50 border border-amber-100 p-3 rounded-xl flex items-start gap-3 min-h-[70px] mb-6 cursor-pointer hover:bg-amber-100/50 transition-colors"
+                                    className="bg-white border border-slate-200 rounded-2xl p-4 flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition-colors"
                                     onClick={() => {
                                         setNoteEditorType('supplier');
                                         setTempNoteValue(currentSupplier?.notes || '');
                                         setShowNoteModal(true);
                                     }}
                                 >
-                                    <div className="bg-amber-100 p-1.5 rounded-lg shrink-0">
-                                        <FileText className="h-3.5 w-3.5 text-amber-600" />
+                                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+                                        <FileText className="h-4 w-4 text-amber-600" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-center mb-1">
-                                            <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Notes du Chantier</span>
-                                            <div className="text-[8px] font-black text-amber-600 uppercase underline shrink-0 ml-2">
-                                                Éditer
-                                            </div>
+                                        <div className="flex justify-between items-center mb-0.5">
+                                            <span className="text-xs font-medium text-slate-500">Notes du chantier</span>
+                                            <span className="text-xs font-medium text-slate-500 hover:text-slate-700 shrink-0 ml-2">Éditer</span>
                                         </div>
-                                        <p className="text-[11px] font-medium text-slate-600 leading-relaxed italic max-h-[60px] overflow-y-auto scrollbar-thin scrollbar-thumb-amber-200 scrollbar-track-transparent pr-1">
+                                        <p className="text-[13px] text-slate-600 leading-relaxed max-h-[60px] overflow-y-auto pr-1">
                                             {currentSupplier?.notes || "Aucune consigne particulière."}
                                         </p>
                                     </div>
                                 </div>
                             )}
+                            </>)}
 
                             {/* Upload Modal */}
-                            {showUploadModal && (
-                                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowUploadModal(false)}>
-                                    <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                                        <div className="sticky top-0 bg-white border-b border-slate-200 p-6 flex items-center justify-between rounded-t-2xl">
-                                            <div className="flex items-center gap-3">
-                                                <div className="p-2 bg-slate-900 rounded-xl">
-                                                    <Upload className="h-5 w-5 text-white" />
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Importer un Document</h3>
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Facture, Devis ou Reçu</p>
-                                                </div>
+                            <Modal
+                                open={showUploadModal}
+                                onClose={() => setShowUploadModal(false)}
+                                title="Importer un document"
+                                description="Facture, devis ou reçu"
+                                size="xl"
+                                footer={manualForm.files.length > 0 ? (
+                                    <button
+                                        onClick={async () => {
+                                            await handleManualSubmitNew();
+                                            setShowUploadModal(false);
+                                        }}
+                                        disabled={isUploading}
+                                        className="w-full inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                                    >
+                                        {isUploading ? (
+                                            <>
+                                                <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                Importation {uploadProgress}%
+                                            </>
+                                        ) : (
+                                            <>
+                                                <CheckCircle2 className="h-4 w-4" />
+                                                Importer {manualForm.files.length} {manualForm.files.length > 1 ? 'documents' : 'document'}
+                                            </>
+                                        )}
+                                    </button>
+                                ) : undefined}
+                            >
+                                {/* File Upload Zone */}
+                                <div
+                                    onClick={() => !isUploading && fileInputRef.current?.click()}
+                                    onDragOver={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={handleDrop}
+                                    className={`
+                                        w-full relative cursor-pointer
+                                        border border-dashed rounded-2xl p-6
+                                        flex flex-col items-center justify-center text-center transition-colors min-h-[180px]
+                                        ${isDragging ? 'border-slate-900 bg-slate-50' : ''}
+                                        ${manualForm.files.length > 0 && !isDragging
+                                            ? 'border-emerald-200 bg-emerald-50/40'
+                                            : !isDragging ? 'border-slate-300 hover:border-slate-400 hover:bg-slate-50' : ''
+                                        }
+                                        ${isUploading ? 'opacity-50 pointer-events-none' : ''}
+                                    `}
+                                >
+                                    {manualForm.files.length > 0 ? (
+                                        <>
+                                            <div className="flex flex-wrap gap-2 mb-3 justify-center">
+                                                {previewUrls.map((url, i) => (
+                                                    <div key={i} className="relative group/preview">
+                                                        <div className="w-20 h-20 rounded-xl border border-slate-200 overflow-hidden bg-white">
+                                                            {manualForm.files[i]?.type.startsWith('image/') ? (
+                                                                <img src={url} className="w-full h-full object-cover" alt="Preview" />
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center justify-center bg-slate-100 flex-col gap-1">
+                                                                    <FileText className="h-6 w-6 text-slate-400" />
+                                                                    <span className="text-[8px] text-slate-500 px-1 truncate w-full">{manualForm.files[i]?.name}</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleRemoveFile(i);
+                                                            }}
+                                                            className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-0.5 hover:bg-rose-700 transition-colors"
+                                                        >
+                                                            <X className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
+                                                ))}
                                             </div>
-                                            <button
-                                                onClick={() => setShowUploadModal(false)}
-                                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                                            >
-                                                <X className="h-5 w-5 text-slate-400" />
-                                            </button>
-                                        </div>
-
-                                        <div className="p-6">
-                                            <div className="flex flex-col items-center gap-6">
-                                                {/* File Upload Zone */}
-                                                <div
-                                                    onClick={() => !isUploading && fileInputRef.current?.click()}
-                                                    onDragOver={handleDragOver}
-                                                    onDragLeave={handleDragLeave}
-                                                    onDrop={handleDrop}
-                                                    className={`
-                                                w-full relative group cursor-pointer
-                                                border-2 border-dashed rounded-2xl p-8
-                                                flex flex-col items-center justify-center text-center transition-all min-h-[200px]
-                                                ${isDragging ? 'border-blue-500 bg-blue-50' : ''}
-                                                ${manualForm.files.length > 0 && !isDragging
-                                                            ? 'border-emerald-200 bg-emerald-50/30'
-                                                            : !isDragging ? 'border-slate-200 hover:border-blue-400 hover:bg-slate-50' : ''
-                                                        }
-                                                ${isUploading ? 'opacity-50 pointer-events-none' : ''}
-                                            `}
+                                            <p className="text-sm font-medium text-emerald-700">{manualForm.files.length} fichiers sélectionnés</p>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <p className="text-xs text-slate-500">Cliquez ou glissez pour ajouter</p>
+                                                <span className="text-slate-300">•</span>
+                                                <button
+                                                    onClick={handleClearAll}
+                                                    className="text-xs font-medium text-rose-600 hover:underline z-10 relative"
                                                 >
-                                                    {manualForm.files.length > 0 ? (
-                                                        <>
-                                                            <div className="flex flex-wrap gap-2 mb-4 justify-center">
-                                                                {previewUrls.map((url, i) => (
-                                                                    <div key={i} className="relative group/preview">
-                                                                        <div className="w-20 h-20 rounded-lg border-2 border-white shadow-md overflow-hidden bg-white">
-                                                                            {manualForm.files[i]?.type.startsWith('image/') ? (
-                                                                                <img src={url} className="w-full h-full object-cover" alt="Preview" />
-                                                                            ) : (
-                                                                                <div className="w-full h-full flex items-center justify-center bg-slate-100 flex-col gap-1">
-                                                                                    <FileText className="h-6 w-6 text-slate-400" />
-                                                                                    <span className="text-[6px] text-slate-500 px-1 truncate w-full">{manualForm.files[i]?.name}</span>
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                handleRemoveFile(i);
-                                                                            }}
-                                                                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/preview:opacity-100 transition-opacity hover:bg-red-600"
-                                                                        >
-                                                                            <X className="w-3 h-3" />
-                                                                        </button>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                            <p className="text-sm font-black text-emerald-700 uppercase">{manualForm.files.length} fichiers sélectionnés</p>
-                                                            <div className="flex items-center gap-2 mt-2">
-                                                                <p className="text-[10px] font-bold text-emerald-500 uppercase">Cliquez ou Glissez pour ajouter plus</p>
-                                                                <span className="text-emerald-300">•</span>
-                                                                <button
-                                                                    onClick={handleClearAll}
-                                                                    className="text-[10px] font-bold text-red-400 hover:text-red-500 uppercase hover:underline z-10 relative"
-                                                                >
-                                                                    Tout supprimer
-                                                                </button>
-                                                            </div>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                                                <Upload className={`h-8 w-8 ${isDragging ? 'text-blue-500' : 'text-slate-400'} group-hover:text-blue-500`} />
-                                                            </div>
-                                                            <p className="text-sm font-black text-slate-500 uppercase">
-                                                                {isDragging ? 'Déposez les fichiers ici' : 'Cliquez ou Glissez pour choisir'}
-                                                            </p>
-                                                            <p className="text-[10px] font-bold text-slate-400 uppercase mt-2">Sélection multiple supportée</p>
-                                                        </>
-                                                    )}
-                                                    <input
-                                                        type="file"
-                                                        ref={fileInputRef}
-                                                        className="hidden"
-                                                        accept="image/*,application/pdf"
-                                                        multiple
-                                                        onChange={handleManualFileSelect}
-                                                    />
-                                                </div>
-
-                                                {manualForm.files.length > 0 && (
-                                                    <button
-                                                        onClick={async () => {
-                                                            await handleManualSubmitNew();
-                                                            setShowUploadModal(false);
-                                                        }}
-                                                        disabled={isUploading}
-                                                        className="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg text-xs"
-                                                    >
-                                                        {isUploading ? (
-                                                            <>
-                                                                <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                                                Importation {uploadProgress}%
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <CheckCircle2 className="h-4 w-4" />
-                                                                Importer {manualForm.files.length} {manualForm.files.length > 1 ? 'Documents' : 'Document'}
-                                                            </>
-                                                        )}
-                                                    </button>
-                                                )}
+                                                    Tout supprimer
+                                                </button>
                                             </div>
-                                        </div>
-                                    </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center mb-3">
+                                                <Upload className={`h-6 w-6 ${isDragging ? 'text-slate-900' : 'text-slate-400'}`} />
+                                            </div>
+                                            <p className="text-sm font-medium text-slate-600">
+                                                {isDragging ? 'Déposez les fichiers ici' : 'Cliquez ou glissez pour choisir'}
+                                            </p>
+                                            <p className="text-xs text-slate-400 mt-1">Sélection multiple supportée</p>
+                                        </>
+                                    )}
+                                    <input
+                                        type="file"
+                                        ref={fileInputRef}
+                                        className="hidden"
+                                        accept="image/*,application/pdf"
+                                        multiple
+                                        onChange={handleManualFileSelect}
+                                    />
                                 </div>
-                            )}
+                            </Modal>
 
 
 
                             {/* Uploaded Documents Review Section */}
+                            {currentSupplier && panelTab === 'documents' && (<>
                             {isAdmin && (
-                                <div className="mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    <div
-                                        className="flex items-center justify-between px-6 py-4 rounded-3xl cursor-pointer group hover:bg-white transition-all border border-transparent hover:border-slate-200 hover:shadow-xl hover:shadow-slate-200/50"
-                                        onClick={() => setShowUploadedDocs(!showUploadedDocs)}
-                                    >
-                                        <div className="flex items-center gap-4">
-                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 ${showUploadedDocs ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-500 group-hover:bg-amber-500 group-hover:text-white'}`}>
-                                                <FileText className="h-6 w-6" strokeWidth={2} />
+                                <div className="space-y-4">
+                                    <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
+                                        <button
+                                            className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                                            onClick={() => setShowUploadedDocs(!showUploadedDocs)}
+                                        >
+                                            <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                                                <FileText className="h-4 w-4" />
                                             </div>
-                                            <div>
-                                                <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Documents Importés</h2>
-                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{uploadedDocs.filter(doc => doc.supplierId === activeTab).length} fichiers archivés</p>
+                                            <div className="min-w-0">
+                                                <h2 className="text-sm font-medium text-slate-900">Documents importés</h2>
+                                                <p className="text-xs text-slate-500">{uploadedDocs.filter(doc => doc.supplierId === activeTab).length} fichiers archivés</p>
                                             </div>
-                                        </div>
-                                        <div className="flex items-center gap-4">
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setDocToDelete({ id: 'all' });
-                                                        setShowDocDeleteModal(true);
-                                                    }}
-                                                    className="h-10 px-4 rounded-xl bg-rose-50 text-rose-500 text-[9px] font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all duration-300 flex items-center gap-2 border border-rose-100"
-                                                >
-                                                    <Trash2 className="h-3 w-3" />
-                                                    TOUT SUPPRIMER
-                                                </button>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setShowUploadModal(true);
-                                                    }}
-                                                    className="h-10 px-6 rounded-xl bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest hover:bg-amber-500 transition-all duration-300 shadow-lg shadow-slate-900/10 flex items-center gap-2"
-                                                >
-                                                    <Plus className="h-3.5 w-3.5" />
-                                                    IMPORTER
-                                                </button>
-                                            </div>
-                                            <div className={`p-2 rounded-full border border-slate-100 transition-transform duration-500 ${showUploadedDocs ? 'rotate-180' : ''}`}>
-                                                <ChevronDown className="h-5 w-5 text-slate-400" />
-                                            </div>
+                                            <ChevronDown className={`h-4 w-4 text-slate-400 ml-2 shrink-0 transition-transform ${showUploadedDocs ? 'rotate-180' : ''}`} />
+                                        </button>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <button
+                                                onClick={() => {
+                                                    setDocToDelete({ id: 'all' });
+                                                    setShowDocDeleteModal(true);
+                                                }}
+                                                className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 text-rose-600 text-sm font-medium hover:bg-rose-50 transition-colors"
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                                <span className="hidden sm:inline">Tout supprimer</span>
+                                            </button>
+                                            <button
+                                                onClick={() => setShowUploadModal(true)}
+                                                className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors"
+                                            >
+                                                <Plus className="h-4 w-4" />
+                                                <span className="hidden sm:inline">Importer</span>
+                                            </button>
                                         </div>
                                     </div>
 
                                     {showUploadedDocs && (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 px-1">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                             {uploadedDocs.filter(doc => doc.supplierId === activeTab).length > 0 ? (
                                                 uploadedDocs
                                                     .filter(doc => doc.supplierId === activeTab)
-                                                    .map((doc, index) => (
-                                                        <motion.div
+                                                    .map((doc) => (
+                                                        <div
                                                             key={doc.id}
-                                                            initial={{ opacity: 0, scale: 0.95 }}
-                                                            animate={{ opacity: 1, scale: 1 }}
-                                                            className="luxury-card bg-white p-4 border-none shadow-xl shadow-slate-200/40 relative overflow-hidden group"
+                                                            className="bg-white rounded-2xl border border-slate-200 p-3 relative group"
                                                         >
                                                             <button
                                                                 onClick={(e) => {
@@ -3702,38 +3755,38 @@ function ExpensesContentMain() {
                                                                     setDocToDelete({ id: doc.id, fileName: doc.fileName });
                                                                     setShowDocDeleteModal(true);
                                                                 }}
-                                                                className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm text-slate-400 rounded-xl p-2 opacity-0 group-hover:opacity-100 transition-all hover:bg-rose-500 hover:text-white z-10 shadow-lg"
+                                                                className="absolute top-2 right-2 inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white/90 text-slate-400 hover:bg-rose-600 hover:text-white transition-colors z-10 border border-slate-200"
                                                             >
                                                                 <Trash2 className="w-3.5 h-3.5" />
                                                             </button>
 
                                                             <div
-                                                                className="w-full h-44 bg-slate-50 rounded-2xl mb-4 overflow-hidden cursor-pointer relative border border-slate-100/50 shadow-inner"
+                                                                className="w-full h-40 bg-slate-50 rounded-xl mb-3 overflow-hidden cursor-pointer relative border border-slate-200"
                                                                 onClick={() => setViewingImage(doc.url)}
                                                             >
                                                                 {doc.fileName.toLowerCase().endsWith('.pdf') ? (
-                                                                    <div className="w-full h-full flex flex-col items-center justify-center bg-rose-50/30">
-                                                                        <div className="w-16 h-16 rounded-2xl bg-rose-100 flex items-center justify-center text-rose-500 mb-2">
-                                                                            <FileText className="h-8 w-8" />
+                                                                    <div className="w-full h-full flex flex-col items-center justify-center">
+                                                                        <div className="w-12 h-12 rounded-xl bg-rose-50 flex items-center justify-center text-rose-500 mb-2">
+                                                                            <FileText className="h-6 w-6" />
                                                                         </div>
-                                                                        <span className="text-[8px] font-black text-rose-400 uppercase tracking-widest">Format PDF</span>
+                                                                        <span className="text-xs text-slate-400">Format PDF</span>
                                                                     </div>
                                                                 ) : (
-                                                                    <img src={doc.url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={doc.fileName} />
+                                                                    <img src={doc.url} className="w-full h-full object-cover" alt={doc.fileName} />
                                                                 )}
-                                                                <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition-all duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                                                    <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30">
-                                                                        <Eye className="text-white h-6 w-6" />
+                                                                <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                                    <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center">
+                                                                        <Eye className="text-slate-700 h-5 w-5" />
                                                                     </div>
                                                                 </div>
                                                             </div>
 
-                                                            <div className="space-y-4">
+                                                            <div className="space-y-2.5">
                                                                 <div>
-                                                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Notes de document</label>
+                                                                    <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Notes de document</label>
                                                                     <textarea
                                                                         placeholder="Préciser l'utilité du document..."
-                                                                        className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-3 py-2 text-[11px] font-medium text-slate-900 focus:outline-none focus:border-amber-500/50 focus:bg-white transition-all resize-none placeholder:text-slate-300"
+                                                                        className="w-full px-3 py-2.5 min-h-[64px] rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition resize-none"
                                                                         rows={2}
                                                                         defaultValue={doc.note}
                                                                         onBlur={(e) => handleUpdateDocNote(doc.id, e.target.value)}
@@ -3746,25 +3799,25 @@ function ExpensesContentMain() {
                                                                         replaceFileInputRef.current?.click();
                                                                     }}
                                                                     disabled={isUploading}
-                                                                    className="w-full flex items-center justify-center gap-3 py-3 bg-slate-50 hover:bg-slate-900 hover:text-white text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-300 border border-slate-100"
+                                                                    className="w-full inline-flex items-center justify-center gap-2 h-10 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
                                                                 >
                                                                     <Upload className="h-3.5 w-3.5" />
                                                                     {isUploading && replacingDocId === doc.id ? 'Traitement...' : 'Remplacer le fichier'}
                                                                 </button>
                                                             </div>
-                                                        </motion.div>
+                                                        </div>
                                                     ))
                                             ) : (
-                                                <div className="col-span-full py-12 flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200 group-hover:bg-slate-50 transition-colors">
-                                                    <div className="p-4 bg-white rounded-2xl shadow-sm border border-slate-100 mb-4">
-                                                        <ImagePlus className="h-8 w-8 text-slate-300" />
+                                                <div className="col-span-full py-12 flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white">
+                                                    <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center mb-3">
+                                                        <ImagePlus className="h-6 w-6 text-slate-300" />
                                                     </div>
-                                                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Aucun document importé</p>
+                                                    <p className="text-sm text-slate-500">Aucun document importé</p>
                                                     <button
                                                         onClick={() => setShowUploadModal(true)}
-                                                        className="mt-4 px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                                                        className="mt-3 inline-flex items-center justify-center h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors"
                                                     >
-                                                        Importer le Premier
+                                                        Importer le premier
                                                     </button>
                                                 </div>
                                             )}
@@ -3772,234 +3825,236 @@ function ExpensesContentMain() {
                                     )}
                                 </div>
                             )}
+                            </>)}
 
-                            {/* Factures & Bons section - Luxury Table */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.1 }}
-                                className="space-y-6"
-                            >
-                                <div
-                                    className="flex items-center justify-between px-6 py-4 rounded-3xl cursor-pointer group hover:bg-white transition-all border border-transparent hover:border-slate-200 hover:shadow-xl hover:shadow-slate-200/50"
-                                    onClick={() => setShowExpensesSection(!showExpensesSection)}
-                                >
-                                    <div className="flex items-center gap-4">
-                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 ${showExpensesSection ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-400 group-hover:bg-slate-900 group-hover:text-white'}`}>
-                                            <Receipt className="h-6 w-6" strokeWidth={2} />
+                            {/* Factures & Bons section */}
+                            {currentSupplier && panelTab === 'factures' && (
+                            <div className="space-y-4">
+                                <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
+                                    <button
+                                        className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                                        onClick={() => setShowExpensesSection(!showExpensesSection)}
+                                    >
+                                        <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                                            <Receipt className="h-4 w-4" />
                                         </div>
-                                        <div>
-                                            <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Factures & Bons</h2>
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{currentSupplier?.expenses?.length || 0} documents enregistrés</p>
+                                        <div className="min-w-0">
+                                            <h2 className="text-sm font-medium text-slate-900">Factures &amp; bons</h2>
+                                            <p className="text-xs text-slate-500">{currentSupplier?.expenses?.length || 0} documents enregistrés</p>
                                         </div>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        {isAdmin && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setShowAddExpenseModal(true);
-                                                }}
-                                                className="luxury-button-primary scale-90"
-                                            >
-                                                <Plus className="h-4 w-4 mr-2" /> AJOUTER
-                                            </button>
-                                        )}
-                                        <div className={`p-2 rounded-full border border-slate-100 transition-transform duration-500 ${showExpensesSection ? 'rotate-180' : ''}`}>
-                                            <ChevronDown className="h-5 w-5 text-slate-400" />
-                                        </div>
-                                    </div>
+                                        <ChevronDown className={`h-4 w-4 text-slate-400 ml-2 shrink-0 transition-transform ${showExpensesSection ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    {isAdmin && (
+                                        <button
+                                            onClick={() => setShowAddExpenseModal(true)}
+                                            className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors shrink-0"
+                                        >
+                                            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Ajouter</span>
+                                        </button>
+                                    )}
                                 </div>
 
                                 {showExpensesSection && (
-                                    <div className="luxury-card bg-white overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500">
-                                        {/* Table Controls */}
-                                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
-                                            <div className="flex items-center gap-2">
-                                                <Search className="h-3.5 w-3.5 text-slate-400 ml-2" />
-                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtres</span>
-                                            </div>
-                                            <div className="flex items-center gap-2 bg-white/50 backdrop-blur-md p-1.5 rounded-2xl border border-slate-200 shadow-sm">
-                                                {[
-                                                    { id: 'all', label: 'Tout', color: 'slate' },
-                                                    { id: 'pending', label: 'Attente', color: 'amber' },
-                                                    { id: 'paid', label: 'Payé', color: 'emerald' }
-                                                ].map(filter => (
-                                                    <button
-                                                        key={filter.id}
-                                                        onClick={() => setStatusFilter(filter.id as any)}
-                                                        className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all duration-300 ${statusFilter === filter.id ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}
-                                                    >
-                                                        {filter.label}
-                                                    </button>
-                                                ))}
-                                            </div>
+                                    <div className="space-y-3">
+                                        {/* Filters */}
+                                        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+                                            {[
+                                                { id: 'all', label: 'Tout' },
+                                                { id: 'pending', label: 'Attente' },
+                                                { id: 'paid', label: 'Payé' }
+                                            ].map(filter => (
+                                                <button
+                                                    key={filter.id}
+                                                    onClick={() => setStatusFilter(filter.id as any)}
+                                                    className={`px-3 h-8 rounded-lg text-sm font-medium transition-colors ${statusFilter === filter.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                                >
+                                                    {filter.label}
+                                                </button>
+                                            ))}
                                         </div>
 
-                                        <div className="overflow-x-auto">
+                                        {/* Desktop table */}
+                                        <div className="hidden md:block rounded-2xl border border-slate-200 overflow-hidden bg-white">
                                             <table className="w-full text-left border-collapse">
-                                                <thead className="bg-[#1e293b] text-white/50 text-[9px] font-black uppercase tracking-[0.2em]">
+                                                <thead className="bg-slate-50 text-xs font-medium text-slate-500">
                                                     <tr>
-                                                        <th className="px-4 py-5 w-12 text-center">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                className="rounded border-slate-700 bg-slate-900 focus:ring-[#FFB800] ring-offset-slate-900"
+                                                        <th className="px-3 py-3 w-10 text-center">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
                                                                 checked={currentSupplier?.expenses.length > 0 && selectedExpenseIds.size === currentSupplier.expenses.length}
                                                                 onChange={toggleSelectAll}
                                                             />
                                                         </th>
-                                                        <th className="px-4 py-5 text-left w-8 opacity-50 font-medium">#</th>
-                                                        <th className="px-2 py-5 text-center w-8"></th>
-                                                        <th className="px-6 py-5 text-left">Désignation / Date</th>
-                                                        <th className="px-6 py-5 text-center w-32">État du Paiement</th>
-                                                        <th className="px-6 py-5 text-right w-48">Montant TTC</th>
-                                                        <th className="px-6 py-5 text-right w-32">Actions</th>
+                                                        <th className="px-2 py-3 text-center w-8"></th>
+                                                        <th className="px-4 py-3 text-left">
+                                                            <button onClick={() => handleSort('date')} className="inline-flex items-center gap-1.5 hover:text-slate-900 transition-colors">
+                                                                Désignation / Date
+                                                                {sortConfig.key === 'date'
+                                                                    ? (sortConfig.direction === 'asc' ? <ArrowUp className="h-3.5 w-3.5 text-slate-700" /> : <ArrowDown className="h-3.5 w-3.5 text-slate-700" />)
+                                                                    : <ArrowUpDown className="h-3.5 w-3.5 text-slate-300" />}
+                                                            </button>
+                                                        </th>
+                                                        <th className="px-4 py-3 text-center w-32">État</th>
+                                                        <th className="px-4 py-3 text-right w-40">
+                                                            <button onClick={() => handleSort('price')} className="inline-flex items-center gap-1.5 ml-auto hover:text-slate-900 transition-colors">
+                                                                Montant TTC
+                                                                {sortConfig.key === 'price'
+                                                                    ? (sortConfig.direction === 'asc' ? <ArrowUp className="h-3.5 w-3.5 text-slate-700" /> : <ArrowDown className="h-3.5 w-3.5 text-slate-700" />)
+                                                                    : <ArrowUpDown className="h-3.5 w-3.5 text-slate-300" />}
+                                                            </button>
+                                                        </th>
+                                                        <th className="px-4 py-3 text-right w-32">Actions</th>
                                                     </tr>
                                                 </thead>
-                                                <tbody className="divide-y divide-slate-100">
+                                                <tbody>
                                                     {sortedExpenses.map((e, index) => {
                                                         const isExpanded = expandedRows[e.id];
                                                         return (
                                                             <React.Fragment key={e.id}>
                                                                 <tr
-                                                                    className={`group transition-all duration-500 cursor-pointer ${isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50/50'}`}
+                                                                    className={`group border-t border-slate-100 cursor-pointer transition-colors ${isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
                                                                     onClick={() => toggleRow(e.id)}
                                                                 >
-                                                                    <td className="px-4 py-6 text-center" onClick={(ev) => ev.stopPropagation()}>
-                                                                        <input 
-                                                                            type="checkbox" 
-                                                                            className="rounded border-slate-200 text-[#FFB800] focus:ring-[#FFB800]"
+                                                                    <td className="px-3 py-3 text-center" onClick={(ev) => ev.stopPropagation()}>
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
                                                                             checked={selectedExpenseIds.has(e.id)}
                                                                             onChange={() => toggleSelectExpense(e.id)}
                                                                         />
                                                                     </td>
-                                                                    <td className="px-4 py-6 text-left text-[10px] font-black text-slate-300 group-hover:text-[#FFB800] transition-colors">{index + 1}</td>
-                                                                    <td className="px-2 py-6">
-                                                                        <div className={`p-1.5 rounded-lg transition-all duration-500 ${isExpanded ? 'bg-slate-900 text-white rotate-180' : 'text-slate-300 group-hover:text-slate-900'}`}>
+                                                                    <td className="px-2 py-3">
+                                                                        <div className={`inline-flex items-center justify-center w-6 h-6 rounded-lg transition-colors ${isExpanded ? 'bg-slate-900 text-white rotate-180' : 'text-slate-400 group-hover:text-slate-700'}`}>
                                                                             <ChevronDown className="h-4 w-4" />
                                                                         </div>
                                                                     </td>
-                                                                    <td className="px-6 py-6">
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <span className="text-[13px] font-black text-slate-900 uppercase tracking-tight group-hover:translate-x-1 transition-transform inline-flex items-center gap-2">
+                                                                    <td className="px-4 py-3">
+                                                                        <div className="flex flex-col gap-0.5">
+                                                                            <span className="text-sm font-medium text-slate-900 inline-flex items-center gap-2">
                                                                                 {e.item}
-                                                                                {e.items && e.items.length > 0 && <span className="p-1 px-1.5 bg-blue-50 text-blue-500 rounded-md text-[8px] font-black">{e.items.length} ART.</span>}
+                                                                                {e.items && e.items.length > 0 && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-medium">{e.items.length} art.</span>}
                                                                             </span>
-                                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                                                            <span className="text-xs text-slate-400 flex items-center gap-1.5">
                                                                                 <Clock className="h-3 w-3" /> {e.date}
                                                                             </span>
                                                                         </div>
                                                                     </td>
-                                                                    <td className="px-6 py-6" onClick={(ev) => ev.stopPropagation()}>
+                                                                    <td className="px-4 py-3" onClick={(ev) => ev.stopPropagation()}>
                                                                         <div className="flex justify-center">
-                                                                            <button
-                                                                                onClick={() => updateStatus(e.id, e.status === 'paid' ? 'pending' : 'paid')}
-                                                                                className={`px-4 py-2 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 shadow-sm ${e.status === 'paid'
-                                                                                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-600 hover:text-white'
-                                                                                    : 'bg-amber-50 text-amber-600 border border-amber-100 hover:bg-amber-600 hover:text-white'
-                                                                                    }`}
-                                                                            >
-                                                                                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${e.status === 'paid' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                                                                {e.status === 'paid' ? 'Payé' : 'En Attente'}
-                                                                            </button>
+                                                                            {isAdmin ? (
+                                                                                <button
+                                                                                    onClick={() => updateStatus(e.id, e.status === 'paid' ? 'pending' : 'paid')}
+                                                                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${e.status === 'paid'
+                                                                                        ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                                                                        : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                                                                        }`}
+                                                                                >
+                                                                                    <div className={`w-1.5 h-1.5 rounded-full ${e.status === 'paid' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                                                    {e.status === 'paid' ? 'Payé' : 'En attente'}
+                                                                                </button>
+                                                                            ) : (
+                                                                                <span
+                                                                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${e.status === 'paid'
+                                                                                        ? 'bg-emerald-50 text-emerald-700'
+                                                                                        : 'bg-amber-50 text-amber-700'
+                                                                                        }`}
+                                                                                >
+                                                                                    <div className={`w-1.5 h-1.5 rounded-full ${e.status === 'paid' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                                                    {e.status === 'paid' ? 'Payé' : 'En attente'}
+                                                                                </span>
+                                                                            )}
                                                                         </div>
                                                                     </td>
-                                                                    <td className="px-6 py-6 text-right">
-                                                                        <div className="flex flex-col items-end">
-                                                                            <span className="text-lg font-black text-slate-900 tabular-nums leading-none tracking-tighter">
-                                                                                {formatValue(e.price)}
-                                                                            </span>
-                                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">Dinar Tunisien</span>
-                                                                        </div>
+                                                                    <td className="px-4 py-3 text-right">
+                                                                        <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                                                                            {formatValue(e.price)} <span className="text-xs font-medium text-slate-400">DT</span>
+                                                                        </span>
                                                                     </td>
-                                                                    <td className="px-6 py-6 text-right" onClick={(ev) => ev.stopPropagation()}>
-                                                                        <div className="flex items-center justify-end gap-2 px-2">
+                                                                    <td className="px-4 py-3 text-right" onClick={(ev) => ev.stopPropagation()}>
+                                                                        <div className="flex items-center justify-end gap-1">
                                                                             <button
                                                                                 onClick={() => e.invoiceImage && setViewingImage(e.invoiceImage)}
                                                                                 disabled={!e.invoiceImage}
-                                                                                className={`p-2.5 rounded-2xl transition-all duration-300 ${e.invoiceImage ? 'bg-slate-50 text-slate-900 hover:bg-slate-900 hover:text-white shadow-sm' : 'text-slate-200 cursor-not-allowed'}`}
+                                                                                className={`inline-flex items-center justify-center w-9 h-9 rounded-lg transition-colors ${e.invoiceImage ? 'text-slate-500 hover:bg-slate-100 hover:text-slate-700' : 'text-slate-200 cursor-not-allowed'}`}
                                                                             >
                                                                                 <Eye className="h-4 w-4" />
                                                                             </button>
                                                                             {isAdmin && (
-                                                                                <div className="flex items-center gap-1 opacity-20 group-hover:opacity-100 transition-opacity duration-500">
+                                                                                <>
                                                                                     <button
                                                                                         onClick={() => handleOpenDocPicker('expense', e.id)}
-                                                                                        className="p-2.5 rounded-2xl bg-slate-50 text-slate-400 hover:bg-amber-500 hover:text-white transition-all shadow-sm"
+                                                                                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
                                                                                     >
                                                                                         <ImageIcon className="h-4 w-4" />
                                                                                     </button>
                                                                                     <button
                                                                                         onClick={() => handleEditExpense(e)}
-                                                                                        className="p-2.5 rounded-2xl bg-slate-50 text-slate-400 hover:bg-blue-500 hover:text-white transition-all shadow-sm"
+                                                                                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
                                                                                     >
                                                                                         <Pencil className="h-4 w-4" />
                                                                                     </button>
                                                                                     <button
                                                                                         onClick={() => handleDelete(e.id)}
-                                                                                        className="p-2.5 rounded-2xl bg-slate-50 text-slate-400 hover:bg-rose-500 hover:text-white transition-all shadow-sm"
+                                                                                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
                                                                                     >
                                                                                         <Trash2 className="h-4 w-4" />
                                                                                     </button>
-                                                                                </div>
+                                                                                </>
                                                                             )}
                                                                         </div>
                                                                     </td>
                                                                 </tr>
                                                                 {isExpanded && (
-                                                                    <motion.tr
-                                                                        initial={{ opacity: 0, height: 0 }}
-                                                                        animate={{ opacity: 1, height: 'auto' }}
-                                                                        className="bg-slate-50/50"
-                                                                    >
-                                                                        <td colSpan={7} className="px-8 py-0">
-                                                                            <div className="pb-8 pt-2 overflow-hidden">
-                                                                                <div className="bg-white rounded-[2rem] border border-slate-200 shadow-xl p-8 space-y-8 animate-in slide-in-from-top-4 duration-500">
+                                                                    <tr className="bg-slate-50">
+                                                                        <td colSpan={6} className="px-4 py-0">
+                                                                            <div className="pb-4 pt-1">
+                                                                                <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-5">
                                                                                     {/* Detailed Infos Header */}
-                                                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-                                                                                        <div className="space-y-1.5">
-                                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Document Réf.</p>
-                                                                                            <p className="text-[13px] font-black text-slate-900 uppercase tracking-tight">{e.item}</p>
+                                                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                                                        <div>
+                                                                                            <p className="text-xs text-slate-400">Document réf.</p>
+                                                                                            <p className="text-sm font-medium text-slate-900">{e.item}</p>
                                                                                         </div>
-                                                                                        <div className="space-y-1.5">
-                                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date Émission</p>
-                                                                                            <p className="text-[13px] font-black text-slate-900">{e.date}</p>
+                                                                                        <div>
+                                                                                            <p className="text-xs text-slate-400">Date émission</p>
+                                                                                            <p className="text-sm font-medium text-slate-900">{e.date}</p>
                                                                                         </div>
-                                                                                        <div className="space-y-1.5">
-                                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quantité/Volume</p>
-                                                                                            <p className="text-[13px] font-black text-slate-900">{e.quantity || '1.000'}</p>
+                                                                                        <div>
+                                                                                            <p className="text-xs text-slate-400">Quantité/volume</p>
+                                                                                            <p className="text-sm font-medium text-slate-900">{e.quantity || '1.000'}</p>
                                                                                         </div>
-                                                                                        <div className="space-y-1.5">
-                                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Saisi</p>
-                                                                                            <p className="text-xl font-black text-[#FFB800] tabular-nums leading-none tracking-tighter">{formatValue(e.price)} <span className="text-[10px]">DT</span></p>
+                                                                                        <div>
+                                                                                            <p className="text-xs text-slate-400">Total saisi</p>
+                                                                                            <p className="text-base font-semibold text-slate-900 tabular-nums">{formatValue(e.price)} <span className="text-xs text-slate-400">DT</span></p>
                                                                                         </div>
                                                                                     </div>
 
                                                                                     {/* Specialty Fields (Concrete, etc) */}
                                                                                     {(e.lieuLivraison || e.toupie || e.pompe || e.heure) && (
-                                                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                                                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
                                                                                             {e.lieuLivraison && (
-                                                                                                <div className="space-y-1">
-                                                                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Lieu Livraison</p>
-                                                                                                    <p className="text-[11px] font-black text-slate-900 uppercase">{e.lieuLivraison}</p>
+                                                                                                <div>
+                                                                                                    <p className="text-xs text-slate-400">Lieu livraison</p>
+                                                                                                    <p className="text-sm font-medium text-slate-900">{e.lieuLivraison}</p>
                                                                                                 </div>
                                                                                             )}
                                                                                             {e.toupie && (
-                                                                                                <div className="space-y-1">
-                                                                                                    <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Toupie / Camion</p>
-                                                                                                    <p className="text-[11px] font-black text-blue-900 uppercase">{e.toupie} {e.chaufeur && `(${e.chaufeur})`}</p>
+                                                                                                <div>
+                                                                                                    <p className="text-xs text-slate-400">Toupie / camion</p>
+                                                                                                    <p className="text-sm font-medium text-slate-900">{e.toupie} {e.chaufeur && `(${e.chaufeur})`}</p>
                                                                                                 </div>
                                                                                             )}
                                                                                             {(e.pompe || e.pompiste) && (
-                                                                                                <div className="space-y-1">
-                                                                                                    <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Pompe / Pompiste</p>
-                                                                                                    <p className="text-[11px] font-black text-emerald-900">{e.pompe || '-'} / {e.pompiste || '-'}</p>
+                                                                                                <div>
+                                                                                                    <p className="text-xs text-slate-400">Pompe / pompiste</p>
+                                                                                                    <p className="text-sm font-medium text-slate-900">{e.pompe || '-'} / {e.pompiste || '-'}</p>
                                                                                                 </div>
                                                                                             )}
                                                                                             {e.heure && (
-                                                                                                <div className="space-y-1">
-                                                                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Heure / Adjuvant</p>
-                                                                                                    <p className="text-[11px] font-black text-slate-600 font-mono">{e.heure || '-'} | {e.adjuvant || '-'}</p>
+                                                                                                <div>
+                                                                                                    <p className="text-xs text-slate-400">Heure / adjuvant</p>
+                                                                                                    <p className="text-sm font-medium text-slate-600 font-mono">{e.heure || '-'} | {e.adjuvant || '-'}</p>
                                                                                                 </div>
                                                                                             )}
                                                                                         </div>
@@ -4007,37 +4062,37 @@ function ExpensesContentMain() {
 
                                                                                     {/* Line Items Table */}
                                                                                     {e.items && e.items.length > 0 && (
-                                                                                        <div className="rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+                                                                                        <div className="rounded-xl border border-slate-200 overflow-hidden">
                                                                                             <table className="w-full text-left border-collapse">
-                                                                                                <thead className="bg-[#1e293b] text-white/40 text-[8px] font-black uppercase tracking-[0.2em]">
+                                                                                                <thead className="bg-slate-50 text-xs font-medium text-slate-500">
                                                                                                     <tr>
-                                                                                                        <th className="px-6 py-4 w-12 text-center">#</th>
-                                                                                                        <th className="px-6 py-4">Nom de l'Article / Désignation</th>
-                                                                                                        <th className="px-6 py-4 text-center">Qté.</th>
-                                                                                                        <th className="px-6 py-4 text-right">P.U TTC</th>
-                                                                                                        <th className="px-6 py-4 text-right">Total TTC</th>
+                                                                                                        <th className="px-4 py-2.5 w-10 text-center">#</th>
+                                                                                                        <th className="px-4 py-2.5">Désignation</th>
+                                                                                                        <th className="px-4 py-2.5 text-center">Qté</th>
+                                                                                                        <th className="px-4 py-2.5 text-right">P.U TTC</th>
+                                                                                                        <th className="px-4 py-2.5 text-right">Total TTC</th>
                                                                                                     </tr>
                                                                                                 </thead>
-                                                                                                <tbody className="divide-y divide-slate-50">
+                                                                                                <tbody>
                                                                                                     {e.items?.map((item, idx) => (
-                                                                                                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                                                                                                            <td className="px-6 py-4 text-center text-[9px] font-bold text-slate-300">{idx + 1}</td>
-                                                                                                            <td className="px-6 py-4">
+                                                                                                        <tr key={idx} className="border-t border-slate-100">
+                                                                                                            <td className="px-4 py-2.5 text-center text-xs text-slate-400">{idx + 1}</td>
+                                                                                                            <td className="px-4 py-2.5">
                                                                                                                 <div className="flex flex-col">
-                                                                                                                    <span className="text-[11px] font-black text-slate-900 uppercase tracking-tight">{item.designation}</span>
-                                                                                                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{item.unit || 'UNITÉ'}</span>
+                                                                                                                    <span className="text-sm font-medium text-slate-900">{item.designation}</span>
+                                                                                                                    <span className="text-xs text-slate-400">{item.unit || 'Unité'}</span>
                                                                                                                 </div>
                                                                                                             </td>
-                                                                                                            <td className="px-6 py-4 text-center">
-                                                                                                                <span className="text-[11px] font-black text-slate-900">{item.quantity}</span>
+                                                                                                            <td className="px-4 py-2.5 text-center">
+                                                                                                                <span className="text-sm text-slate-900 tabular-nums">{item.quantity}</span>
                                                                                                             </td>
-                                                                                                            <td className="px-6 py-4 text-right">
-                                                                                                                <span className="text-[11px] font-bold text-slate-500 tabular-nums">{(item.unitPriceHT || item.unitPrice).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                                                                                                            <td className="px-4 py-2.5 text-right">
+                                                                                                                <span className="text-sm text-slate-600 tabular-nums">{(item.unitPriceHT || item.unitPrice).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
                                                                                                             </td>
-                                                                                                            <td className="px-6 py-4 text-right">
+                                                                                                            <td className="px-4 py-2.5 text-right">
                                                                                                                 <div className="flex flex-col items-end">
-                                                                                                                    <span className="text-[11px] font-black text-blue-900 tabular-nums leading-none">{formatValue(item.totalTTC)}</span>
-                                                                                                                    {item.remise ? <span className="text-[8px] font-black text-rose-500 uppercase mt-0.5">-{item.remise}% REMISE</span> : null}
+                                                                                                                    <span className="text-sm font-medium text-slate-900 tabular-nums">{formatValue(item.totalTTC)}</span>
+                                                                                                                    {item.remise ? <span className="text-xs font-medium text-rose-600 mt-0.5">-{item.remise}% remise</span> : null}
                                                                                                                 </div>
                                                                                                             </td>
                                                                                                         </tr>
@@ -4049,280 +4104,419 @@ function ExpensesContentMain() {
                                                                                 </div>
                                                                             </div>
                                                                         </td>
-                                                                    </motion.tr>
+                                                                    </tr>
                                                                 )}
                                                             </React.Fragment>
                                                         );
                                                     })}
+                                                    {sortedExpenses.length === 0 && (
+                                                        <tr className="border-t border-slate-100">
+                                                            <td colSpan={6} className="py-10 text-center text-sm text-slate-400">Aucune facture</td>
+                                                        </tr>
+                                                    )}
                                                 </tbody>
                                             </table>
                                         </div>
+
+                                        {/* Mobile sort control */}
+                                        <div className="md:hidden flex items-center gap-2">
+                                            <span className="text-xs text-slate-400">Trier :</span>
+                                            {([
+                                                { key: 'date', label: 'Date' },
+                                                { key: 'price', label: 'Montant' },
+                                            ] as const).map(opt => {
+                                                const active = sortConfig.key === opt.key;
+                                                return (
+                                                    <button
+                                                        key={opt.key}
+                                                        onClick={() => handleSort(opt.key)}
+                                                        className={`inline-flex items-center gap-1 h-8 px-3 rounded-lg text-sm font-medium transition-colors ${active ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-600'}`}
+                                                    >
+                                                        {opt.label}
+                                                        {active && (sortConfig.direction === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />)}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* Mobile card list */}
+                                        <div className="md:hidden space-y-2.5">
+                                            {sortedExpenses.length === 0 && (
+                                                <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-10 text-center text-sm text-slate-400">Aucune facture</div>
+                                            )}
+                                            {sortedExpenses.map((e) => {
+                                                const isExpanded = expandedRows[e.id];
+                                                return (
+                                                    <div key={e.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                                                        <div className="flex items-start gap-3">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="mt-1 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
+                                                                checked={selectedExpenseIds.has(e.id)}
+                                                                onChange={() => toggleSelectExpense(e.id)}
+                                                            />
+                                                            <div className="flex-1 min-w-0" onClick={() => toggleRow(e.id)}>
+                                                                <div className="flex items-start justify-between gap-2">
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-sm font-medium text-slate-900 truncate flex items-center gap-2">
+                                                                            {e.item}
+                                                                            {e.items && e.items.length > 0 && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-medium shrink-0">{e.items.length} art.</span>}
+                                                                        </p>
+                                                                        <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
+                                                                            <Clock className="h-3 w-3" /> {e.date}
+                                                                        </p>
+                                                                    </div>
+                                                                    <p className="text-sm font-semibold text-slate-900 tabular-nums shrink-0">{formatValue(e.price)} <span className="text-xs font-medium text-slate-400">DT</span></p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+                                                            {isAdmin ? (
+                                                                <button
+                                                                    onClick={() => updateStatus(e.id, e.status === 'paid' ? 'pending' : 'paid')}
+                                                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${e.status === 'paid'
+                                                                        ? 'bg-emerald-50 text-emerald-700'
+                                                                        : 'bg-amber-50 text-amber-700'
+                                                                        }`}
+                                                                >
+                                                                    <div className={`w-1.5 h-1.5 rounded-full ${e.status === 'paid' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                                    {e.status === 'paid' ? 'Payé' : 'En attente'}
+                                                                </button>
+                                                            ) : (
+                                                                <span
+                                                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${e.status === 'paid'
+                                                                        ? 'bg-emerald-50 text-emerald-700'
+                                                                        : 'bg-amber-50 text-amber-700'
+                                                                        }`}
+                                                                >
+                                                                    <div className={`w-1.5 h-1.5 rounded-full ${e.status === 'paid' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                                    {e.status === 'paid' ? 'Payé' : 'En attente'}
+                                                                </span>
+                                                            )}
+                                                            <div className="flex items-center gap-1">
+                                                                <button
+                                                                    onClick={() => e.invoiceImage && setViewingImage(e.invoiceImage)}
+                                                                    disabled={!e.invoiceImage}
+                                                                    className={`inline-flex items-center justify-center w-9 h-9 rounded-lg transition-colors ${e.invoiceImage ? 'text-slate-500 hover:bg-slate-100 hover:text-slate-700' : 'text-slate-200 cursor-not-allowed'}`}
+                                                                >
+                                                                    <Eye className="h-4 w-4" />
+                                                                </button>
+                                                                {isAdmin && (
+                                                                    <>
+                                                                        <button
+                                                                            onClick={() => handleOpenDocPicker('expense', e.id)}
+                                                                            className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                                                        >
+                                                                            <ImageIcon className="h-4 w-4" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleEditExpense(e)}
+                                                                            className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                                                        >
+                                                                            <Pencil className="h-4 w-4" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleDelete(e.id)}
+                                                                            className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                                                                        >
+                                                                            <Trash2 className="h-4 w-4" />
+                                                                        </button>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        {isExpanded && e.items && e.items.length > 0 && (
+                                                            <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
+                                                                {e.items.map((item, idx) => (
+                                                                    <div key={idx} className="flex items-center justify-between text-sm">
+                                                                        <span className="text-slate-700 truncate">{item.designation} <span className="text-slate-400">× {item.quantity}</span></span>
+                                                                        <span className="text-slate-900 tabular-nums shrink-0 ml-2">{formatValue(item.totalTTC)}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 )}
-                            </motion.div>
+                            </div>
+                            )}
 
-                            {/* Historique Acomptes - Luxury Table */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.2 }}
-                                className="space-y-6 mb-20"
-                            >
-                                <div
-                                    className="flex items-center justify-between px-6 py-4 rounded-3xl cursor-pointer group hover:bg-white transition-all border border-transparent hover:border-slate-200 hover:shadow-xl hover:shadow-slate-200/50"
-                                    onClick={() => setShowDepositsSection(!showDepositsSection)}
-                                >
-                                    <div className="flex items-center gap-4">
-                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 ${showDepositsSection ? 'bg-[#FFB800] text-slate-900' : 'bg-slate-50 text-slate-400 group-hover:bg-[#FFB800] group-hover:text-slate-900'}`}>
-                                            <TrendingUp className="h-6 w-6" strokeWidth={2} />
+                            {/* Historique Acomptes */}
+                            {currentSupplier && panelTab === 'acomptes' && (
+                            <div className="space-y-4">
+                                <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
+                                    <button
+                                        className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                                        onClick={() => setShowDepositsSection(!showDepositsSection)}
+                                    >
+                                        <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                                            <TrendingUp className="h-4 w-4" />
                                         </div>
-                                        <div>
-                                            <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Historique Acomptes</h2>
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{currentSupplier?.deposits?.length || 0} paiements enregistrés</p>
+                                        <div className="min-w-0">
+                                            <h2 className="text-sm font-medium text-slate-900">Historique acomptes</h2>
+                                            <p className="text-xs text-slate-500">{currentSupplier?.deposits?.length || 0} paiements enregistrés</p>
                                         </div>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        {isAdmin && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setEditingDepositId(null);
-                                                    setNewDepositData({
-                                                        amount: '',
-                                                        date: new Date().toISOString().split('T')[0],
-                                                        payer: '',
-                                                        commercial: '',
-                                                        ref: ''
-                                                    });
-                                                    setShowAddDepositModal(true);
-                                                }}
-                                                className="luxury-button-gold scale-90"
-                                            >
-                                                <Plus className="h-4 w-4 mr-2" /> NOUVEAU
-                                            </button>
-                                        )}
-                                        <div className={`p-2 rounded-full border border-slate-100 transition-transform duration-500 ${showDepositsSection ? 'rotate-180' : ''}`}>
-                                            <ChevronDown className="h-5 w-5 text-slate-400" />
-                                        </div>
-                                    </div>
+                                        <ChevronDown className={`h-4 w-4 text-slate-400 ml-2 shrink-0 transition-transform ${showDepositsSection ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    {isAdmin && (
+                                        <button
+                                            onClick={() => {
+                                                setEditingDepositId(null);
+                                                setNewDepositData({
+                                                    amount: '',
+                                                    date: new Date().toISOString().split('T')[0],
+                                                    payer: '',
+                                                    commercial: '',
+                                                    ref: ''
+                                                });
+                                                setShowAddDepositModal(true);
+                                            }}
+                                            className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors shrink-0"
+                                        >
+                                            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Nouveau</span>
+                                        </button>
+                                    )}
                                 </div>
 
-                                {
-                                    showDepositsSection && (
-                                        <div className="luxury-card bg-white overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500">
-                                            <div className="overflow-x-auto">
-                                                <table className="w-full text-left border-collapse">
-                                                    <thead className="bg-[#1e293b] text-white/50 text-[9px] font-black uppercase tracking-[0.2em]">
-                                                        <tr>
-                                                            <th className="px-6 py-5 text-center w-8 opacity-50 font-medium">#</th>
-                                                            <th className="px-6 py-5 text-left w-24">Date</th>
-                                                            <th className="px-6 py-5 text-left">Référence / Payeur</th>
-                                                            <th className="px-6 py-5 text-right w-48">Montant</th>
-                                                            <th className="px-6 py-5 text-right w-32">Actions</th>
+                                {showDepositsSection && (
+                                    <>
+                                        {/* Desktop table */}
+                                        <div className="hidden md:block rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead className="bg-slate-50 text-xs font-medium text-slate-500">
+                                                    <tr>
+                                                        <th className="px-4 py-3 text-left w-24">Date</th>
+                                                        <th className="px-4 py-3 text-left">Référence / Payeur</th>
+                                                        <th className="px-4 py-3 text-right w-40">Montant</th>
+                                                        <th className="px-4 py-3 text-right w-32">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {currentSupplier?.deposits?.length === 0 ? (
+                                                        <tr className="border-t border-slate-100">
+                                                            <td colSpan={4} className="py-12 text-center">
+                                                                <div className="flex flex-col items-center gap-2">
+                                                                    <Package className="h-8 w-8 text-slate-200" />
+                                                                    <p className="text-sm text-slate-400">Aucun acompte pour le moment.</p>
+                                                                </div>
+                                                            </td>
                                                         </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-slate-100">
-                                                        {currentSupplier?.deposits?.length === 0 ? (
-                                                            <tr>
-                                                                <td colSpan={5} className="px-6 py-12 text-center">
-                                                                    <div className="flex flex-col items-center gap-4">
-                                                                        <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center">
-                                                                            <Package className="h-8 w-8 text-slate-200" />
-                                                                        </div>
-                                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">
-                                                                            Aucun acompte pour le moment.
-                                                                        </p>
+                                                    ) : (
+                                                        currentSupplier?.deposits?.map((d) => (
+                                                            <tr key={d.id} className="group border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                                                                <td className="px-4 py-3 text-sm text-slate-500 font-mono">
+                                                                    {d.date}
+                                                                </td>
+                                                                <td className="px-4 py-3">
+                                                                    <div className="flex flex-col gap-0.5">
+                                                                        <span className="text-sm font-medium text-slate-900">
+                                                                            {d.ref || "Sans référence"}
+                                                                        </span>
+                                                                        <span className="inline-flex items-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600">{d.payer || d.commercial || 'Projet'}</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-4 py-3 text-right">
+                                                                    <span className="text-sm font-semibold text-emerald-600 tabular-nums">
+                                                                        {d.amount.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs font-medium text-slate-400">DT</span>
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-4 py-3 text-right">
+                                                                    <div className="flex items-center justify-end gap-1">
+                                                                        <button
+                                                                            onClick={() => (d.receiptImage || d.id === 'd_cap_1') && setViewingImage(d.receiptImage || 'https://via.placeholder.com/800x1000?text=Recu+476+3900DT')}
+                                                                            disabled={!d.receiptImage && d.id !== 'd_cap_1'}
+                                                                            className={`inline-flex items-center justify-center w-9 h-9 rounded-lg transition-colors ${(d.receiptImage || d.id === 'd_cap_1') ? 'text-slate-500 hover:bg-slate-100 hover:text-slate-700' : 'text-slate-200 cursor-not-allowed'}`}
+                                                                        >
+                                                                            <Eye className="h-4 w-4" />
+                                                                        </button>
+                                                                        {isAdmin && (
+                                                                            <>
+                                                                                <button
+                                                                                    onClick={() => handleOpenDocPicker('deposit', d.id)}
+                                                                                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                                                                >
+                                                                                    <ImageIcon className="h-4 w-4" />
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => handleEditDeposit(d)}
+                                                                                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                                                                >
+                                                                                    <FileText className="h-4 w-4" />
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => handleDeleteDeposit(d.id)}
+                                                                                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                                                                                >
+                                                                                    <Trash2 className="h-4 w-4" />
+                                                                                </button>
+                                                                            </>
+                                                                        )}
                                                                     </div>
                                                                 </td>
                                                             </tr>
-                                                        ) : (
-                                                            currentSupplier?.deposits?.map((d, index) => (
-                                                                <tr key={d.id} className="group hover:bg-slate-50/50 transition-all duration-300">
-                                                                    <td className="px-6 py-6 text-center text-[10px] font-black text-slate-300 group-hover:text-[#FFB800] transition-colors">{index + 1}</td>
-                                                                    <td className="px-6 py-6 text-[11px] font-bold text-slate-400 font-mono tracking-tight uppercase">
-                                                                        {d.date}
-                                                                    </td>
-                                                                    <td className="px-6 py-6">
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <span className="text-[13px] font-black text-slate-900 uppercase tracking-tight">
-                                                                                {d.ref || "SANS RÉFÉRENCE"}
-                                                                            </span>
-                                                                            <div className="flex items-center gap-2">
-                                                                                <div className="bg-slate-100 p-0.5 px-1.5 rounded-md">
-                                                                                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{d.payer || d.commercial || 'PROJET'}</span>
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    </td>
-                                                                    <td className="px-6 py-6 text-right">
-                                                                        <div className="flex flex-col items-end">
-                                                                            <span className="text-lg font-black text-emerald-600 tabular-nums leading-none tracking-tighter">
-                                                                                {d.amount.toLocaleString(undefined, { minimumFractionDigits: 3 })}
-                                                                            </span>
-                                                                            <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest mt-1">Dinar Tunisien</span>
-                                                                        </div>
-                                                                    </td>
-                                                                    <td className="px-6 py-6 text-right">
-                                                                        <div className="flex items-center justify-end gap-2 px-2">
-                                                                            <button
-                                                                                onClick={() => (d.receiptImage || d.id === 'd_cap_1') && setViewingImage(d.receiptImage || 'https://via.placeholder.com/800x1000?text=Recu+476+3900DT')}
-                                                                                disabled={!d.receiptImage && d.id !== 'd_cap_1'}
-                                                                                className={`p-2.5 rounded-2xl transition-all duration-300 ${(d.receiptImage || d.id === 'd_cap_1') ? 'bg-slate-50 text-slate-900 hover:bg-[#FFB800] hover:text-slate-900 shadow-sm' : 'text-slate-200 cursor-not-allowed'}`}
-                                                                            >
-                                                                                <Eye className="h-4 w-4" />
-                                                                            </button>
-
-                                                                            {isAdmin && (
-                                                                                <div className="flex items-center gap-1 opacity-20 group-hover:opacity-100 transition-all duration-500">
-                                                                                    <button
-                                                                                        onClick={() => handleOpenDocPicker('deposit', d.id)}
-                                                                                        className="p-2.5 rounded-2xl bg-slate-50 text-slate-400 hover:bg-slate-900 hover:text-white transition-all shadow-sm"
-                                                                                    >
-                                                                                        <ImageIcon className="h-4 w-4" />
-                                                                                    </button>
-                                                                                    <button
-                                                                                        onClick={() => handleEditDeposit(d)}
-                                                                                        className="p-2.5 rounded-2xl bg-slate-50 text-slate-400 hover:bg-blue-500 hover:text-white transition-all shadow-sm"
-                                                                                    >
-                                                                                        <FileText className="h-4 w-4" />
-                                                                                    </button>
-                                                                                    <button
-                                                                                        onClick={() => handleDeleteDeposit(d.id)}
-                                                                                        className="p-2.5 rounded-2xl bg-slate-50 text-slate-400 hover:bg-rose-500 hover:text-white transition-all shadow-sm"
-                                                                                    >
-                                                                                        <Trash2 className="h-4 w-4" />
-                                                                                    </button>
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    </td>
-                                                                </tr>
-                                                            ))
-                                                        )}
-                                                    </tbody>
-                                                </table>
-                                            </div>
+                                                        ))
+                                                    )}
+                                                </tbody>
+                                            </table>
                                         </div>
-                                    )
-                                }
-                            </motion.div >
+
+                                        {/* Mobile card list */}
+                                        <div className="md:hidden space-y-2.5">
+                                            {currentSupplier?.deposits?.length === 0 && (
+                                                <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-10 text-center text-sm text-slate-400">Aucun acompte pour le moment.</div>
+                                            )}
+                                            {currentSupplier?.deposits?.map((d) => (
+                                                <div key={d.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-medium text-slate-900">{d.ref || "Sans référence"}</p>
+                                                            <p className="text-xs text-slate-400 font-mono mt-0.5">{d.date}</p>
+                                                            <span className="inline-flex items-center mt-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600">{d.payer || d.commercial || 'Projet'}</span>
+                                                        </div>
+                                                        <p className="text-sm font-semibold text-emerald-600 tabular-nums shrink-0">{d.amount.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs font-medium text-slate-400">DT</span></p>
+                                                    </div>
+                                                    <div className="flex items-center justify-end gap-1 mt-3 pt-3 border-t border-slate-100">
+                                                        <button
+                                                            onClick={() => (d.receiptImage || d.id === 'd_cap_1') && setViewingImage(d.receiptImage || 'https://via.placeholder.com/800x1000?text=Recu+476+3900DT')}
+                                                            disabled={!d.receiptImage && d.id !== 'd_cap_1'}
+                                                            className={`inline-flex items-center justify-center w-9 h-9 rounded-lg transition-colors ${(d.receiptImage || d.id === 'd_cap_1') ? 'text-slate-500 hover:bg-slate-100 hover:text-slate-700' : 'text-slate-200 cursor-not-allowed'}`}
+                                                        >
+                                                            <Eye className="h-4 w-4" />
+                                                        </button>
+                                                        {isAdmin && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => handleOpenDocPicker('deposit', d.id)}
+                                                                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                                                >
+                                                                    <ImageIcon className="h-4 w-4" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleEditDeposit(d)}
+                                                                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                                                >
+                                                                    <FileText className="h-4 w-4" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleDeleteDeposit(d.id)}
+                                                                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                            )}
                         </motion.div >
                     </div >
                 )
             }
 
             {/* Note Editor Modal */}
-            {
-                showNoteModal && (
-                    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                        <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200">
-                            <div className="flex justify-between items-center mb-6">
-                                <div>
-                                    <h3 className="text-xl font-black uppercase tracking-tighter text-slate-900">
-                                        {noteEditorType === 'supplier' ? `Notes: ${currentSupplier?.name || ''}` : 'Note Générale du Projet'}
-                                    </h3>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Observations et consignes</p>
-                                </div>
-                                <button onClick={() => setShowNoteModal(false)} className="p-3 hover:bg-slate-50 rounded-2xl transition-colors">
-                                    <X className="h-6 w-6 text-slate-300" />
-                                </button>
-                            </div>
+            <Modal
+                open={showNoteModal}
+                onClose={() => setShowNoteModal(false)}
+                title={noteEditorType === 'supplier' ? `Notes: ${currentSupplier?.name || ''}` : 'Note générale du projet'}
+                description="Observations et consignes"
+                size="lg"
+                footer={<>
+                    <button
+                        onClick={() => setShowNoteModal(false)}
+                        className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
+                    >
+                        Annuler
+                    </button>
+                    <button
+                        onClick={handleSaveNote}
+                        className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors"
+                    >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Enregistrer
+                    </button>
+                </>}
+            >
+                <textarea
+                    className="w-full px-3 py-2.5 min-h-[220px] rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition resize-none"
+                    placeholder="Saisissez vos notes ici..."
+                    value={tempNoteValue}
+                    onChange={(e) => setTempNoteValue(e.target.value)}
+                    autoFocus
+                />
+            </Modal>
 
-                            <textarea
-                                className="w-full h-64 bg-slate-50 border-2 border-slate-100 focus:border-slate-900 p-6 rounded-3xl text-sm font-medium text-slate-700 outline-none transition-all resize-none"
-                                placeholder="Saisissez vos notes ici..."
-                                value={tempNoteValue}
-                                onChange={(e) => setTempNoteValue(e.target.value)}
-                                autoFocus
-                            />
-
-                            <div className="mt-8 flex gap-3">
-                                <button
-                                    onClick={() => setShowNoteModal(false)}
-                                    className="flex-1 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors bg-slate-50 rounded-2xl"
-                                >
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={handleSaveNote}
-                                    className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-slate-200 transition-all flex items-center justify-center gap-2"
-                                >
-                                    <CheckCircle2 className="h-4 w-4" />
-                                    Enregistrer
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
             {/* Document Picker Modal */}
-            {
-                showDocPicker && (
-                    <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                        <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
-                            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                                <div>
-                                    <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-900 flex items-center gap-3">
-                                        <ImageIcon className="h-6 w-6 text-[#FFB800]" />
-                                        Choisir un Document
-                                    </h3>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sélectionnez une image à lier à {pickerTarget?.type === 'expense' ? 'la facture' : 'l\'acompte'}</p>
-                                </div>
-                                <button onClick={() => { setShowDocPicker(false); setPickerTarget(null); }} className="p-3 hover:bg-white rounded-2xl transition-colors shadow-sm">
-                                    <X className="h-6 w-6 text-slate-300" />
-                                </button>
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+            <Modal
+                open={showDocPicker}
+                onClose={() => { setShowDocPicker(false); setPickerTarget(null); }}
+                title="Choisir un document"
+                description={`Sélectionnez une image à lier à ${pickerTarget?.type === 'expense' ? 'la facture' : "l'acompte"}`}
+                size="xl"
+                footer={
+                    <button
+                        onClick={() => { setShowDocPicker(false); setPickerTarget(null); }}
+                        className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
+                    >
+                        Annuler
+                    </button>
+                }
+            >
+                            <div>
                                 {uploadedDocs.filter(d => d.supplierId === activeTab).length === 0 ? (
-                                    <div className="h-64 flex flex-col items-center justify-center text-slate-300 gap-4">
-                                        <Upload className="h-12 w-12 opacity-20" />
-                                        <p className="text-xs font-black uppercase tracking-widest">Aucun document importé pour ce fournisseur</p>
+                                    <div className="h-56 flex flex-col items-center justify-center text-slate-400 gap-3">
+                                        <Upload className="h-10 w-10 text-slate-200" />
+                                        <p className="text-sm text-slate-500">Aucun document importé pour ce fournisseur</p>
                                         <button
                                             onClick={() => { setShowDocPicker(false); setShowUploadModal(true); }}
-                                            className="text-[10px] font-black text-blue-500 hover:underline uppercase"
+                                            className="text-sm font-medium text-slate-700 hover:underline"
                                         >
                                             Importer maintenant
                                         </button>
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                                         {uploadedDocs
                                             .filter(d => d.supplierId === activeTab)
                                             .map((doc) => (
                                                 <div
                                                     key={doc.id}
-                                                    className="group relative aspect-square rounded-2xl overflow-hidden border-2 border-slate-100 hover:border-[#FFB800] transition-all bg-slate-50 flex flex-col"
+                                                    className="group relative rounded-2xl overflow-hidden border border-slate-200 hover:border-slate-300 transition-colors bg-white flex flex-col"
                                                 >
                                                     <div
-                                                        className="flex-1 cursor-pointer overflow-hidden relative"
+                                                        className="aspect-square cursor-pointer overflow-hidden relative bg-slate-50"
                                                         onClick={() => setViewingImage(doc.url)}
                                                     >
                                                         {doc.fileName.toLowerCase().endsWith('.pdf') ? (
                                                             <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-2">
-                                                                <FileText className="h-12 w-12 text-red-100" />
-                                                                <span className="text-[8px] font-bold text-slate-400 break-all text-center">{doc.fileName}</span>
+                                                                <FileText className="h-10 w-10 text-rose-200" />
+                                                                <span className="text-[10px] text-slate-400 break-all text-center">{doc.fileName}</span>
                                                             </div>
                                                         ) : (
-                                                            <img src={doc.url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={doc.fileName} />
+                                                            <img src={doc.url} className="w-full h-full object-cover" alt={doc.fileName} />
                                                         )}
-                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                                            <Eye className="text-white drop-shadow-md h-8 w-8" />
+                                                        <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                            <Eye className="text-white h-7 w-7" />
                                                         </div>
                                                     </div>
 
-                                                    <div className="p-3 bg-white border-t border-slate-100 flex flex-col gap-2">
-                                                        <div className="flex justify-between items-start">
-                                                            <p className="text-[9px] font-black text-slate-800 uppercase truncate flex-1">{doc.fileName}</p>
-                                                        </div>
+                                                    <div className="p-2.5 border-t border-slate-100 flex flex-col gap-2">
+                                                        <p className="text-xs font-medium text-slate-700 truncate">{doc.fileName}</p>
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 handleSelectDocLink(doc.url);
                                                             }}
-                                                            className="w-full bg-slate-900 text-white py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-[#FFB800] hover:text-slate-900 transition-all shadow-sm"
+                                                            className="w-full inline-flex items-center justify-center h-9 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors"
                                                         >
-                                                            Lier ce document
+                                                            Lier
                                                         </button>
                                                     </div>
                                                 </div>
@@ -4331,186 +4525,144 @@ function ExpensesContentMain() {
                                     </div>
                                 )}
                             </div>
-
-                            <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end">
-                                <button
-                                    onClick={() => { setShowDocPicker(false); setPickerTarget(null); }}
-                                    className="px-8 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors"
-                                >
-                                    Annuler
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+            </Modal>
 
             {/* Delete Confirmation Modal */}
-            {
-                showDeleteConfirmModal && supplierToDelete && (
-                    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                        <div className="bg-white rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-                            <div className="bg-red-600 p-8 text-white relative">
-                                <button
-                                    onClick={() => setShowDeleteConfirmModal(false)}
-                                    className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-full transition-colors"
-                                >
-                                    <X className="h-5 w-5" />
-                                </button>
-                                <div className="h-16 w-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6">
-                                    <AlertCircle className="h-8 w-8 text-white" />
-                                </div>
-                                <h2 className="text-2xl font-black uppercase tracking-tighter leading-tight">Retirer du projet ?</h2>
-                                <p className="mt-2 text-red-100 text-sm font-medium">
-                                    Vous allez retirer <span className="font-black underline">{supplierToDelete.name}</span> de ce projet.
-                                    Toutes ses dépenses et acomptes dans ce chantier seront supprimés.
-                                </p>
-                                <p className="mt-4 text-[10px] font-black uppercase tracking-widest text-red-200 opacity-80">
-                                    Le fournisseur restera disponible dans la liste globale.
-                                </p>
-                            </div>
-
-                            <div className="p-8 space-y-6">
-                                <p className="text-center text-slate-500 font-medium text-sm">
-                                    Êtes-vous sûr de vouloir retirer ce fournisseur ? Les données locales à ce projet seront perdues.
-                                </p>
-
-                                <div className="flex gap-4">
-                                    <button
-                                        onClick={() => setShowDeleteConfirmModal(false)}
-                                        className="flex-1 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors bg-slate-50 rounded-2xl"
-                                    >
-                                        Annuler
-                                    </button>
-                                    <button
-                                        onClick={handleRemoveSupplierFromProject}
-                                        disabled={isDeleting}
-                                        className="flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all bg-red-600 text-white shadow-xl shadow-red-200 hover:bg-red-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
-                                    >
-                                        {isDeleting ? 'Retrait...' : 'Confirmer'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+            <Modal
+                open={showDeleteConfirmModal && !!supplierToDelete}
+                onClose={() => { setShowDeleteConfirmModal(false); setDeleteConfirmInput(''); }}
+                title="Retirer du projet ?"
+                size="md"
+                persistent
+                icon={<div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center"><AlertCircle className="h-5 w-5" /></div>}
+                footer={<>
+                    <button
+                        onClick={() => { setShowDeleteConfirmModal(false); setDeleteConfirmInput(''); }}
+                        className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
+                    >
+                        Annuler
+                    </button>
+                    <button
+                        onClick={handleRemoveSupplierFromProject}
+                        disabled={isDeleting || deleteConfirmInput.trim().toUpperCase() !== (supplierToDelete?.name || '').trim().toUpperCase()}
+                        className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    >
+                        {isDeleting ? 'Retrait...' : 'Confirmer'}
+                    </button>
+                </>}
+            >
+                <div className="space-y-3">
+                    <p className="text-sm text-slate-600">
+                        Vous allez retirer <span className="font-medium text-slate-900">{supplierToDelete?.name}</span> de ce projet. Toutes ses dépenses et acomptes dans ce chantier seront supprimés.
+                    </p>
+                    <p className="text-xs text-slate-500">
+                        Le fournisseur restera disponible dans la liste globale. Les données locales à ce projet seront perdues.
+                    </p>
+                    <div>
+                        <label className="block text-[13px] font-medium text-slate-700 mb-1.5">
+                            Tapez <span className="font-semibold text-rose-600">{supplierToDelete?.name}</span> pour confirmer
+                        </label>
+                        <input
+                            type="text"
+                            value={deleteConfirmInput}
+                            onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                            placeholder="Nom du fournisseur"
+                            autoFocus
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !isDeleting && deleteConfirmInput.trim().toUpperCase() === (supplierToDelete?.name || '').trim().toUpperCase()) {
+                                    handleRemoveSupplierFromProject();
+                                }
+                            }}
+                            className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-300 transition"
+                        />
                     </div>
-                )
-            }
+                </div>
+            </Modal>
 
             {/* Trash / Archive Modal */}
-            {
-                showTrashModal && (
-                    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={() => setShowTrashModal(false)}>
-                        <div className="bg-white rounded-[2rem] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                            <div className="bg-slate-900 p-8 text-white flex justify-between items-center">
+            <Modal
+                open={showTrashModal}
+                onClose={() => setShowTrashModal(false)}
+                title="Fournisseurs archivés"
+                description="Restaurer un fournisseur et ses données"
+                size="lg"
+                footer={
+                    <button
+                        onClick={() => setShowTrashModal(false)}
+                        className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
+                    >
+                        Fermer
+                    </button>
+                }
+            >
+                <div className="space-y-2">
+                    {archivedSuppliers.length === 0 ? (
+                        <div className="text-center py-12">
+                            <Clock className="h-10 w-10 text-slate-200 mx-auto mb-3" />
+                            <p className="text-sm text-slate-400">La corbeille est vide</p>
+                        </div>
+                    ) : (
+                        archivedSuppliers.map((s: any) => (
+                            <div key={s.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
                                 <div>
-                                    <h2 className="text-xl font-black uppercase tracking-tighter">Fournisseurs Archivés</h2>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase">Restaurer un fournisseur et ses données</p>
+                                    <p className="text-sm font-medium text-slate-900">{s.name}</p>
+                                    <p className="text-xs text-slate-400">ID: {s.id}</p>
                                 </div>
-                                <X className="h-6 w-6 cursor-pointer hover:text-red-400 transition-colors" onClick={() => setShowTrashModal(false)} />
-                            </div>
-
-                            <div className="p-6 max-h-[60vh] overflow-y-auto no-scrollbar space-y-3">
-                                {archivedSuppliers.length === 0 ? (
-                                    <div className="text-center py-12">
-                                        <Clock className="h-12 w-12 text-slate-100 mx-auto mb-4" />
-                                        <p className="text-slate-400 font-bold uppercase text-xs">La corbeille est vide</p>
-                                    </div>
-                                ) : (
-                                    archivedSuppliers.map((s: any) => (
-                                        <div key={s.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-blue-200 transition-all">
-                                            <div className="flex items-center gap-3">
-                                                <div>
-                                                    <p className="text-sm font-black text-slate-900 uppercase tracking-tight">{s.name}</p>
-                                                    <p className="text-[10px] text-slate-400 font-bold uppercase">ID: {s.id}</p>
-                                                </div>
-                                            </div>
-                                            <button
-                                                onClick={() => handleRestoreSupplierToProject(s.id)}
-                                                className="px-4 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center gap-2"
-                                            >
-                                                <Clock className="h-3 w-3" />
-                                                Restaurer
-                                            </button>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-
-                            <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end">
                                 <button
-                                    onClick={() => setShowTrashModal(false)}
-                                    className="px-8 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors"
+                                    onClick={() => handleRestoreSupplierToProject(s.id)}
+                                    className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors"
                                 >
-                                    Fermer
+                                    <Clock className="h-3.5 w-3.5" />
+                                    Restaurer
                                 </button>
                             </div>
-                        </div>
-                    </div>
-                )
-            }
+                        ))
+                    )}
+                </div>
+            </Modal>
 
             {/* AI Coming Soon Modal */}
-            {
-                showAIComingSoonModal && (
-                    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                        <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200 text-center relative overflow-hidden">
-                            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500"></div>
-
-                            <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 relative">
-                                <Sparkles className="h-10 w-10 text-blue-500 animate-pulse" />
-                                <div className="absolute inset-0 bg-blue-400/20 rounded-full animate-ping"></div>
-                            </div>
-
-                            <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-900 mb-2">
-                                L'IA Arrive Bientôt !
-                            </h3>
-                            <p className="text-sm font-medium text-slate-500 mb-8 leading-relaxed">
-                                Notre module d'extraction intelligente est en cours de finalisation.
-                                <br />
-                                Vous pourrez bientôt scanner vos factures et les remplir automatiquement en un clin d'œil.
-                            </p>
-
-                            <button
-                                onClick={() => {
-                                    setShowAIComingSoonModal(false);
-                                    setShowAddInvoiceStep1(true);
-                                }}
-                                className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20"
-                            >
-                                Compris, j'ai hâte !
-                            </button>
-                        </div>
-                    </div>
-                )
-            }
+            <Modal
+                open={showAIComingSoonModal}
+                onClose={() => setShowAIComingSoonModal(false)}
+                title="L'IA arrive bientôt"
+                size="sm"
+                icon={<div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"><Sparkles className="h-5 w-5" /></div>}
+                footer={
+                    <button
+                        onClick={() => {
+                            setShowAIComingSoonModal(false);
+                            setShowAddInvoiceStep1(true);
+                        }}
+                        className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors"
+                    >
+                        Compris, j'ai hâte !
+                    </button>
+                }
+            >
+                <p className="text-sm text-slate-600 leading-relaxed">
+                    Notre module d'extraction intelligente est en cours de finalisation. Vous pourrez bientôt scanner vos factures et les remplir automatiquement en un clin d'œil.
+                </p>
+            </Modal>
 
             {/* Success Modal */}
-            {
-                showSuccessModal && (
-                    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                        <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 text-center relative overflow-hidden">
-                            <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 relative">
-                                <CheckCircle2 className="h-10 w-10 text-emerald-500" />
-                                <div className="absolute inset-0 bg-emerald-400/20 rounded-full animate-ping"></div>
-                            </div>
-
-                            <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-900 mb-2">
-                                Succès !
-                            </h3>
-                            <p className="text-sm font-medium text-slate-500 mb-8 leading-relaxed">
-                                La facture a été enregistrée avec succès.
-                            </p>
-
-                            <button
-                                onClick={() => setShowSuccessModal(false)}
-                                className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20"
-                            >
-                                Parfait
-                            </button>
-                        </div>
-                    </div>
-                )
-            }
+            <Modal
+                open={showSuccessModal}
+                onClose={() => setShowSuccessModal(false)}
+                title="Succès"
+                size="sm"
+                icon={<div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center"><CheckCircle2 className="h-5 w-5" /></div>}
+                footer={
+                    <button
+                        onClick={() => setShowSuccessModal(false)}
+                        className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors"
+                    >
+                        Parfait
+                    </button>
+                }
+            >
+                <p className="text-sm text-slate-600">La facture a été enregistrée avec succès.</p>
+            </Modal>
 
             {/* Hidden Input for Replacing Documents */}
             <input
@@ -4529,107 +4681,92 @@ function ExpensesContentMain() {
             {/* Undo Toast */}
             {
                 showUndoToast && lastReplacedDoc && (
-                    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[300] bg-slate-900 border border-slate-800 text-white px-6 py-4 rounded-3xl shadow-2xl flex items-center gap-6 animate-in slide-in-from-bottom-5 duration-300">
-                        <div className="flex flex-col">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 leading-none mb-1">Action effectuée</p>
-                            <p className="text-xs font-bold truncate max-w-[150px]">Document remplacé</p>
+                    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[300] bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-4 animate-in slide-in-from-bottom-5 duration-300">
+                        <div>
+                            <p className="text-xs text-slate-400 leading-none mb-0.5">Action effectuée</p>
+                            <p className="text-sm font-medium truncate max-w-[150px]">Document remplacé</p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                             <button
                                 onClick={handleUndoReplace}
-                                className="bg-[#FFB800] text-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-transform"
+                                className="inline-flex items-center justify-center h-9 px-3 rounded-xl bg-white text-slate-900 text-sm font-medium hover:bg-slate-100 transition-colors"
                             >
                                 Annuler
                             </button>
                             <button
                                 onClick={() => setShowUndoToast(false)}
-                                className="p-2 hover:bg-slate-800 rounded-full transition-colors"
+                                className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-400 hover:bg-white/10 hover:text-white transition-colors"
                             >
-                                <X className="h-4 w-4 text-slate-400" />
+                                <X className="h-4 w-4" />
                             </button>
                         </div>
                     </div>
                 )
             }
             {/* Document Delete Confirmation Modal */}
-            {
-                showDocDeleteModal && docToDelete && (
-                    <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-                        <div className="bg-white rounded-[2rem] w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-                            <div className="bg-red-600 p-8 text-white relative">
-                                <button
-                                    onClick={() => { setShowDocDeleteModal(false); setDocToDelete(null); }}
-                                    className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-full transition-colors"
-                                >
-                                    <X className="h-5 w-5" />
-                                </button>
-                                <div className="h-16 w-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6">
-                                    <Trash2 className="h-8 w-8 text-white" />
-                                </div>
-                                <h2 className="text-2xl font-black uppercase tracking-tighter leading-tight">Supprimer ?</h2>
-                                <p className="mt-2 text-red-100 text-sm font-medium">
-                                    {docToDelete.id === 'all'
-                                        ? "Êtes-vous sûr de vouloir supprimer TOUS les documents de ce fournisseur ?"
-                                        : `Êtes-vous sûr de vouloir supprimer le document "${docToDelete.fileName}" ?`
-                                    }
-                                </p>
-                            </div>
-
-                            <div className="p-8 flex gap-4">
-                                <button
-                                    onClick={() => { setShowDocDeleteModal(false); setDocToDelete(null); }}
-                                    className="flex-1 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors bg-slate-50 rounded-2xl"
-                                >
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={() => handleDeleteUploadedDoc(docToDelete.id)}
-                                    disabled={isDeleting}
-                                    className="flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all bg-red-600 text-white shadow-xl shadow-red-200 hover:bg-red-700 disabled:bg-slate-100 disabled:text-slate-400"
-                                >
-                                    {isDeleting ? 'Suppression...' : 'Supprimer'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+            <Modal
+                open={showDocDeleteModal && !!docToDelete}
+                onClose={() => { setShowDocDeleteModal(false); setDocToDelete(null); }}
+                title="Supprimer ?"
+                size="sm"
+                persistent
+                icon={<div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center"><Trash2 className="h-5 w-5" /></div>}
+                footer={<>
+                    <button
+                        onClick={() => { setShowDocDeleteModal(false); setDocToDelete(null); }}
+                        className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
+                    >
+                        Annuler
+                    </button>
+                    <button
+                        onClick={() => docToDelete && handleDeleteUploadedDoc(docToDelete.id)}
+                        disabled={isDeleting}
+                        className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    >
+                        {isDeleting ? 'Suppression...' : 'Supprimer'}
+                    </button>
+                </>}
+            >
+                <p className="text-sm text-slate-600">
+                    {docToDelete?.id === 'all'
+                        ? "Êtes-vous sûr de vouloir supprimer TOUS les documents de ce fournisseur ?"
+                        : `Êtes-vous sûr de vouloir supprimer le document "${docToDelete?.fileName}" ?`
+                    }
+                </p>
+            </Modal>
 
 
             {/* Selection Summary Floating Bar */}
             {selectedExpenseIds.size > 0 && (
-                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] w-[95%] max-w-2xl bg-slate-900 text-white p-4 rounded-[2rem] shadow-2xl animate-in slide-in-from-bottom-8 duration-500 border border-white/10 backdrop-blur-md">
-                    <div className="flex items-center justify-between px-4">
-                        <div className="flex items-center gap-4">
-                            <div className="flex -space-x-2">
-                                <div className="h-10 w-10 rounded-full bg-blue-500 flex items-center justify-center border-2 border-slate-900 shadow-lg">
-                                    <ClipboardList className="h-5 w-5" />
-                                </div>
+                <div className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 z-[100] w-[95%] max-w-2xl bg-slate-900 text-white p-3 rounded-2xl shadow-xl animate-in slide-in-from-bottom-8 duration-300 border border-white/10">
+                    <div className="flex items-center justify-between gap-3 px-2">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
+                                <ClipboardList className="h-4 w-4" />
                             </div>
                             <div>
-                                <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest leading-none mb-1">Articles Sélectionnés</h4>
-                                <p className="text-sm font-black text-white">{selectedExpenseIds.size} facture{selectedExpenseIds.size > 1 ? 's' : ''}</p>
+                                <p className="text-xs text-slate-400 leading-none mb-0.5">Sélection</p>
+                                <p className="text-sm font-medium text-white">{selectedExpenseIds.size} facture{selectedExpenseIds.size > 1 ? 's' : ''}</p>
                             </div>
                         </div>
 
-                        <div className="h-10 w-px bg-white/10" />
-
                         <div className="text-right">
-                            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest leading-none mb-1">Somme Totale</h4>
-                            <p className="text-xl font-black text-[#FFB800] tabular-nums leading-none tracking-tighter">
-                                {selectedTotal.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px]">DT</span>
+                            <p className="text-xs text-slate-400 leading-none mb-0.5">Somme totale</p>
+                            <p className="text-lg font-semibold text-white tabular-nums leading-none">
+                                {selectedTotal.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs text-slate-400">DT</span>
                             </p>
                         </div>
 
-                        <button 
+                        <button
                             onClick={() => setSelectedExpenseIds(new Set())}
-                            className="bg-white/10 hover:bg-white/20 p-2.5 rounded-2xl transition-all ml-4"
+                            className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 transition-colors shrink-0"
                         >
-                            <X className="h-5 w-5" />
+                            <X className="h-4 w-4" />
                         </button>
                     </div>
                 </div>
             )}
+          </div>
         </div >
     );
 }
@@ -4637,10 +4774,10 @@ function ExpensesContentMain() {
 export default function ExpensesContent() {
     return (
         <Suspense fallback={
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="h-10 w-10 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin"></div>
-                    <p className="text-slate-500 font-bold animate-pulse">Chargement de votre chantier...</p>
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-jakarta">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="h-9 w-9 border-[3px] border-slate-200 border-t-slate-900 rounded-full animate-spin"></div>
+                    <p className="text-sm text-slate-500 animate-pulse">Chargement de votre chantier...</p>
                 </div>
             </div>
         }>

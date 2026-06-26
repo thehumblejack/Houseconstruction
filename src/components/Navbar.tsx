@@ -5,12 +5,11 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
 
-import { LayoutGrid, Package, LogOut, ReceiptText, Building2, ShoppingCart, User, Shield, ChevronDown, Plus, Trash2, Settings, Bell, CreditCard, Users } from 'lucide-react';
+import { Package, LogOut, ReceiptText, Building2, ShoppingCart, User, Shield, ChevronDown, Plus, Trash2, Users, Check, Menu } from 'lucide-react';
 import GlobalSearch from './GlobalSearch';
 import ProjectSettingsModal from './ProjectSettingsModal';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
-import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Navbar() {
     const pathname = usePathname();
@@ -80,115 +79,93 @@ export default function Navbar() {
         }
     }, [isAdmin, supabase]);
 
-
     // Don't show navbar on auth related pages, root landing page, or project case studies
     if (pathname === '/login' || pathname?.startsWith('/auth/')) return null;
     if (pathname === '/') return null; // Root is landing page
     if (pathname?.startsWith('/projets/')) return null;
 
     const navItems = [
-        { name: 'DÉPENSES', path: '/expenses', icon: ReceiptText },
-        { name: 'FOURNISSEURS', path: '/suppliers', icon: User },
-        { name: 'ARTICLES', path: '/articles', icon: Package },
-        { name: 'COMMANDES', path: '/orders', icon: ShoppingCart },
-        { name: 'CHANTIER', path: '/chantier', icon: LayoutGrid },
+        { name: 'Dépenses', path: '/expenses', icon: ReceiptText },
+        { name: 'Fournisseurs', path: '/suppliers', icon: User },
+        { name: 'Articles', path: '/articles', icon: Package },
+        { name: 'Commandes', path: '/orders', icon: ShoppingCart },
     ];
+    const userInitials = user?.email?.substring(0, 2).toUpperCase() || '··';
 
     return (
         <>
-            {/* Desktop Navbar - Fixed & Compact */}
-            <div className="hidden md:flex fixed top-6 left-0 right-0 z-[100] justify-center w-full font-jakarta pointer-events-none">
-                <nav className="flex items-center gap-1.5 p-1.5 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] pointer-events-auto transition-all duration-500 hover:shadow-[0_30px_70px_rgba(0,0,0,0.4)]">
+            {/* ───────── Desktop top bar ───────── */}
+            <header className="hidden md:flex fixed top-4 inset-x-0 z-[100] justify-center px-4 font-jakarta pointer-events-none">
+                <nav className="pointer-events-auto flex items-center gap-1 h-14 px-2 rounded-2xl bg-white/85 backdrop-blur-xl border border-slate-200/80 shadow-sm">
 
-                    {/* Logo Section - Compact */}
-                    <Link href="/" className="flex items-center gap-2 pl-4 pr-5 border-r border-white/5 mr-1 group cursor-pointer hover:bg-white/5 rounded-l-full py-2 transition-all duration-300">
-                        <div className="bg-[#FFB800] p-2 rounded-xl shadow-lg shadow-amber-500/20 transition-all duration-500 group-hover:rotate-[360deg] group-hover:scale-110">
-                            <Building2 className="h-4 w-4 text-slate-900" strokeWidth={2.5} />
+                    {/* Logo */}
+                    <Link href="/" className="flex items-center gap-2 pl-1 pr-1.5">
+                        <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center">
+                            <Building2 className="h-4 w-4 text-white" strokeWidth={2.4} />
                         </div>
-                        <span className="font-black tracking-tighter text-sm text-white uppercase group-hover:text-[#FFB800] transition-colors">
-                            HE
-                        </span>
+                        <span className="hidden xl:block text-sm font-semibold text-slate-900 tracking-tight">HouseExpert</span>
                     </Link>
 
-                    {/* Project Selector - Compact */}
-                    <div className="relative border-r border-white/5 pr-2 mr-1" ref={projectMenuRef}>
+                    <div className="w-px h-6 bg-slate-200 mx-1" />
+
+                    {/* Project selector */}
+                    <div className="relative" ref={projectMenuRef}>
                         <button
                             onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
-                            className="flex items-center gap-2 px-4 py-2 hover:bg-white/5 rounded-full transition-all group"
+                            className="flex items-center gap-1.5 h-9 px-3 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors"
                         >
-                            <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest group-hover:text-white transition-colors truncate max-w-[140px]">
-                                {currentProject?.name || 'Projet...'}
-                            </span>
-                            <ChevronDown className={`h-3 w-3 text-slate-500 transition-transform duration-500 ${isProjectMenuOpen ? 'rotate-180' : ''}`} />
+                            <span className="truncate max-w-[130px]">{currentProject?.name || 'Projet'}</span>
+                            <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${isProjectMenuOpen ? 'rotate-180' : ''}`} />
                         </button>
 
-                        <AnimatePresence>
-                            {isProjectMenuOpen && (
-                                <>
-                                    <motion.div
-                                        initial={{ opacity: 0, y: 15, scale: 0.95 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        exit={{ opacity: 0, y: 15, scale: 0.95 }}
-                                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                        className="absolute top-full left-0 mt-3 w-72 bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden z-[60] backdrop-blur-xl"
-                                    >
-                                        <div className="p-2 space-y-1">
-                                            <div className="px-4 py-3 border-b border-white/5 mb-1">
-                                                <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">Vos Projets</p>
-                                            </div>
-                                            {projects.map((p) => (
-                                                <div key={p.id} className="relative group/item px-1">
-                                                    <button
-                                                        onClick={() => {
-                                                            setCurrentProject(p);
-                                                            setIsProjectMenuOpen(false);
-                                                        }}
-                                                        className={`w-full text-left px-4 py-3.5 rounded-2xl flex items-center justify-between group transition-all duration-300 ${currentProject?.id === p.id ? 'bg-[#FFB800] text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                                                    >
-                                                        <span className="text-[11px] font-black uppercase tracking-tight truncate pr-8">{p.name}</span>
-                                                        {currentProject?.id === p.id && <div className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />}
-                                                    </button>
-                                                    {p.role === 'admin' && (
-                                                        <button
-                                                            onClick={async (e) => {
-                                                                e.stopPropagation();
-                                                                if (confirm(`Supprimer "${p.name}" ?`)) {
-                                                                    await deleteProject(p.id);
-                                                                }
-                                                            }}
-                                                            className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl opacity-0 group-hover/item:opacity-100 transition-all hover:bg-red-500/10 text-red-400 hover:text-red-500 ${currentProject?.id === p.id ? 'text-black/40 hover:text-black hover:bg-black/5' : ''}`}
-                                                        >
-                                                            <Trash2 className="h-3.5 w-3.5" />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            ))}
-                                            <div className="p-1 mt-1 border-t border-white/5">
+                        {isProjectMenuOpen && (
+                            <div className="absolute top-full left-0 mt-2 w-72 bg-white border border-slate-200 rounded-2xl shadow-lg overflow-hidden z-[60] animate-in fade-in slide-in-from-top-2 duration-150">
+                                <div className="px-4 pt-3 pb-1.5">
+                                    <p className="text-xs font-medium text-slate-400">Vos projets</p>
+                                </div>
+                                <div className="px-2 pb-2 space-y-0.5 max-h-[320px] overflow-y-auto">
+                                    {projects.map((p) => (
+                                        <div key={p.id} className="relative group">
+                                            <button
+                                                onClick={() => { setCurrentProject(p); setIsProjectMenuOpen(false); }}
+                                                className={`w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between text-sm font-medium transition-colors ${currentProject?.id === p.id ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                                            >
+                                                <span className="truncate pr-6">{p.name}</span>
+                                                {currentProject?.id === p.id && <Check className="h-4 w-4 shrink-0" />}
+                                            </button>
+                                            {p.role === 'admin' && (
                                                 <button
-                                                    onClick={async () => {
-                                                        const name = prompt('Nom du projet:');
-                                                        if (name) {
-                                                            await createProject(name, '');
-                                                            setIsProjectMenuOpen(false);
-                                                        }
+                                                    onClick={async (e) => {
+                                                        e.stopPropagation();
+                                                        if (confirm(`Supprimer "${p.name}" ?`)) await deleteProject(p.id);
                                                     }}
-                                                    className="w-full text-left px-4 py-4 rounded-2xl flex items-center gap-3 text-[#FFB800] hover:bg-[#FFB800]/5 hover:translate-x-1 transition-all group"
+                                                    className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition ${currentProject?.id === p.id ? 'text-white/70 hover:bg-white/10' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'}`}
                                                 >
-                                                    <div className="p-1.5 bg-[#FFB800]/10 rounded-lg group-hover:bg-[#FFB800] group-hover:text-black transition-colors">
-                                                        <Plus className="h-4 w-4" />
-                                                    </div>
-                                                    <span className="text-[11px] font-black uppercase tracking-widest">Nouveau Projet</span>
+                                                    <Trash2 className="h-3.5 w-3.5" />
                                                 </button>
-                                            </div>
+                                            )}
                                         </div>
-                                    </motion.div>
-                                </>
-                            )}
-                        </AnimatePresence>
+                                    ))}
+                                </div>
+                                <div className="p-2 border-t border-slate-100">
+                                    <button
+                                        onClick={async () => {
+                                            const name = prompt('Nom du projet:');
+                                            if (name) { await createProject(name, ''); setIsProjectMenuOpen(false); }
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                                    >
+                                        <Plus className="h-4 w-4 text-slate-400" /> Nouveau projet
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Navigation Pills - Simpler & Compact */}
-                    <div className="flex items-center gap-1">
+                    <div className="w-px h-6 bg-slate-200 mx-1" />
+
+                    {/* Nav links */}
+                    <div className="flex items-center gap-0.5">
                         {navItems.map((item) => {
                             const isActive = pathname === item.path;
                             const Icon = item.icon;
@@ -196,263 +173,155 @@ export default function Navbar() {
                                 <Link
                                     key={item.path}
                                     href={item.path}
-                                    className={`
-                                        relative flex items-center gap-2 px-5 py-2.5 rounded-full text-[10px] font-black transition-all duration-300
-                                        ${isActive
-                                            ? 'text-black bg-[#FFB800] shadow-lg shadow-amber-500/20'
-                                            : 'text-slate-400 hover:text-white hover:bg-white/5'
-                                        }
-                                    `}
+                                    className={`flex items-center gap-1.5 h-9 px-3 rounded-xl text-sm font-medium transition-colors ${isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
                                 >
-                                    <Icon className={`h-3.5 w-3.5 ${isActive ? 'text-black' : ''}`} strokeWidth={2.5} />
-                                    <span className="uppercase tracking-[0.15em]">{item.name}</span>
+                                    <Icon className="h-4 w-4" strokeWidth={2} />
+                                    <span className="hidden lg:inline">{item.name}</span>
                                 </Link>
                             );
                         })}
                     </div>
 
-                    <div className="ml-2 pr-2 border-r border-white/5">
-                        <GlobalSearch />
-                    </div>
+                    <div className="w-px h-6 bg-slate-200 mx-1" />
 
-                    {/* Admin Link */}
+                    <GlobalSearch />
+
                     {isAdmin && (
-                        <div className="pl-1">
-                            <Link
-                                href="/admin"
-                                className={`
-                                    relative flex items-center gap-2 px-5 py-2.5 rounded-full text-[10px] font-black transition-all duration-300
-                                    ${pathname?.startsWith('/admin')
-                                        ? 'text-white bg-slate-800 ring-1 ring-[#FFB800]/50 shadow-xl'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/5'
-                                    }
-                                `}
-                            >
-                                <Shield className={`h-3.5 w-3.5 ${pathname?.startsWith('/admin') ? 'text-[#FFB800]' : ''}`} strokeWidth={2.5} />
-                                <span className="uppercase tracking-[0.15em]">ADMIN</span>
-                                {pendingCount > 0 && (
-                                    <span className="absolute -top-1 -right-1 bg-[#FFB800] text-slate-900 text-[10px] font-black rounded-full h-5 w-5 flex items-center justify-center animate-bounce shadow-lg shadow-amber-500/20">
-                                        {pendingCount}
-                                    </span>
-                                )}
-                            </Link>
-                        </div>
+                        <Link
+                            href="/admin"
+                            className={`relative flex items-center gap-1.5 h-9 px-3 rounded-xl text-sm font-medium transition-colors ${pathname?.startsWith('/admin') ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                        >
+                            <Shield className="h-4 w-4" strokeWidth={2} />
+                            <span className="hidden lg:inline">Admin</span>
+                            {pendingCount > 0 && (
+                                <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center">
+                                    {pendingCount}
+                                </span>
+                            )}
+                        </Link>
                     )}
 
-                    {/* Actions */}
-                    <div className="w-px h-6 bg-white/5 mx-1" />
+                    <div className="w-px h-6 bg-slate-200 mx-1" />
 
-                    {/* Profile & Settings Dropdown */}
-                    <div className="relative ml-1" ref={profileMenuRef}>
+                    {/* Profile */}
+                    <div className="relative" ref={profileMenuRef}>
                         <button
                             onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-                            className="flex items-center gap-3 pl-1 pr-4 py-1.5 rounded-full hover:bg-white/5 transition-all group"
+                            className="flex items-center gap-1.5 pl-1 pr-1.5 h-10 rounded-xl hover:bg-slate-100 transition-colors"
                         >
-                            <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-[#FFB800] to-amber-600 p-[2px] shadow-lg shadow-amber-500/10 group-hover:scale-105 group-hover:rotate-3 transition-all duration-500">
-                                <div className="w-full h-full rounded-[14px] bg-slate-900 flex items-center justify-center overflow-hidden">
-                                    <span className="text-[10px] font-black text-[#FFB800]">
-                                        {user?.email?.substring(0, 2).toUpperCase()}
-                                    </span>
-                                </div>
+                            <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center text-white text-[11px] font-semibold">
+                                {userInitials}
                             </div>
-                            <ChevronDown className={`h-3 w-3 text-slate-500 transition-transform duration-500 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+                            <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
                         </button>
 
-                        <AnimatePresence>
-                            {isProfileMenuOpen && (
-                                <>
-                                    <motion.div
-                                        initial={{ opacity: 0, y: 15, scale: 0.95 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        exit={{ opacity: 0, y: 15, scale: 0.95 }}
-                                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                        className="absolute top-full right-0 mt-3 w-80 bg-slate-900 border border-white/10 rounded-[32px] shadow-2xl overflow-hidden z-[60] backdrop-blur-xl"
+                        {isProfileMenuOpen && (
+                            <div className="absolute top-full right-0 mt-2 w-72 bg-white border border-slate-200 rounded-2xl shadow-lg overflow-hidden z-[60] animate-in fade-in slide-in-from-top-2 duration-150">
+                                <div className="p-4 border-b border-slate-100 flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center text-white text-sm font-semibold shrink-0">
+                                        {userInitials}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-semibold text-slate-900 truncate">{isAdmin ? 'Chef de projet' : user?.email?.split('@')[0]}</p>
+                                        <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+                                    </div>
+                                </div>
+                                <div className="p-2">
+                                    {currentProject && (
+                                        <button
+                                            onClick={() => { setIsProfileMenuOpen(false); setShowProjectSettings(true); }}
+                                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                                        >
+                                            <Users className="h-4 w-4 text-slate-400" /> Gérer l&apos;équipe
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => signOut()}
+                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-rose-600 hover:bg-rose-50 transition-colors"
                                     >
-                                        {/* User Info Header */}
-                                        <div className="p-6 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent">
-                                            <div className="flex items-center gap-5 mb-5">
-                                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#FFB800] to-amber-600 p-[2.5px] shadow-xl shadow-amber-500/20">
-                                                    <div className="w-full h-full rounded-[14px] bg-slate-900 flex items-center justify-center text-white font-black text-lg">
-                                                        {user?.email?.substring(0, 2).toUpperCase()}
-                                                    </div>
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <p className="text-sm font-black text-white leading-tight mb-1 truncate uppercase tracking-tight">
-                                                        {isAdmin ? 'Chef de Projet' : user?.email?.split('@')[0]}
-                                                    </p>
-                                                    <p className="text-[10px] text-slate-500 font-bold truncate tracking-wide">{user?.email}</p>
-                                                </div>
-                                            </div>
-
-                                            {/* Subscription Status */}
-                                            <div className="flex items-center gap-3 bg-white/[0.03] border border-white/5 rounded-2xl p-3.5 group hover:bg-white/[0.05] transition-colors cursor-default">
-                                                <div className="p-2 bg-[#FFB800] rounded-xl shadow-lg shadow-amber-500/20 group-hover:scale-110 transition-transform">
-                                                    <CreditCard className="h-4 w-4 text-slate-900" strokeWidth={2.5} />
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <p className="text-[9px] font-black text-[#FFB800] uppercase tracking-[0.2em] leading-none mb-1.5">Premium</p>
-                                                    <p className="text-[11px] font-bold text-white/90 leading-none">Accès Illimité</p>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Menu Items */}
-                                        <div className="p-2 space-y-1">
-                                            {currentProject && (
-                                                <button
-                                                    onClick={() => {
-                                                        setIsProfileMenuOpen(false);
-                                                        setShowProjectSettings(true);
-                                                    }}
-                                                    className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-slate-400 hover:text-white hover:bg-white/5 transition-all text-[11px] font-black uppercase tracking-widest bg-transparent border-none outline-none group"
-                                                >
-                                                    <div className="p-2 rounded-xl group-hover:bg-[#FFB800]/10 transition-colors">
-                                                        <Users className="h-4 w-4" />
-                                                    </div>
-                                                    Gérer l'équipe
-                                                </button>
-                                            )}
-                                            <button className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-slate-400 hover:text-white hover:bg-white/5 transition-all text-[11px] font-black uppercase tracking-widest bg-transparent border-none outline-none group">
-                                                <div className="p-2 rounded-xl group-hover:bg-[#FFB800]/10 transition-colors">
-                                                    <Settings className="h-4 w-4" />
-                                                </div>
-                                                Paramètres
-                                            </button>
-                                            <button className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-slate-400 hover:text-white hover:bg-white/5 transition-all text-[11px] font-black uppercase tracking-widest bg-transparent border-none outline-none group">
-                                                <div className="relative">
-                                                    <div className="p-2 rounded-xl group-hover:bg-[#FFB800]/10 transition-colors">
-                                                        <Bell className="h-4 w-4" />
-                                                    </div>
-                                                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#FFB800] rounded-full border-2 border-slate-900 animate-pulse"></span>
-                                                </div>
-                                                Notifications
-                                            </button>
-
-                                            <div className="h-px bg-white/5 my-2 mx-4" />
-
-                                            <button
-                                                onClick={() => signOut()}
-                                                className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-all text-[11px] font-black uppercase tracking-widest bg-transparent border-none outline-none group"
-                                            >
-                                                <div className="p-2 rounded-xl group-hover:bg-red-500/10 transition-colors">
-                                                    <LogOut className="h-4 w-4" strokeWidth={2.5} />
-                                                </div>
-                                                Se déconnecter
-                                            </button>
-                                        </div>
-                                    </motion.div>
-                                </>
-                            )}
-                        </AnimatePresence>
+                                        <LogOut className="h-4 w-4" /> Se déconnecter
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </nav>
-            </div>
+            </header>
 
-            {/* Mobile Navbar - Clean App-style Dock */}
-            <div className="md:hidden fixed bottom-6 left-6 right-6 z-[60] font-jakarta">
+            {/* ───────── Mobile bottom dock ───────── */}
+            <div className="md:hidden fixed bottom-4 inset-x-4 z-[60] font-jakarta">
 
-                {/* Dropdown Menu Overlay */}
-                <AnimatePresence>
-                    {isMoreOpen && (
-                        <>
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setIsMoreOpen(false)}
-                                className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[-1]"
-                            />
-                            <motion.div
-                                initial={{ opacity: 0, y: 30, scale: 0.95 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                exit={{ opacity: 0, y: 30, scale: 0.95 }}
-                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                className="absolute bottom-[calc(100%+20px)] right-0 left-0 bg-slate-900 border border-white/10 rounded-[32px] overflow-hidden shadow-2xl backdrop-blur-2xl"
-                            >
-                                <div className="p-2 space-y-1">
-                                    {/* Mobile Project Selector */}
-                                    <div className="px-6 py-5 border-b border-white/5 mb-2 bg-gradient-to-b from-white/5 to-transparent">
-                                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Changer de Projet</p>
-                                        <div className="flex flex-col gap-2">
-                                            {projects.map((p) => (
-                                                <button
-                                                    key={p.id}
-                                                    onClick={() => {
-                                                        setCurrentProject(p);
-                                                        setIsMoreOpen(false);
-                                                    }}
-                                                    className={`w-full text-left px-5 py-4 rounded-2xl flex items-center justify-between transition-all duration-300 ${currentProject?.id === p.id ? 'bg-[#FFB800] text-black shadow-lg shadow-amber-500/20' : 'bg-white/5 text-slate-400'}`}
-                                                >
-                                                    <span className="text-[11px] font-black uppercase tracking-tight truncate pr-4">{p.name}</span>
-                                                    {currentProject?.id === p.id && <div className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />}
-                                                </button>
-                                            ))}
-                                            <button
-                                                onClick={async () => {
-                                                    const name = prompt('Nom du nouveau projet:');
-                                                    if (name) {
-                                                        await createProject(name, '');
-                                                        setIsMoreOpen(false);
-                                                    }
-                                                }}
-                                                className="w-full text-left px-5 py-4 rounded-2xl flex items-center gap-4 text-[#FFB800] border border-[#FFB800]/20 bg-[#FFB800]/5 mt-1 active:scale-95 transition-all"
-                                            >
-                                                <div className="p-1.5 bg-[#FFB800] text-slate-900 rounded-lg">
-                                                    <Plus className="h-4 w-4" strokeWidth={3} />
-                                                </div>
-                                                <span className="text-[11px] font-black uppercase tracking-widest">Nouveau Projet</span>
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {[
-                                        { name: 'ARTICLES', path: '/articles', icon: Package },
-                                        { name: 'COMMANDES', path: '/orders', icon: ShoppingCart },
-                                    ].map((item) => (
-                                        <Link
-                                            key={item.path}
-                                            href={item.path}
-                                            onClick={() => setIsMoreOpen(false)}
-                                            className="flex items-center gap-5 px-6 py-4.5 text-slate-400 hover:text-white hover:bg-white/5 transition-all rounded-2xl group"
+                {/* Bottom sheet */}
+                {isMoreOpen && (
+                    <>
+                        <div
+                            onClick={() => setIsMoreOpen(false)}
+                            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150"
+                        />
+                        <div className="absolute bottom-[calc(100%+12px)] inset-x-0 bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-200">
+                            <div className="mx-auto mt-2.5 h-1 w-9 rounded-full bg-slate-200" />
+                            {/* Project switcher */}
+                            <div className="p-4 border-b border-slate-100">
+                                <p className="text-xs font-medium text-slate-400 mb-2">Projet</p>
+                                <div className="space-y-1">
+                                    {projects.map((p) => (
+                                        <button
+                                            key={p.id}
+                                            onClick={() => { setCurrentProject(p); setIsMoreOpen(false); }}
+                                            className={`w-full text-left px-3 py-3 rounded-xl flex items-center justify-between text-sm font-medium transition-colors ${currentProject?.id === p.id ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-700'}`}
                                         >
-                                            <div className="p-2.5 bg-white/5 rounded-xl group-hover:bg-[#FFB800]/10 group-hover:text-[#FFB800] transition-all">
-                                                <item.icon className="w-5 h-5" strokeWidth={2.5} />
-                                            </div>
-                                            <span className="text-[11px] font-black uppercase tracking-[0.15em]">{item.name}</span>
-                                        </Link>
+                                            <span className="truncate pr-4">{p.name}</span>
+                                            {currentProject?.id === p.id && <Check className="h-4 w-4 shrink-0" />}
+                                        </button>
                                     ))}
-
-                                    {isAdmin && (
-                                        <Link
-                                            href="/admin/users"
-                                            onClick={() => setIsMoreOpen(false)}
-                                            className="flex items-center justify-between px-6 py-4.5 text-slate-400 hover:text-white hover:bg-white/10 transition-all rounded-2xl group border-t border-white/5 mt-1"
-                                        >
-                                            <div className="flex items-center gap-5">
-                                                <div className="p-2.5 bg-[#FFB800]/10 rounded-xl text-[#FFB800]">
-                                                    <Shield className="w-5 h-5" strokeWidth={2.5} />
-                                                </div>
-                                                <span className="text-[11px] font-black uppercase tracking-[0.15em]">Administration</span>
-                                            </div>
-                                            {pendingCount > 0 && (
-                                                <span className="bg-[#FFB800] text-slate-900 text-[10px] font-black w-7 h-7 rounded-full flex items-center justify-center shadow-lg shadow-amber-500/20 animate-bounce">
-                                                    {pendingCount}
-                                                </span>
-                                            )}
-                                        </Link>
-                                    )}
+                                    <button
+                                        onClick={async () => {
+                                            const name = prompt('Nom du nouveau projet:');
+                                            if (name) { await createProject(name, ''); setIsMoreOpen(false); }
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-medium text-slate-700 border border-slate-200 hover:bg-slate-50 transition-colors"
+                                    >
+                                        <Plus className="h-4 w-4 text-slate-400" /> Nouveau projet
+                                    </button>
                                 </div>
-                            </motion.div>
-                        </>
-                    )}
-                </AnimatePresence>
+                            </div>
+                            {/* Links */}
+                            <div className="p-2">
+                                <Link
+                                    href="/orders"
+                                    onClick={() => setIsMoreOpen(false)}
+                                    className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors ${pathname === '/orders' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                                >
+                                    <ShoppingCart className="h-4 w-4" /> Commandes
+                                </Link>
+                                {isAdmin && (
+                                    <Link
+                                        href="/admin/users"
+                                        onClick={() => setIsMoreOpen(false)}
+                                        className="flex items-center justify-between px-3 py-3 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                                    >
+                                        <span className="flex items-center gap-3"><Shield className="h-4 w-4" /> Administration</span>
+                                        {pendingCount > 0 && (
+                                            <span className="bg-rose-500 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center">
+                                                {pendingCount}
+                                            </span>
+                                        )}
+                                    </Link>
+                                )}
+                                <button
+                                    onClick={() => signOut()}
+                                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-rose-600 hover:bg-rose-50 transition-colors"
+                                >
+                                    <LogOut className="h-4 w-4" /> Se déconnecter
+                                </button>
+                            </div>
+                        </div>
+                    </>
+                )}
 
-                <nav className="flex items-center justify-around bg-slate-900/95 backdrop-blur-2xl border border-white/10 p-2.5 rounded-[28px] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)]">
-                    {[
-                        { name: 'Dépenses', path: '/expenses', icon: ReceiptText },
-                        { name: 'Fours.', path: '/suppliers', icon: User },
-                        { name: 'Chantier', path: '/chantier', icon: LayoutGrid },
-                    ].map((item) => {
+                {/* Dock */}
+                <nav className="flex items-stretch h-16 px-1.5 rounded-2xl bg-white/90 backdrop-blur-xl border border-slate-200 shadow-lg">
+                    {navItems.slice(0, 3).map((item) => {
                         const isActive = pathname === item.path;
                         const Icon = item.icon;
                         return (
@@ -460,48 +329,30 @@ export default function Navbar() {
                                 key={item.path}
                                 href={item.path}
                                 onClick={() => setIsMoreOpen(false)}
-                                className={`
-                                    flex flex-col items-center justify-center flex-1 h-16 rounded-[20px] transition-all duration-300 gap-1.5
-                                    ${isActive ? 'text-[#FFB800]' : 'text-slate-500'}
-                                    ${item.name === 'Fours.' ? 'scale-110' : ''}
-                                `}
+                                className="flex-1 flex flex-col items-center justify-center gap-1"
                             >
-                                <div className={`p-2.5 rounded-xl transition-all duration-500 ${isActive ? 'bg-[#FFB800]/10 scale-110 shadow-inner' : 'hover:bg-white/5'}`}>
-                                    <Icon className={`${item.name === 'Fours.' ? 'h-6 w-6' : 'h-5 w-5'}`} strokeWidth={isActive ? 3 : 2} />
+                                <div className={`flex items-center justify-center w-11 h-7 rounded-lg transition-colors ${isActive ? 'bg-slate-900 text-white' : 'text-slate-400'}`}>
+                                    <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
                                 </div>
-                                <span className={`text-[9px] font-black uppercase tracking-widest leading-none ${isActive ? 'opacity-100' : 'opacity-40'} ${item.name === 'Fours.' ? 'text-[9px]' : ''}`}>
-                                    {item.name}
-                                </span>
+                                <span className={`text-[10px] font-medium leading-none ${isActive ? 'text-slate-900' : 'text-slate-400'}`}>{item.name}</span>
                             </Link>
                         );
                     })}
 
-                    {/* More Menu Toggle */}
                     <button
                         onClick={() => setIsMoreOpen(!isMoreOpen)}
-                        className={`
-                            flex flex-col items-center justify-center flex-1 h-16 rounded-[20px] transition-all duration-300 gap-1.5
-                            ${isMoreOpen || (pathname === '/articles' || pathname === '/orders' || pathname === '/admin/users') ? 'text-[#FFB800]' : 'text-slate-500 hover:text-slate-300'}
-                        `}
+                        className="flex-1 flex flex-col items-center justify-center gap-1"
                     >
-                        <div className={`p-2.5 rounded-xl transition-all duration-500 ${isMoreOpen || (pathname === '/articles' || pathname === '/orders' || pathname === '/admin/users') ? 'bg-[#FFB800]/10 scale-110' : 'hover:bg-white/5'}`}>
-                            <Package className="h-5 w-5" strokeWidth={isMoreOpen ? 3 : 2} />
+                        <div className={`flex items-center justify-center w-11 h-7 rounded-lg transition-colors ${isMoreOpen || pathname === '/orders' || pathname?.startsWith('/admin') ? 'bg-slate-900 text-white' : 'text-slate-400'}`}>
+                            <Menu className="h-[18px] w-[18px]" strokeWidth={2} />
                         </div>
-                        <span className="text-[9px] font-black uppercase tracking-widest leading-none opacity-40">Plus</span>
-                    </button>
-
-                    <div className="w-px h-10 bg-white/5 mx-1" />
-
-                    <button
-                        onClick={() => signOut()}
-                        className="flex items-center justify-center w-14 h-16 rounded-[20px] text-slate-500 hover:text-red-400 transition-all active:scale-90"
-                    >
-                        <LogOut className="h-5 w-5" strokeWidth={2.5} />
+                        <span className={`text-[10px] font-medium leading-none ${isMoreOpen || pathname === '/orders' || pathname?.startsWith('/admin') ? 'text-slate-900' : 'text-slate-400'}`}>Plus</span>
                     </button>
                 </nav>
             </div>
-            {/* Spacer for Fixed Navbar */}
-            <div className="hidden md:block h-32 w-full" />
+
+            {/* Spacer for fixed desktop bar */}
+            <div className="hidden md:block h-28 w-full" />
 
             {showProjectSettings && (
                 <ProjectSettingsModal onClose={() => setShowProjectSettings(false)} />

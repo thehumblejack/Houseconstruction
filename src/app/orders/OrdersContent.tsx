@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { createClient } from '@/lib/supabase';
-import { ShoppingCart, Plus, Calendar, Package, Truck, CheckCircle2, XCircle, ChevronDown, ChevronUp, Trash2, Save, User, Search, Store, Pencil, Eye, TrendingUp, ArrowRight, Clock } from 'lucide-react';
+import { Plus, Calendar, Package, Truck, CheckCircle2, Trash2, Search, Pencil, Eye, Clock } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Modal, AnchoredDropdown } from '@/components/ui';
 
 // --- Interfaces ---
 
@@ -61,16 +61,24 @@ const BEN_HDEYA_PRICES: Record<string, number> = {
     "OM GRAVIER": 110.000
 };
 
+// --- Shared class recipes ---
+const inputClass = "w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition";
+const labelClass = "block text-[13px] font-medium text-slate-700 mb-1.5";
+const primaryBtn = "inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none transition-colors";
+const secondaryBtn = "inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 active:scale-[0.99] transition-colors";
+
 // --- Component ---
 
 export default function OrdersContent() {
-    const { currentProject } = useProject();
+    const { currentProject, userRole } = useProject();
     const supabase = useMemo(() => createClient(), []);
 
     // Main Data
     const [orders, setOrders] = useState<Order[]>([]);
     const [isAdmin, setIsAdmin] = useState(false);
-    const { userProfile, isAdmin: authIsAdmin } = useAuth();
+    const { isAdmin: authIsAdmin } = useAuth();
+    // Write permission is driven by the PROJECT role. Viewers ("Observateur") are read-only.
+    const canEdit = authIsAdmin || userRole === 'admin' || userRole === 'editor';
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -101,8 +109,8 @@ export default function OrdersContent() {
 
     // Autocomplete State per row
     const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null);
+    const [searchAnchorEl, setSearchAnchorEl] = useState<HTMLElement | null>(null);
     const [searchResults, setSearchResults] = useState<CatalogItem[]>([]);
-    const wrapperRef = useRef<HTMLDivElement>(null);
 
     // --- Fetching ---
 
@@ -195,18 +203,6 @@ export default function OrdersContent() {
         setIsAdmin(authIsAdmin);
     }, [authIsAdmin]);
 
-    // Click outside handler for autocomplete
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-                setActiveSearchIndex(null);
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [wrapperRef]);
-
-
     // --- Handlers ---
 
     const handleAddItemRow = () => {
@@ -294,6 +290,7 @@ export default function OrdersContent() {
     };
 
     const handleSaveOrder = async () => {
+        if (!canEdit) return;
         if (!currentProject) return;
         if (!newOrder.supplierId) {
             alert('Veuillez sélectionner un fournisseur');
@@ -363,7 +360,23 @@ export default function OrdersContent() {
         }
     };
 
+    // Prefill the new-order modal when arriving from Articles ("Commander")
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const p = new URLSearchParams(window.location.search);
+        const article = p.get('article');
+        if (!article) return;
+        const price = parseFloat(p.get('price') || '0') || 0;
+        setEditingOrderId(null);
+        setIsEditing(false);
+        setNewOrder({ supplierId: '', date: new Date().toISOString().split('T')[0], notes: '' });
+        setNewItems([{ article_name: article, quantity: 1, unit: 'pcs', unitPrice: price, totalPrice: price }]);
+        setIsAdding(true);
+        window.history.replaceState(null, '', '/orders');
+    }, []);
+
     const openAdd = () => {
+        if (!canEdit) return;
         setIsEditing(false);
         setEditingOrderId(null);
         setNewOrder({ supplierId: '', date: new Date().toISOString().split('T')[0], notes: '' });
@@ -372,6 +385,7 @@ export default function OrdersContent() {
     };
 
     const openEdit = (order: Order) => {
+        if (!canEdit) return;
         setIsEditing(true);
         setEditingOrderId(order.id);
 
@@ -408,9 +422,11 @@ export default function OrdersContent() {
         setIsAdding(false);
         setIsEditing(false);
         setEditingOrderId(null);
+        setActiveSearchIndex(null);
     };
 
     const handleUpdateStatus = async (orderId: string, newStatus: string) => {
+        if (!canEdit) return;
         const project = currentProject;
         if (!project) return;
         if (newStatus === 'delivered') {
@@ -461,6 +477,7 @@ export default function OrdersContent() {
     };
 
     const handleDeleteSelected = async () => {
+        if (!authIsAdmin) return;
         if (selectedOrders.length === 0) {
             alert("Aucune commande sélectionnée");
             return;
@@ -493,469 +510,472 @@ export default function OrdersContent() {
     // Total Estimate
     const totalEstimate = newItems.reduce((sum, i) => sum + (i.totalPrice || 0), 0);
 
+    const orderTotal = (order: Order) =>
+        (order.items || []).reduce((sum, i) => sum + ((i.quantity || 0) * (i.unitPrice || 0)), 0);
+
     return (
-        <div className="max-w-[1600px] mx-auto p-6 space-y-10 pb-32 font-jakarta bg-slate-50 min-h-screen">
-            {/* Premium Header */}
-            <motion.div
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-slate-900 rounded-[2.5rem] p-8 md:p-10 text-white relative overflow-hidden shadow-2xl shadow-slate-900/20"
-            >
-                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-br from-blue-400/20 via-transparent to-transparent rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3"></div>
-                <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-indigo-500/10 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/4"></div>
+        <div className="min-h-screen font-jakarta">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5">
 
-                <div className="relative z-10 flex flex-col xl:flex-row justify-between items-center gap-8">
-                    <div className="space-y-4 w-full xl:w-auto text-center xl:text-left">
-                        <div className="flex items-center justify-center xl:justify-start gap-3">
-                            <div className="p-2.5 bg-white/10 rounded-2xl backdrop-blur-md border border-white/10 shadow-lg">
-                                <ShoppingCart className="h-5 w-5 text-blue-400" />
-                            </div>
-                            <span className="text-blue-400 font-black tracking-[0.2em] uppercase text-[10px]">Supply Chain & Logistique</span>
-                        </div>
-                        <h1 className="text-3xl md:text-4xl lg:text-5xl font-black uppercase tracking-tighter leading-tight">
-                            Mes <span className="text-blue-400">Commandes</span>
-                            <br />
-                            <span className="text-white/40">& Approvisionnements</span>
-                        </h1>
+                {/* Page Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">Commandes</h1>
+                        <p className="text-sm text-slate-500 mt-0.5">Suivi des approvisionnements et livraisons</p>
                     </div>
-
-                    <div className="w-full xl:w-auto flex flex-col md:flex-row items-center gap-4 lg:gap-6">
-                        <div className="relative w-full md:w-[400px] group">
-                            <div className="absolute inset-0 bg-blue-400/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-hover:text-blue-400 transition-colors" />
-                            <input
-                                type="text"
-                                placeholder="Rechercher une commande..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-white/10 backdrop-blur-xl border border-white/10 text-white h-14 pl-12 pr-4 rounded-2xl font-bold text-xs placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-400/30 transition-all uppercase"
-                            />
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                            {authIsAdmin && selectedOrders.length > 0 && (
-                                <button
-                                    onClick={handleDeleteSelected}
-                                    className="p-4 rounded-2xl bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all duration-500 flex items-center gap-2"
-                                >
-                                    <Trash2 className="h-5 w-5" />
-                                    <span className="text-[10px] font-black uppercase tracking-widest">{selectedOrders.length}</span>
-                                </button>
-                            )}
+                    <div className="flex items-center gap-2">
+                        {authIsAdmin && selectedOrders.length > 0 && (
                             <button
-                                onClick={openAdd}
-                                className="bg-white text-slate-900 px-8 py-4 rounded-2xl font-black text-[10px] tracking-widest uppercase hover:bg-slate-100 transition-all shadow-xl shadow-white/5 active:scale-95 flex items-center gap-2"
+                                onClick={handleDeleteSelected}
+                                className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 active:scale-[0.99] transition-colors"
                             >
-                                <Plus className="h-4 w-4" /> NOUVELLE COMMANDE
+                                <Trash2 className="h-4 w-4" />
+                                <span className="tabular-nums">{selectedOrders.length}</span>
                             </button>
-                        </div>
-                    </div>
-                </div>
-            </motion.div>
-
-            {/* Content Sections */}
-            <div className="space-y-16">
-                {/* PENDING ORDERS COLUMN */}
-                <div className="space-y-6">
-                    <div className="flex items-center justify-between px-2">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-500">
-                                <Truck className="h-5 w-5" />
-                            </div>
-                            <div>
-                                <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest">En Cours de Livraison</h2>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Suivi logistique actif</p>
-                            </div>
-                        </div>
-                        <span className="bg-orange-100 text-orange-600 text-[10px] font-black px-3 py-1 rounded-full">{pendingOrders.length} UNITÉS</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        <AnimatePresence mode="popLayout">
-                            {pendingOrders.map((order, idx) => (
-                                <motion.div
-                                    key={order.id}
-                                    initial={{ opacity: 0, scale: 0.95 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.95 }}
-                                    transition={{ delay: idx * 0.05 }}
-                                    className="luxury-card bg-white p-6 border-none shadow-xl shadow-slate-200/40 relative overflow-hidden group"
-                                >
-                                    <div className={`absolute top-0 left-0 w-1.5 h-full ${order.supplier_color} opacity-40`} />
-
-                                    <div className="flex justify-between items-start mb-6">
-                                        <div className="flex items-start gap-4">
-                                            {authIsAdmin && (
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedOrders.includes(order.id)}
-                                                    onChange={() => toggleSelectOrder(order.id)}
-                                                    className="mt-1 h-5 w-5 rounded-lg border-2 border-slate-200 text-blue-600 focus:ring-blue-500 cursor-pointer transition-all"
-                                                />
-                                            )}
-                                            <div>
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className={`text-[10px] font-black uppercase tracking-widest text-white px-2.5 py-1 rounded-lg ${order.supplier_color}`}>
-                                                        {order.supplier_name}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center text-[10px] text-slate-400 font-black uppercase tracking-widest">
-                                                    <Calendar className="h-3 w-3 mr-1.5 text-slate-300" />
-                                                    PRÉVU LE : {order.date}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {authIsAdmin && (
-                                            <button
-                                                onClick={() => openEdit(order)}
-                                                className="p-3 bg-slate-50 hover:bg-slate-900 hover:text-white rounded-xl text-slate-400 transition-all shadow-sm"
-                                            >
-                                                <Pencil className="h-4 w-4" />
-                                            </button>
-                                        )}
-                                    </div>
-
-                                    <div className="bg-slate-50/50 rounded-2xl p-4 space-y-3 mb-6 border border-slate-100/50">
-                                        {(order.items || []).map((item, iIdx) => (
-                                            <div key={iIdx} className="flex justify-between items-center group/item">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
-                                                    <span className="text-xs font-black text-slate-700 uppercase tracking-tight">{item.article_name}</span>
-                                                </div>
-                                                <div className="flex flex-col items-end">
-                                                    <span className="text-xs font-black text-slate-900 tabular-nums tracking-tighter">
-                                                        {((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-300">DT</span>
-                                                    </span>
-                                                    <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-0.5">
-                                                        {item.quantity} {item.unit} × {item.unitPrice?.toLocaleString(undefined, { minimumFractionDigits: 3 })}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    <div className="flex gap-3">
-                                        {userProfile?.role !== 'viewer' && (
-                                            <button
-                                                onClick={() => handleUpdateStatus(order.id, 'delivered')}
-                                                className="flex-1 bg-emerald-500 text-white hover:bg-emerald-600 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
-                                            >
-                                                <CheckCircle2 className="h-4 w-4" />
-                                                Confirmer Réception
-                                            </button>
-                                        )}
-                                    </div>
-                                </motion.div>
-                            ))}
-                        </AnimatePresence>
-                        {pendingOrders.length === 0 && (
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                className="p-16 text-center bg-white rounded-[2.5rem] border-2 border-dashed border-slate-100 flex flex-col items-center gap-4"
-                            >
-                                <div className="w-16 h-16 rounded-3xl bg-slate-50 flex items-center justify-center text-slate-200">
-                                    <Package className="h-8 w-8" />
-                                </div>
-                                <p className="uppercase font-black tracking-widest text-slate-400 text-[10px]">Aucune commande en cours d'acheminement</p>
-                            </motion.div>
+                        )}
+                        {canEdit && (
+                            <button onClick={openAdd} className={primaryBtn}>
+                                <Plus className="h-4 w-4" />
+                                Nouvelle commande
+                            </button>
                         )}
                     </div>
                 </div>
 
-                {/* DELIVERED ORDERS SECTION */}
-                <div className="space-y-6">
-                    <div className="flex items-center justify-between px-2">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-500">
-                                <CheckCircle2 className="h-5 w-5" />
-                            </div>
-                            <div>
-                                <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest">Historique Livraisons</h2>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Archive des réceptions</p>
-                            </div>
-                        </div>
-                        <span className="bg-emerald-100 text-emerald-600 text-[10px] font-black px-3 py-1 rounded-full">{deliveredOrders.length} LIVRÉES</span>
-                    </div>
+                {/* Controls: search */}
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                        type="text"
+                        placeholder="Rechercher une commande..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300"
+                    />
+                </div>
 
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.2 }}
-                        className="luxury-card bg-white border-none shadow-2xl shadow-slate-200/50 overflow-hidden"
-                    >
-                        <div className="overflow-x-auto custom-scrollbar">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="bg-slate-900">
-                                        <th className="px-8 py-6 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] w-20 text-center">#</th>
-                                        <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em]">Partenaire</th>
-                                        <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em]">Date de Réception</th>
-                                        <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em]">Contenu de la Commande</th>
-                                        <th className="px-8 py-6 text-[10px] font-black text-white uppercase tracking-[0.2em] text-right">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {deliveredOrders.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={5} className="px-6 py-20 text-center">
-                                                <div className="flex flex-col items-center gap-3">
-                                                    <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-200">
-                                                        <Clock className="h-6 w-6" />
-                                                    </div>
-                                                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Aucune donnée archivée</p>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        deliveredOrders.map(order => (
-                                            <tr key={order.id} className="hover:bg-slate-50/50 transition-all duration-300 group">
-                                                <td className="px-8 py-6 text-center">
+                {/* Stat cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                        <div className="flex items-start justify-between">
+                            <p className="text-xs text-slate-500">En cours</p>
+                            <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-amber-50 text-amber-600">
+                                <Truck className="h-4 w-4" />
+                            </span>
+                        </div>
+                        <p className="text-xl sm:text-2xl font-semibold text-slate-900 tabular-nums mt-1">{pendingOrders.length}</p>
+                    </div>
+                    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                        <div className="flex items-start justify-between">
+                            <p className="text-xs text-slate-500">Livrées</p>
+                            <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600">
+                                <CheckCircle2 className="h-4 w-4" />
+                            </span>
+                        </div>
+                        <p className="text-xl sm:text-2xl font-semibold text-slate-900 tabular-nums mt-1">{deliveredOrders.length}</p>
+                    </div>
+                    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                        <div className="flex items-start justify-between">
+                            <p className="text-xs text-slate-500">Total commandes</p>
+                            <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 text-slate-600">
+                                <Package className="h-4 w-4" />
+                            </span>
+                        </div>
+                        <p className="text-xl sm:text-2xl font-semibold text-slate-900 tabular-nums mt-1">{filteredOrders.length}</p>
+                    </div>
+                    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                        <div className="flex items-start justify-between">
+                            <p className="text-xs text-slate-500">Valeur en cours</p>
+                            <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-blue-50 text-blue-600">
+                                <Clock className="h-4 w-4" />
+                            </span>
+                        </div>
+                        <p className="text-xl sm:text-2xl font-semibold text-slate-900 tabular-nums mt-1">
+                            {pendingOrders.reduce((s, o) => s + orderTotal(o), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                            <span className="text-xs text-slate-400 ml-1">DT</span>
+                        </p>
+                    </div>
+                </div>
+
+                {loading ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white py-16 flex flex-col items-center gap-3">
+                        <div className="h-7 w-7 rounded-full border-2 border-slate-200 border-t-slate-900 animate-spin" />
+                        <p className="text-sm text-slate-500">Chargement des commandes...</p>
+                    </div>
+                ) : (
+                    <>
+                        {/* PENDING ORDERS */}
+                        <section className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-sm font-semibold text-slate-900">En cours de livraison</h2>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
+                                    {pendingOrders.length}
+                                </span>
+                            </div>
+
+                            {pendingOrders.length === 0 ? (
+                                <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 flex flex-col items-center gap-3">
+                                    <Package className="h-7 w-7 text-slate-300" />
+                                    <p className="text-sm text-slate-500">Aucune commande en cours d&apos;acheminement</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {pendingOrders.map((order) => (
+                                        <div key={order.id} className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex items-start gap-3 min-w-0 flex-1">
                                                     {authIsAdmin && (
                                                         <input
                                                             type="checkbox"
                                                             checked={selectedOrders.includes(order.id)}
                                                             onChange={() => toggleSelectOrder(order.id)}
-                                                            className="h-4 w-4 rounded-lg border-2 border-slate-200 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-500"
+                                                            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20 cursor-pointer"
                                                         />
                                                     )}
-                                                </td>
-                                                <td className="px-8 py-6">
-                                                    <span className="text-sm font-black text-slate-900 uppercase tracking-tight">{order.supplier_name}</span>
-                                                </td>
-                                                <td className="px-8 py-6">
-                                                    <span className="text-sm font-black text-slate-400 tabular-nums">{order.date}</span>
-                                                </td>
-                                                <td className="px-8 py-6">
-                                                    <p className="text-xs text-slate-500 font-medium line-clamp-1">
-                                                        {(order.items || []).map(i => i.article_name).join(', ')}
-                                                    </p>
-                                                </td>
-                                                <td className="px-8 py-6 text-right">
-                                                    <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-all">
-                                                        <button
-                                                            onClick={() => setViewingOrder(order)}
-                                                            className="p-3 bg-slate-50 hover:bg-slate-900 hover:text-white rounded-xl text-slate-400 transition-all shadow-sm border border-slate-100"
-                                                        >
-                                                            <Eye className="h-4 w-4" />
-                                                        </button>
-                                                        <div className="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-600 text-[9px] font-black uppercase tracking-widest border border-emerald-100">
-                                                            LIVRÉ & ARCHIVÉ
+                                                    <div className="min-w-0">
+                                                        <p className="text-sm font-semibold text-slate-900 truncate">{order.supplier_name}</p>
+                                                        <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                                                            <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                                                            Prévu le {order.date}
                                                         </div>
                                                     </div>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </motion.div>
-                </div>
-            </div>
+                                                </div>
+                                                {canEdit && (
+                                                    <button
+                                                        onClick={() => openEdit(order)}
+                                                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors shrink-0"
+                                                    >
+                                                        <Pencil className="h-4 w-4" />
+                                                    </button>
+                                                )}
+                                            </div>
 
-            {/* ADD MODAL with Enhanced Search */}
-            <AnimatePresence>
-                {isAdding && (
-                    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4" onClick={closeModal}>
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                            className="bg-white rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
-                            onClick={e => e.stopPropagation()}
-                        >
-                            <div className="bg-slate-900 p-8 text-white flex justify-between items-center shrink-0">
-                                <div>
-                                    <h2 className="text-2xl font-black uppercase tracking-tight">
-                                        {isEditing ? 'Modifier la Commande' : 'Nouvelle Commande'}
-                                    </h2>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Planification des approvisionnements</p>
+                                            <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3 space-y-2">
+                                                {(order.items || []).map((item, iIdx) => (
+                                                    <div key={iIdx} className="flex justify-between items-start gap-3">
+                                                        <span className="text-sm text-slate-700 min-w-0 truncate">{item.article_name}</span>
+                                                        <div className="flex flex-col items-end shrink-0">
+                                                            <span className="text-sm font-medium text-slate-900 tabular-nums">
+                                                                {((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                                                <span className="text-xs text-slate-400 ml-0.5">DT</span>
+                                                            </span>
+                                                            <span className="text-[11px] text-slate-400 tabular-nums">
+                                                                {item.quantity} {item.unit} × {item.unitPrice?.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {canEdit && (
+                                                <button
+                                                    onClick={() => handleUpdateStatus(order.id, 'delivered')}
+                                                    className="mt-3 inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 active:scale-[0.99] transition-colors"
+                                                >
+                                                    <CheckCircle2 className="h-4 w-4" />
+                                                    Confirmer réception
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
                                 </div>
-                                <button onClick={closeModal} className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center hover:bg-rose-500 transition-all group">
-                                    <XCircle className="h-6 w-6 group-hover:scale-110 transition-transform" />
-                                </button>
+                            )}
+                        </section>
+
+                        {/* DELIVERED ORDERS */}
+                        <section className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-sm font-semibold text-slate-900">Historique des livraisons</h2>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
+                                    {deliveredOrders.length}
+                                </span>
                             </div>
 
-                            <div className="p-8 overflow-y-auto custom-scrollbar space-y-8 flex-1">
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Fournisseur</label>
-                                        <select
-                                            className="luxury-input h-14"
-                                            value={newOrder.supplierId}
-                                            onChange={e => setNewOrder({ ...newOrder, supplierId: e.target.value })}
-                                        >
-                                            <option value="">Sélectionner un partenaire...</option>
-                                            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                        </select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Date Prévue</label>
-                                        <input
-                                            type="date"
-                                            className="luxury-input h-14"
-                                            value={newOrder.date}
-                                            onChange={e => setNewOrder({ ...newOrder, date: e.target.value })}
-                                        />
-                                    </div>
+                            {deliveredOrders.length === 0 ? (
+                                <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 flex flex-col items-center gap-3">
+                                    <Clock className="h-7 w-7 text-slate-300" />
+                                    <p className="text-sm text-slate-500">Aucune donnée archivée</p>
                                 </div>
-
-                                <div>
-                                    <div className="flex justify-between items-center mb-4">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Articles à commander</label>
-                                        <button onClick={handleAddItemRow} className="text-[10px] font-black text-blue-500 hover:text-blue-600 uppercase tracking-widest bg-blue-50 px-4 py-2 rounded-xl transition-all">+ Ajouter Ligne</button>
-                                    </div>
-                                    <div className="space-y-4">
-                                        {newItems.map((item, idx) => (
-                                            <div key={idx} className="relative flex flex-col md:flex-row gap-4 items-end bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
-                                                <div className="flex-1 relative w-full">
-                                                    <div className="relative group">
-                                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
-                                                        <input
-                                                            placeholder="Rechercher un article..."
-                                                            className="luxury-input h-14 pl-12"
-                                                            value={item.article_name}
-                                                            onChange={e => handleItemChange(idx, 'article_name', e.target.value)}
-                                                            onFocus={() => handleItemChange(idx, 'article_name', item.article_name)}
-                                                        />
-                                                    </div>
-
-                                                    <AnimatePresence>
-                                                        {activeSearchIndex === idx && searchResults.length > 0 && (
-                                                            <motion.div
-                                                                initial={{ opacity: 0, y: 10 }}
-                                                                animate={{ opacity: 1, y: 0 }}
-                                                                exit={{ opacity: 0, y: 10 }}
-                                                                className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 z-[120] max-h-60 overflow-y-auto"
-                                                            >
-                                                                {searchResults.map((res, sIdx) => (
-                                                                    <button
-                                                                        key={sIdx}
-                                                                        onClick={() => handleSelectCatalogItem(idx, res)}
-                                                                        className="w-full text-left p-4 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex justify-between items-center group transition-colors"
-                                                                    >
-                                                                        <div>
-                                                                            <p className="font-black text-slate-900 text-xs uppercase tracking-tight">{res.designation}</p>
-                                                                            <div className="flex items-center gap-2 text-[9px] text-slate-400 uppercase font-black tracking-widest mt-1">
-                                                                                <span className="text-blue-500">{res.supplierName}</span>
-                                                                                <span className="text-slate-200">•</span>
-                                                                                <span>{res.lastDate}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="text-right">
-                                                                            <p className="font-black text-emerald-600 text-xs tabular-nums">{res.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[9px]">Dt</span></p>
-                                                                        </div>
-                                                                    </button>
-                                                                ))}
-                                                            </motion.div>
+                            ) : (
+                                <>
+                                    {/* Desktop table */}
+                                    <div className="hidden md:block rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="bg-slate-50">
+                                                    {authIsAdmin && <th className="px-4 py-3 text-xs font-medium text-slate-500 w-12"></th>}
+                                                    <th className="px-4 py-3 text-xs font-medium text-slate-500">Partenaire</th>
+                                                    <th className="px-4 py-3 text-xs font-medium text-slate-500">Date de réception</th>
+                                                    <th className="px-4 py-3 text-xs font-medium text-slate-500">Contenu</th>
+                                                    <th className="px-4 py-3 text-xs font-medium text-slate-500 text-right">Total</th>
+                                                    <th className="px-4 py-3 text-xs font-medium text-slate-500 text-right">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {deliveredOrders.map(order => (
+                                                    <tr key={order.id} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                                                        {authIsAdmin && (
+                                                            <td className="px-4 py-3 text-center">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={selectedOrders.includes(order.id)}
+                                                                    onChange={() => toggleSelectOrder(order.id)}
+                                                                    className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20 cursor-pointer"
+                                                                />
+                                                            </td>
                                                         )}
-                                                    </AnimatePresence>
-                                                </div>
+                                                        <td className="px-4 py-3 text-sm font-medium text-slate-900">{order.supplier_name}</td>
+                                                        <td className="px-4 py-3 text-sm text-slate-500 tabular-nums">{order.date}</td>
+                                                        <td className="px-4 py-3 text-sm text-slate-500 max-w-xs">
+                                                            <p className="line-clamp-1">{(order.items || []).map(i => i.article_name).join(', ')}</p>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-sm font-medium text-slate-900 text-right tabular-nums">
+                                                            {orderTotal(order).toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right">
+                                                            <div className="flex items-center justify-end gap-2">
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
+                                                                    Livré
+                                                                </span>
+                                                                <button
+                                                                    onClick={() => setViewingOrder(order)}
+                                                                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                                                >
+                                                                    <Eye className="h-4 w-4" />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
 
-                                                <div className="flex gap-3 w-full md:w-auto">
-                                                    <div className="w-24">
-                                                        <input
-                                                            type="number"
-                                                            className="luxury-input h-14 text-center font-black"
-                                                            value={item.quantity}
-                                                            onChange={e => handleItemChange(idx, 'quantity', e.target.value)}
-                                                        />
+                                    {/* Mobile stacked cards */}
+                                    <div className="md:hidden space-y-3">
+                                        {deliveredOrders.map(order => (
+                                            <div key={order.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                                                        {authIsAdmin && (
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedOrders.includes(order.id)}
+                                                                onChange={() => toggleSelectOrder(order.id)}
+                                                                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20 cursor-pointer"
+                                                            />
+                                                        )}
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-semibold text-slate-900 truncate">{order.supplier_name}</p>
+                                                            <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                                                                <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                                                                Livré le {order.date}
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div className="w-32">
-                                                        <input
-                                                            type="number"
-                                                            step="0.001"
-                                                            className="luxury-input h-14 text-center font-black"
-                                                            value={item.unitPrice || ''}
-                                                            onChange={e => handleItemChange(idx, 'unitPrice', e.target.value)}
-                                                        />
-                                                    </div>
-                                                    {newItems.length > 1 && (
-                                                        <button onClick={() => handleRemoveItemRow(idx)} className="h-14 w-14 flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all">
-                                                            <Trash2 className="h-5 w-5" />
-                                                        </button>
-                                                    )}
+                                                    <button
+                                                        onClick={() => setViewingOrder(order)}
+                                                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors shrink-0"
+                                                    >
+                                                        <Eye className="h-4 w-4" />
+                                                    </button>
+                                                </div>
+                                                <p className="text-xs text-slate-500 mt-2 line-clamp-2">
+                                                    {(order.items || []).map(i => i.article_name).join(', ')}
+                                                </p>
+                                                <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
+                                                        Livré
+                                                    </span>
+                                                    <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                                                        {orderTotal(order).toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                                        <span className="text-xs text-slate-400 ml-1">DT</span>
+                                                    </span>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
-                                </div>
-                            </div>
-
-                            <div className="p-8 bg-slate-50 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-6 shrink-0">
-                                <div className="text-center md:text-left">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Valeur Estimée</p>
-                                    <p className="text-3xl font-black text-slate-900 tabular-nums">{totalEstimate.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[12px] text-slate-400">DT</span></p>
-                                </div>
-                                <button
-                                    onClick={handleSaveOrder}
-                                    disabled={!newOrder.supplierId || newItems.every(i => !i.article_name)}
-                                    className="w-full md:w-auto bg-slate-900 text-white px-12 py-5 rounded-[1.5rem] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl shadow-slate-900/10 disabled:bg-slate-200 disabled:shadow-none active:scale-95 flex items-center justify-center gap-3"
-                                >
-                                    <Truck className="h-5 w-5" />
-                                    ENREGISTRER LA COMMANDE
-                                </button>
-                            </div>
-                        </motion.div>
-                    </div>
+                                </>
+                            )}
+                        </section>
+                    </>
                 )}
-            </AnimatePresence>
+            </div>
 
-            {/* View Order Modal */}
-            <AnimatePresence>
-                {viewingOrder && (
-                    <div className="fixed inset-0 z-[115] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4" onClick={() => setViewingOrder(null)}>
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                            className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
-                            onClick={e => e.stopPropagation()}
+            {/* ADD / EDIT MODAL */}
+            <Modal
+                open={isAdding}
+                onClose={closeModal}
+                title={isEditing ? 'Modifier la commande' : 'Nouvelle commande'}
+                description="Planification des approvisionnements"
+                size="xl"
+                footer={
+                    <>
+                        <div className="mr-auto text-left">
+                            <p className="text-xs text-slate-500">Valeur estimée</p>
+                            <p className="text-lg font-semibold text-slate-900 tabular-nums">
+                                {totalEstimate.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                <span className="text-xs text-slate-400 ml-1">DT</span>
+                            </p>
+                        </div>
+                        <button className={secondaryBtn} onClick={closeModal}>Annuler</button>
+                        <button
+                            className={primaryBtn}
+                            onClick={handleSaveOrder}
+                            disabled={!newOrder.supplierId || newItems.every(i => !i.article_name)}
                         >
-                            <div className={`p-8 text-white flex justify-between items-center shrink-0 ${viewingOrder.supplier_color}`}>
-                                <div>
-                                    <h2 className="text-2xl font-black uppercase tracking-tight">{viewingOrder.supplier_name}</h2>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <Calendar className="h-3 w-3 opacity-60" />
-                                        <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Livré le {viewingOrder.date}</p>
+                            <Truck className="h-4 w-4" />
+                            Enregistrer
+                        </button>
+                    </>
+                }
+            >
+                <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className={labelClass}>Fournisseur</label>
+                            <select
+                                className={inputClass}
+                                value={newOrder.supplierId}
+                                onChange={e => setNewOrder({ ...newOrder, supplierId: e.target.value })}
+                            >
+                                <option value="">Sélectionner un partenaire...</option>
+                                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className={labelClass}>Date prévue</label>
+                            <input
+                                type="date"
+                                className={inputClass}
+                                value={newOrder.date}
+                                onChange={e => setNewOrder({ ...newOrder, date: e.target.value })}
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <div className="flex justify-between items-center mb-1.5">
+                            <label className={labelClass + ' mb-0'}>Articles à commander</label>
+                            <button onClick={handleAddItemRow} className="text-xs font-medium text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors">
+                                + Ajouter une ligne
+                            </button>
+                        </div>
+                        <div className="space-y-3">
+                            {newItems.map((item, idx) => (
+                                <div key={idx} className="relative flex flex-col sm:flex-row gap-2 sm:items-start rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                    <div className="flex-1 relative w-full">
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                            <input
+                                                placeholder="Rechercher un article..."
+                                                className={inputClass + ' pl-9'}
+                                                value={item.article_name}
+                                                onChange={e => handleItemChange(idx, 'article_name', e.target.value)}
+                                                onFocus={e => { setSearchAnchorEl(e.currentTarget); handleItemChange(idx, 'article_name', item.article_name); }}
+                                            />
+                                        </div>
+
+                                        <AnchoredDropdown
+                                            open={activeSearchIndex === idx && searchResults.length > 0}
+                                            anchorEl={searchAnchorEl}
+                                            onClose={() => setActiveSearchIndex(null)}
+                                        >
+                                            {searchResults.map((res, sIdx) => (
+                                                <button
+                                                    key={sIdx}
+                                                    onClick={() => { handleSelectCatalogItem(idx, res); setActiveSearchIndex(null); }}
+                                                    className="w-full text-left px-3 py-2.5 hover:bg-slate-50 border-b border-slate-100 last:border-0 flex justify-between items-center gap-3 transition-colors"
+                                                >
+                                                    <div className="min-w-0">
+                                                        <p className="text-sm font-medium text-slate-900 truncate">{res.designation}</p>
+                                                        <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
+                                                            <span className="text-blue-600">{res.supplierName}</span>
+                                                            <span>•</span>
+                                                            <span>{res.lastDate}</span>
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-sm font-medium text-emerald-600 tabular-nums shrink-0">
+                                                        {res.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                                        <span className="text-[11px] ml-0.5">DT</span>
+                                                    </p>
+                                                </button>
+                                            ))}
+                                        </AnchoredDropdown>
+                                    </div>
+
+                                    <div className="flex gap-2 w-full sm:w-auto">
+                                        <input
+                                            type="number"
+                                            placeholder="Qté"
+                                            className={inputClass + ' w-20 text-center'}
+                                            value={item.quantity}
+                                            onChange={e => handleItemChange(idx, 'quantity', e.target.value)}
+                                        />
+                                        <input
+                                            type="number"
+                                            step="0.001"
+                                            placeholder="Prix"
+                                            className={inputClass + ' w-28 text-center'}
+                                            value={item.unitPrice || ''}
+                                            onChange={e => handleItemChange(idx, 'unitPrice', e.target.value)}
+                                        />
+                                        {newItems.length > 1 && (
+                                            <button
+                                                onClick={() => handleRemoveItemRow(idx)}
+                                                className="inline-flex items-center justify-center w-10 h-10 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
-                                <button onClick={() => setViewingOrder(null)} className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center hover:bg-white/30 transition-all group">
-                                    <XCircle className="h-6 w-6 group-hover:scale-110 transition-transform" />
-                                </button>
-                            </div>
-                            <div className="p-8 overflow-y-auto custom-scrollbar">
-                                <div className="space-y-6">
-                                    {(viewingOrder.items || []).map((item, idx) => (
-                                        <div key={idx} className="flex justify-between items-center border-b border-slate-50 pb-4 last:border-0 last:pb-0">
-                                            <div>
-                                                <p className="text-xs font-black text-slate-900 uppercase tracking-tight">{item.article_name}</p>
-                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{item.quantity} {item.unit} × {item.unitPrice?.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT</p>
-                                            </div>
-                                            <p className="text-sm font-black text-slate-900 tabular-nums">
-                                                {((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString(undefined, { minimumFractionDigits: 3 })}
-                                            </p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-between items-center shrink-0">
-                                <div>
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Valeur Totale TTC</p>
-                                    <p className="text-2xl font-black text-slate-900 tabular-nums mt-1">
-                                        {(viewingOrder.items || []).reduce((sum, i) => sum + ((i.quantity || 0) * (i.unitPrice || 0)), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] text-slate-400">DT</span>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* VIEW ORDER MODAL */}
+            <Modal
+                open={!!viewingOrder}
+                onClose={() => setViewingOrder(null)}
+                title={viewingOrder?.supplier_name}
+                description={viewingOrder ? `Livré le ${viewingOrder.date}` : undefined}
+                size="lg"
+                footer={
+                    <>
+                        <div className="mr-auto text-left">
+                            <p className="text-xs text-slate-500">Valeur totale TTC</p>
+                            <p className="text-lg font-semibold text-slate-900 tabular-nums">
+                                {viewingOrder ? orderTotal(viewingOrder).toLocaleString(undefined, { minimumFractionDigits: 3 }) : '0'}
+                                <span className="text-xs text-slate-400 ml-1">DT</span>
+                            </p>
+                        </div>
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
+                            Archivé
+                        </span>
+                    </>
+                }
+            >
+                {viewingOrder && (
+                    <div className="space-y-3">
+                        {(viewingOrder.items || []).map((item, idx) => (
+                            <div key={idx} className="flex justify-between items-start gap-3 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
+                                <div className="min-w-0">
+                                    <p className="text-sm font-medium text-slate-900">{item.article_name}</p>
+                                    <p className="text-xs text-slate-400 mt-0.5 tabular-nums">
+                                        {item.quantity} {item.unit} × {item.unitPrice?.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT
                                     </p>
                                 </div>
-                                <div className="px-6 py-3 rounded-2xl bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-widest border border-emerald-100 shadow-sm">
-                                    ARCHIVÉ
-                                </div>
+                                <p className="text-sm font-medium text-slate-900 tabular-nums shrink-0">
+                                    {((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                </p>
                             </div>
-                        </motion.div>
+                        ))}
                     </div>
                 )}
-            </AnimatePresence>
+            </Modal>
         </div>
     );
 }

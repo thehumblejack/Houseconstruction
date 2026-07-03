@@ -1981,6 +1981,43 @@ function ExpensesContentMain() {
         doc.save("Bilan_MaMaison.pdf");
     };
 
+    // Export the current supplier's factures — the selected ones if any are checked, otherwise all.
+    const handleExportSupplierPDF = () => {
+        if (!currentSupplier) return;
+        const useSelection = selectedExpenseIds.size > 0;
+        const items = currentSupplier.expenses.filter(e => useSelection ? selectedExpenseIds.has(e.id) : true);
+        if (items.length === 0) return;
+
+        const doc = new jsPDF();
+        doc.setFontSize(16);
+        doc.text(`Factures & bons — ${currentSupplier.name}`, 14, 20);
+        doc.setFontSize(10);
+        doc.text(`${useSelection ? 'Sélection' : 'Tous'} · Généré le ${new Date().toLocaleDateString('fr-FR')}`, 14, 27);
+
+        const body: any[] = items.map(e => [
+            e.date,
+            e.item,
+            e.status === 'paid' ? 'Payé' : 'Attente',
+            e.price.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT',
+        ]);
+        const total = items.reduce((sum, e) => sum + e.price, 0);
+        body.push([
+            { content: `TOTAL (${items.length})`, colSpan: 3, styles: { fontStyle: 'bold', halign: 'right' } },
+            { content: total.toLocaleString(undefined, { minimumFractionDigits: 3 }) + ' DT', styles: { fontStyle: 'bold' } },
+        ]);
+
+        autoTable(doc, {
+            head: [['Date', 'Désignation', 'Statut', 'Montant']],
+            body,
+            startY: 34,
+            theme: 'grid',
+            styles: { fontSize: 8 },
+            headStyles: { fillColor: [15, 23, 42] },
+        });
+
+        doc.save(`Factures_${currentSupplier.name.replace(/\s+/g, '_')}_${useSelection ? 'selection' : 'tout'}.pdf`);
+    };
+
 
 
     const formatValue = (val: number) => {
@@ -3590,19 +3627,31 @@ function ExpensesContentMain() {
                                         )}
                                     </div>
 
-                                    <div className="grid grid-cols-3 gap-2 w-full lg:w-auto">
-                                        <div className="bg-white rounded-2xl border border-slate-200 p-3 text-center min-w-[110px]">
-                                            <p className="text-xs text-slate-500">Total</p>
-                                            <p className="text-base font-semibold text-slate-900 tabular-nums mt-0.5">{formatValue(activeStat.totalCost)}</p>
+                                    <div className="flex items-stretch gap-2 w-full lg:w-auto">
+                                        <div className="grid grid-cols-3 gap-2 flex-1 lg:flex-initial">
+                                            <div className="bg-white rounded-2xl border border-slate-200 p-3 text-center min-w-[92px] lg:min-w-[110px]">
+                                                <p className="text-xs text-slate-500">Total</p>
+                                                <p className="text-base font-semibold text-slate-900 tabular-nums mt-0.5">{formatValue(activeStat.totalCost)}</p>
+                                            </div>
+                                            <div className="bg-white rounded-2xl border border-slate-200 p-3 text-center min-w-[92px] lg:min-w-[110px]">
+                                                <p className="text-xs text-slate-500">Payé</p>
+                                                <p className="text-base font-semibold text-emerald-600 tabular-nums mt-0.5">{formatValue(activeStat.totalPaid)}</p>
+                                            </div>
+                                            <div className="bg-white rounded-2xl border border-slate-200 p-3 text-center min-w-[92px] lg:min-w-[110px]">
+                                                <p className="text-xs text-slate-500">Solde</p>
+                                                <p className={`text-base font-semibold tabular-nums mt-0.5 ${activeStat.remaining < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatValue(activeStat.remaining)}</p>
+                                            </div>
                                         </div>
-                                        <div className="bg-white rounded-2xl border border-slate-200 p-3 text-center min-w-[110px]">
-                                            <p className="text-xs text-slate-500">Payé</p>
-                                            <p className="text-base font-semibold text-emerald-600 tabular-nums mt-0.5">{formatValue(activeStat.totalPaid)}</p>
-                                        </div>
-                                        <div className="bg-white rounded-2xl border border-slate-200 p-3 text-center min-w-[110px]">
-                                            <p className="text-xs text-slate-500">Solde</p>
-                                            <p className={`text-base font-semibold tabular-nums mt-0.5 ${activeStat.remaining < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatValue(activeStat.remaining)}</p>
-                                        </div>
+                                        <button
+                                            onClick={handleExportSupplierPDF}
+                                            title={selectedExpenseIds.size > 0 ? 'Exporter la sélection en PDF' : 'Exporter toutes les factures en PDF'}
+                                            className="shrink-0 inline-flex flex-col items-center justify-center gap-1 rounded-2xl border border-slate-200 bg-white px-3.5 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors"
+                                        >
+                                            <FileDown className="h-4 w-4" />
+                                            <span className="text-[11px] font-medium whitespace-nowrap">
+                                                {selectedExpenseIds.size > 0 ? `Export (${selectedExpenseIds.size})` : 'Export'}
+                                            </span>
+                                        </button>
                                     </div>
                                 </div>
                             )}
@@ -3775,10 +3824,7 @@ function ExpensesContentMain() {
                             {isAdmin && (
                                 <div className="space-y-4">
                                     <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
-                                        <button
-                                            className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                                            onClick={() => setShowUploadedDocs(!showUploadedDocs)}
-                                        >
+                                        <div className="flex items-center gap-3 flex-1 min-w-0">
                                             <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
                                                 <FileText className="h-4 w-4" />
                                             </div>
@@ -3786,8 +3832,7 @@ function ExpensesContentMain() {
                                                 <h2 className="text-sm font-medium text-slate-900">Documents importés</h2>
                                                 <p className="text-xs text-slate-500">{uploadedDocs.filter(doc => doc.supplierId === activeTab).length} fichiers archivés</p>
                                             </div>
-                                            <ChevronDown className={`h-4 w-4 text-slate-400 ml-2 shrink-0 transition-transform ${showUploadedDocs ? 'rotate-180' : ''}`} />
-                                        </button>
+                                        </div>
                                         <div className="flex items-center gap-2 shrink-0">
                                             <button
                                                 onClick={() => {
@@ -3901,10 +3946,7 @@ function ExpensesContentMain() {
                             {currentSupplier && panelTab === 'factures' && (
                             <div className="space-y-4">
                                 <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
-                                    <button
-                                        className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                                        onClick={() => setShowExpensesSection(!showExpensesSection)}
-                                    >
+                                    <div className="flex items-center gap-3 flex-1 min-w-0">
                                         <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
                                             <Receipt className="h-4 w-4" />
                                         </div>
@@ -3912,8 +3954,7 @@ function ExpensesContentMain() {
                                             <h2 className="text-sm font-medium text-slate-900">Factures &amp; bons</h2>
                                             <p className="text-xs text-slate-500">{currentSupplier?.expenses?.length || 0} documents enregistrés</p>
                                         </div>
-                                        <ChevronDown className={`h-4 w-4 text-slate-400 ml-2 shrink-0 transition-transform ${showExpensesSection ? 'rotate-180' : ''}`} />
-                                    </button>
+                                    </div>
                                     {isAdmin && (
                                         <button
                                             onClick={() => setShowAddExpenseModal(true)}
@@ -4318,10 +4359,7 @@ function ExpensesContentMain() {
                             {currentSupplier && panelTab === 'acomptes' && (
                             <div className="space-y-4">
                                 <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
-                                    <button
-                                        className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                                        onClick={() => setShowDepositsSection(!showDepositsSection)}
-                                    >
+                                    <div className="flex items-center gap-3 flex-1 min-w-0">
                                         <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
                                             <TrendingUp className="h-4 w-4" />
                                         </div>
@@ -4329,8 +4367,7 @@ function ExpensesContentMain() {
                                             <h2 className="text-sm font-medium text-slate-900">Historique acomptes</h2>
                                             <p className="text-xs text-slate-500">{currentSupplier?.deposits?.length || 0} paiements enregistrés</p>
                                         </div>
-                                        <ChevronDown className={`h-4 w-4 text-slate-400 ml-2 shrink-0 transition-transform ${showDepositsSection ? 'rotate-180' : ''}`} />
-                                    </button>
+                                    </div>
                                     {isAdmin && (
                                         <button
                                             onClick={() => {
@@ -4828,12 +4865,21 @@ function ExpensesContentMain() {
                             </p>
                         </div>
 
-                        <button
-                            onClick={() => setSelectedExpenseIds(new Set())}
-                            className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 transition-colors shrink-0"
-                        >
-                            <X className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                                onClick={handleExportSupplierPDF}
+                                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-white text-slate-900 text-sm font-medium hover:bg-slate-100 transition-colors"
+                            >
+                                <FileDown className="h-4 w-4" /> <span className="hidden sm:inline">Exporter</span>
+                            </button>
+                            <button
+                                onClick={() => setSelectedExpenseIds(new Set())}
+                                className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                                title="Effacer la sélection"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

@@ -9,7 +9,7 @@ import {
     Plus, Receipt, FileText, Trash2, TrendingUp, DollarSign,
     Upload, X, CheckCircle2, Clock, Eye, EyeOff, AlertCircle, FileDown, ChevronDown,
     ArrowRight, ArrowUp, ArrowDown, ArrowUpDown, Search, Pencil, Image as ImageIcon, Package, GripVertical,
-    Store, FilePlus, Sparkles, Keyboard, ImagePlus, ClipboardList
+    Store, FilePlus, Sparkles, Keyboard, ImagePlus, ClipboardList, FolderOpen, Layers
 } from 'lucide-react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
 import { Modal, AnchoredDropdown } from '@/components/ui';
@@ -55,6 +55,25 @@ interface InvoiceItem {
     totalTTC: number;
 }
 
+interface Phase {
+    id: string;
+    name: string;
+    color?: string | null;
+    sort_order?: number;
+    created_at?: string;
+}
+
+// Selectable phase colors: key stored in DB, chip = badge classes, dot = swatch.
+const PHASE_COLOR_OPTIONS: Array<{ key: string; chip: string; dot: string }> = [
+    { key: 'blue', chip: 'bg-blue-50 text-blue-700', dot: 'bg-blue-500' },
+    { key: 'purple', chip: 'bg-purple-50 text-purple-700', dot: 'bg-purple-500' },
+    { key: 'amber', chip: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
+    { key: 'emerald', chip: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
+    { key: 'rose', chip: 'bg-rose-50 text-rose-700', dot: 'bg-rose-500' },
+    { key: 'cyan', chip: 'bg-cyan-50 text-cyan-700', dot: 'bg-cyan-500' },
+    { key: 'slate', chip: 'bg-slate-100 text-slate-700', dot: 'bg-slate-500' },
+];
+
 interface Expense {
     id: string;
     date: string;
@@ -63,6 +82,8 @@ interface Expense {
     price: number;
     status: PaymentStatus;
     invoiceImage: string | null;
+    phaseId?: string | null;
+    groupName?: string | null;
     items?: InvoiceItem[];
     // Mostakbel Header specific fields
     codeClient?: string;
@@ -274,7 +295,8 @@ function ExpensesContentMain() {
         price: '',
         date: new Date().toISOString().split('T')[0],
         status: 'pending' as PaymentStatus,
-        quantity: '1'
+        quantity: '1',
+        phaseId: ''
     });
     const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
 
@@ -350,6 +372,25 @@ function ExpensesContentMain() {
     const [tempNoteValue, setTempNoteValue] = useState('');
     const [memos, setMemos] = useState<Array<{ id: string; content: string; createdAt: string; updatedAt?: string }>>([]);
     const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
+    const [showMemosModal, setShowMemosModal] = useState(false);
+    const [expandedMemos, setExpandedMemos] = useState<Set<string>>(new Set());
+
+    // Phases (Phase 1, Phase 2, …) — factures carry a phase badge; totals per phase.
+    const [phases, setPhases] = useState<Phase[]>([]);
+    const [phasesReady, setPhasesReady] = useState(false); // true once the phases table exists (migration applied)
+    const [showPhasesModal, setShowPhasesModal] = useState(false);
+    const [newPhaseName, setNewPhaseName] = useState('');
+    const [editingPhaseId, setEditingPhaseId] = useState<string | null>(null);
+    const [editPhaseName, setEditPhaseName] = useState('');
+    const [assigningPhaseId, setAssigningPhaseId] = useState<string | null>(null);
+    const [assignSelection, setAssignSelection] = useState<Set<string>>(new Set());
+    // Facture groups (e.g. "Telescopie") — collapsible, with per-group totals.
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+    const [showGroupModal, setShowGroupModal] = useState(false);
+    const [tempGroupName, setTempGroupName] = useState('');
+    const [groupTargetIds, setGroupTargetIds] = useState<string[] | null>(null);
+    // Groups excluded from the totals (keys: `${supplierId}::${groupName}`), persisted in project_settings.
+    const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [replacingDocId, setReplacingDocId] = useState<string | null>(null);
     const [lastReplacedDoc, setLastReplacedDoc] = useState<{ id: string, oldUrl: string, oldFileName: string } | null>(null);
@@ -513,6 +554,17 @@ function ExpensesContentMain() {
             // Optional fetch for project_suppliers
             const { data: projectSupsData, error: projectSupsError } = await supabase.from('project_suppliers').select('*').eq('project_id', currentProject.id).is('deleted_at', null);
 
+            // Phases (table may not exist until the migration is applied — fail soft)
+            const { data: phasesData, error: phasesError } = await supabase.from('phases').select('*').eq('project_id', currentProject.id).order('sort_order').order('created_at');
+            if (phasesError) {
+                console.warn('Expenses: phases fetch error (run the phases migration?):', phasesError.message);
+                setPhases([]);
+                setPhasesReady(false);
+            } else {
+                setPhases(phasesData || []);
+                setPhasesReady(true);
+            }
+
             // Also fetch ARCHIVED suppliers for the project
             const { data: archivedProjectSups } = await supabase.from('project_suppliers').select('supplier_id').eq('project_id', currentProject.id).not('deleted_at', 'is', null);
             const archivedIds = new Set(archivedProjectSups?.map((ps: any) => ps.supplier_id) || []);
@@ -568,6 +620,15 @@ function ExpensesContentMain() {
                     }
                 }
                 setMemos(parsed);
+
+                // Groups excluded from totals (JSON array of "supplierId::groupName")
+                const exRaw = settingsData.find((s: any) => s.key === 'excluded_groups')?.value || '';
+                try {
+                    const arr = exRaw ? JSON.parse(exRaw) : [];
+                    setExcludedGroups(new Set(Array.isArray(arr) ? arr : []));
+                } catch {
+                    setExcludedGroups(new Set());
+                }
             }
 
             // Load uploaded documents
@@ -612,6 +673,8 @@ function ExpensesContentMain() {
                             price: e.price,
                             status: e.status as PaymentStatus,
                             invoiceImage: e.invoice_image,
+                            phaseId: e.phase_id ?? null,
+                            groupName: e.group_name ?? null,
                             items: e.items?.map((i: any) => ({
                                 code: i.code || '',
                                 designation: i.designation || '',
@@ -1129,10 +1192,16 @@ function ExpensesContentMain() {
         // Sum of all acomptes (deposits/règlements)
         const d_Total = s.deposits?.reduce((sum, d) => sum + d.amount, 0) || 0;
 
+        // Factures in an excluded group don't count towards any total.
+        const countable = s.expenses.filter(e => {
+            const g = (e.groupName || '').trim();
+            return !g || !excludedGroups.has(`${s.id}::${g}`);
+        });
+
         let totalExpenseAll = 0;   // sum of elements in factures et bons
         let totalExpensePaid = 0;  // sum of only 'payé'
 
-        s.expenses.forEach(e => {
+        countable.forEach(e => {
             totalExpenseAll += e.price;
             if (e.status === 'paid') {
                 totalExpensePaid += e.price;
@@ -1141,7 +1210,7 @@ function ExpensesContentMain() {
 
         // sum of elements that has Attente status (Outstanding Bill)
         let totalExpensePending = 0;
-        s.expenses.forEach(e => {
+        countable.forEach(e => {
             if (e.status === 'pending') {
                 totalExpensePending += e.price;
             }
@@ -1176,7 +1245,7 @@ function ExpensesContentMain() {
             remaining: computedRemaining,
             color: s.color
         };
-    }), [suppliers]);
+    }), [suppliers, excludedGroups]);
 
     const grandTotal = supplierStats.reduce((sum, s) => sum + s.totalCost, 0);
     const totalPaidGlobal = supplierStats.reduce((sum, s) => sum + s.totalPaid, 0);
@@ -1240,6 +1309,28 @@ function ExpensesContentMain() {
         });
         return items;
     }, [currentSupplier, sortConfig, statusFilter]);
+
+    // Render list for the factures table: named groups become a header entry
+    // (with total) followed by their members (unless collapsed); ungrouped
+    // factures render as plain rows. Group position = its first member's sort slot.
+    const factureRenderList = useMemo(() => {
+        const out: Array<{ kind: 'header'; name: string; total: number; count: number } | { kind: 'row'; e: Expense }> = [];
+        const seen = new Set<string>();
+        for (const e of sortedExpenses) {
+            const g = (e.groupName || '').trim();
+            if (g) {
+                if (!seen.has(g)) {
+                    seen.add(g);
+                    const members = sortedExpenses.filter(x => (x.groupName || '').trim() === g);
+                    out.push({ kind: 'header', name: g, total: members.reduce((s, x) => s + x.price, 0), count: members.length });
+                    if (!collapsedGroups.has(g)) members.forEach(x => out.push({ kind: 'row', e: x }));
+                }
+            } else {
+                out.push({ kind: 'row', e });
+            }
+        }
+        return out;
+    }, [sortedExpenses, collapsedGroups]);
 
     const activeStat = useMemo(() => {
         const stat = supplierStats.find(s => s.id === activeTab);
@@ -1402,6 +1493,214 @@ function ExpensesContentMain() {
             console.error('Error deleting memo:', e);
         }
     };
+
+    // ── Phases ───────────────────────────────────────────────────────────
+    const handleCreatePhase = async () => {
+        if (!isAdmin || !currentProject) return;
+        const name = newPhaseName.trim();
+        if (!name) return;
+        try {
+            const { error } = await supabase.from('phases').insert({
+                project_id: currentProject.id,
+                name,
+                sort_order: phases.length,
+            });
+            if (error) throw error;
+            setNewPhaseName('');
+            fetchData();
+        } catch (e: any) {
+            console.error('Error creating phase:', e);
+            alert("Erreur lors de la création de la phase" + (e?.message ? `: ${e.message}` : '') + "\n(Avez-vous appliqué la migration 'phases' dans Supabase ?)");
+        }
+    };
+
+    const handleDeletePhase = async (id: string) => {
+        if (!isAdmin || !currentProject) return;
+        if (!confirm('Supprimer cette phase ? Les factures resteront intactes (elles perdront seulement leur badge).')) return;
+        try {
+            const { error } = await supabase.from('phases').delete().eq('id', id);
+            if (error) throw error;
+            fetchData();
+        } catch (e) {
+            console.error('Error deleting phase:', e);
+        }
+    };
+
+    const handleRenamePhase = async (id: string) => {
+        if (!isAdmin || !currentProject) return;
+        const name = editPhaseName.trim();
+        if (!name) return;
+        try {
+            const { error } = await supabase.from('phases').update({ name }).eq('id', id);
+            if (error) throw error;
+            setEditingPhaseId(null);
+            setEditPhaseName('');
+            fetchData();
+        } catch (e) {
+            console.error('Error renaming phase:', e);
+        }
+    };
+
+    // Tag all currently UNTAGGED factures of the chosen partenaires with this phase.
+    // Factures already tagged (e.g. Phase 2) are never overwritten.
+    const handleAssignSuppliersToPhase = async (phaseId: string) => {
+        if (!isAdmin || !currentProject || assignSelection.size === 0) return;
+        try {
+            const { error } = await supabase.from('expenses')
+                .update({ phase_id: phaseId })
+                .eq('project_id', currentProject.id)
+                .in('supplier_id', Array.from(assignSelection))
+                .is('phase_id', null)
+                .is('deleted_at', null);
+            if (error) throw error;
+            setAssigningPhaseId(null);
+            setAssignSelection(new Set());
+            fetchData();
+        } catch (e) {
+            console.error('Error assigning suppliers to phase:', e);
+        }
+    };
+
+    const phaseNameById = useMemo(() => {
+        const m: Record<string, string> = {};
+        phases.forEach(p => { m[p.id] = p.name; });
+        return m;
+    }, [phases]);
+
+    // Badge classes for a phase: its chosen color if set, otherwise rotate by position.
+    const phaseBadgeTone = (phaseId: string) => {
+        const idx = phases.findIndex(p => p.id === phaseId);
+        const chosen = idx >= 0 ? PHASE_COLOR_OPTIONS.find(c => c.key === phases[idx].color) : undefined;
+        if (chosen) return chosen.chip;
+        return PHASE_COLOR_OPTIONS[(idx >= 0 ? idx : 0) % PHASE_COLOR_OPTIONS.length].chip;
+    };
+
+    const handleSetPhaseColor = async (id: string, colorKey: string) => {
+        if (!isAdmin || !currentProject) return;
+        try {
+            const { error } = await supabase.from('phases').update({ color: colorKey }).eq('id', id);
+            if (error) throw error;
+            fetchData();
+        } catch (e: any) {
+            console.error('Error setting phase color:', e);
+            alert("Erreur lors du changement de couleur" + (e?.message ? `: ${e.message}` : '') + "\n(Avez-vous exécuté: alter table phases add column if not exists color text; ?)");
+        }
+    };
+
+    // Per-phase cost totals + per-supplier breakdown (across all partenaires).
+    const phaseTotals = useMemo(() => {
+        return phases.map(p => {
+            let total = 0;
+            let count = 0;
+            const bySupplier: Array<{ id: string; name: string; total: number; count: number }> = [];
+            Object.values(suppliers).forEach(s => {
+                const items = s.expenses.filter(e => {
+                    if (e.phaseId !== p.id) return false;
+                    const g = (e.groupName || '').trim();
+                    return !g || !excludedGroups.has(`${s.id}::${g}`);
+                });
+                if (items.length === 0) return;
+                const t = items.reduce((sum, e) => sum + e.price, 0);
+                total += t;
+                count += items.length;
+                bySupplier.push({ id: s.id, name: s.name, total: t, count: items.length });
+            });
+            bySupplier.sort((a, b) => b.total - a.total);
+            return { ...p, total, count, bySupplier };
+        });
+    }, [phases, suppliers, excludedGroups]);
+
+    // ── Facture groups ───────────────────────────────────────────────────
+    // The group modal targets either the multi-selection or a single facture
+    // (per-row "move to group" — handy when one was forgotten).
+    const openGroupModal = (ids: string[]) => {
+        if (!isAdmin || ids.length === 0) return;
+        setGroupTargetIds(ids);
+        setTempGroupName('');
+        setShowGroupModal(true);
+    };
+
+    const handleGroupSelected = async () => {
+        if (!isAdmin || !currentProject) return;
+        const name = tempGroupName.trim();
+        const ids = groupTargetIds || [];
+        if (!name || ids.length === 0) return;
+        try {
+            const { error } = await supabase.from('expenses')
+                .update({ group_name: name })
+                .in('id', ids);
+            if (error) throw error;
+            setShowGroupModal(false);
+            setTempGroupName('');
+            setGroupTargetIds(null);
+            setSelectedExpenseIds(new Set());
+            fetchData();
+        } catch (e: any) {
+            console.error('Error grouping expenses:', e);
+            alert("Erreur lors du groupement" + (e?.message ? `: ${e.message}` : '') + "\n(Avez-vous appliqué la migration 'phases' dans Supabase ?)");
+        }
+    };
+
+    // Remove the targeted facture(s) from their group (group_name -> null).
+    const handleRemoveFromGroup = async () => {
+        if (!isAdmin || !currentProject) return;
+        const ids = groupTargetIds || [];
+        if (ids.length === 0) return;
+        try {
+            const { error } = await supabase.from('expenses')
+                .update({ group_name: null })
+                .in('id', ids);
+            if (error) throw error;
+            setShowGroupModal(false);
+            setTempGroupName('');
+            setGroupTargetIds(null);
+            setSelectedExpenseIds(new Set());
+            fetchData();
+        } catch (e) {
+            console.error('Error removing from group:', e);
+        }
+    };
+
+    const handleUngroup = async (groupName: string) => {
+        if (!isAdmin || !currentSupplier || !currentProject) return;
+        if (!confirm(`Dissocier le groupe « ${groupName} » ? Les factures resteront intactes.`)) return;
+        const ids = currentSupplier.expenses.filter(e => e.groupName === groupName).map(e => e.id);
+        if (ids.length === 0) return;
+        try {
+            const { error } = await supabase.from('expenses').update({ group_name: null }).in('id', ids);
+            if (error) throw error;
+            fetchData();
+        } catch (e) {
+            console.error('Error ungrouping:', e);
+        }
+    };
+
+    const toggleGroupCollapsed = (name: string) => {
+        setCollapsedGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(name)) next.delete(name); else next.add(name);
+            return next;
+        });
+    };
+
+    // Include/exclude a group from the totals (persisted per project).
+    const toggleGroupExcluded = async (groupName: string) => {
+        if (!isAdmin || !currentProject) return;
+        const key = `${activeTab}::${groupName}`;
+        const next = new Set(excludedGroups);
+        if (next.has(key)) next.delete(key); else next.add(key);
+        setExcludedGroups(next); // optimistic
+        try {
+            const { error } = await supabase.from('project_settings')
+                .upsert({ project_id: currentProject.id, key: 'excluded_groups', value: JSON.stringify(Array.from(next)) }, { onConflict: 'project_id,key' });
+            if (error) throw error;
+        } catch (e) {
+            console.error('Error saving excluded groups:', e);
+            setExcludedGroups(excludedGroups); // revert
+        }
+    };
+
+    const isGroupExcluded = (groupName: string) => excludedGroups.has(`${activeTab}::${groupName}`);
 
     const handleAddSupplier = async () => {
         if (!isAdmin) return;
@@ -1747,7 +2046,8 @@ function ExpensesContentMain() {
             price: '',
             date: new Date().toISOString().split('T')[0],
             status: 'pending',
-            quantity: '1'
+            quantity: '1',
+            phaseId: ''
         });
         setInvoiceItems([]);
         setActiveArticleSearchIdx(null);
@@ -1793,6 +2093,9 @@ function ExpensesContentMain() {
 
             let expenseId = editingExpenseId;
 
+            // Only send phase_id once the phases migration is applied.
+            const phasePayload = phasesReady ? { phase_id: newExpenseData.phaseId || null } : {};
+
             if (editingExpenseId) {
                 const { error } = await supabase.from('expenses').update({
                     item: newExpenseData.item,
@@ -1800,7 +2103,8 @@ function ExpensesContentMain() {
                     date: formattedDate,
                     status: newExpenseData.status,
                     quantity: newExpenseData.quantity,
-                    invoice_image: invoiceImageUrl
+                    invoice_image: invoiceImageUrl,
+                    ...phasePayload
                 }).eq('id', editingExpenseId);
                 if (error) throw error;
 
@@ -1815,7 +2119,8 @@ function ExpensesContentMain() {
                     date: formattedDate,
                     status: newExpenseData.status,
                     quantity: newExpenseData.quantity,
-                    invoice_image: invoiceImageUrl
+                    invoice_image: invoiceImageUrl,
+                    ...phasePayload
                 }).select().single();
                 if (error) throw error;
                 expenseId = newExp?.id;
@@ -1858,7 +2163,8 @@ function ExpensesContentMain() {
             price: expense.price.toString(),
             date: isoDate,
             status: expense.status,
-            quantity: expense.quantity || '1'
+            quantity: expense.quantity || '1',
+            phaseId: expense.phaseId || ''
         });
         setInvoiceItems(expense.items || []);
         handleExpenseImageSelect(null);
@@ -2121,12 +2427,30 @@ function ExpensesContentMain() {
                         {privacyMode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         <span className="hidden sm:inline">{privacyMode ? 'Mode discret' : 'Visible'}</span>
                     </button>
+                    {!isEmpty && phasesReady && (
+                        <button
+                            onClick={() => setShowPhasesModal(true)}
+                            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 active:scale-[0.99] transition-colors"
+                        >
+                            <Layers className="h-4 w-4" /> <span className="hidden sm:inline">Phases</span>
+                            {phases.length > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold tabular-nums">{phases.length}</span>}
+                        </button>
+                    )}
                     {!isEmpty && (
                         <button
                             onClick={handleExportPDF}
                             className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 active:scale-[0.99] transition-colors"
                         >
                             <FileDown className="h-4 w-4" /> <span className="hidden sm:inline">Export PDF</span>
+                        </button>
+                    )}
+                    {(isAdmin || memos.length > 0) && (
+                        <button
+                            onClick={() => setShowMemosModal(true)}
+                            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 active:scale-[0.99] transition-colors"
+                        >
+                            <FileText className="h-4 w-4" /> <span className="hidden sm:inline">Mémos</span>
+                            {memos.length > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold tabular-nums">{memos.length}</span>}
                         </button>
                     )}
                     {isAdmin && (
@@ -2180,7 +2504,8 @@ function ExpensesContentMain() {
                                 price: '',
                                 date: new Date().toISOString().split('T')[0],
                                 status: 'pending',
-                                quantity: '1'
+                                quantity: '1',
+                                phaseId: ''
                             });
                             setInvoiceItems([]);
                         }}
@@ -2380,6 +2705,22 @@ function ExpensesContentMain() {
                             </button>
                         </div>
                     </div>
+
+                    {phasesReady && phases.length > 0 && (
+                        <div>
+                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Phase</label>
+                            <select
+                                value={newExpenseData.phaseId}
+                                onChange={(e) => setNewExpenseData({ ...newExpenseData, phaseId: e.target.value })}
+                                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                            >
+                                <option value="">Aucune phase</option>
+                                {phases.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                 </div>
             </Modal>
 
@@ -2471,7 +2812,8 @@ function ExpensesContentMain() {
                                                 date: formattedDate,
                                                 status: newExpenseData.status,
                                                 quantity: newExpenseData.quantity,
-                                                invoice_image: invoiceImageUrl
+                                                invoice_image: invoiceImageUrl,
+                                                ...(phasesReady ? { phase_id: newExpenseData.phaseId || null } : {})
                                             }).select().single();
 
                                             if (expError) throw expError;
@@ -2981,6 +3323,22 @@ function ExpensesContentMain() {
                                     <option value="paid">Payé</option>
                                 </select>
                             </div>
+
+                            {phasesReady && (
+                                <div>
+                                    <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Phase</label>
+                                    <select
+                                        value={newExpenseData.phaseId}
+                                        onChange={(e) => setNewExpenseData({ ...newExpenseData, phaseId: e.target.value })}
+                                        className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                    >
+                                        <option value="">Aucune phase</option>
+                                        {phases.map(p => (
+                                            <option key={p.id} value={p.id}>{p.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -3491,55 +3849,6 @@ function ExpensesContentMain() {
             {
                 !isEmpty && (
                     <div className="space-y-4">
-                        {/* Mémos — multiple dated notes (below insights) */}
-                        {(isAdmin || memos.length > 0) && (
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between px-1">
-                                    <span className="text-xs font-medium text-slate-500 flex items-center gap-2">
-                                        <FileText className="h-3.5 w-3.5" /> Mémos
-                                        {memos.length > 0 && <span className="text-slate-400">· {memos.length}</span>}
-                                    </span>
-                                    {isAdmin && (
-                                        <button
-                                            onClick={openNewMemo}
-                                            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-slate-600 hover:bg-slate-100 text-sm font-medium transition-colors"
-                                        >
-                                            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Ajouter</span>
-                                        </button>
-                                    )}
-                                </div>
-                                {memos.length === 0 ? (
-                                    <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-400">
-                                        Aucun mémo. Cliquez sur « Ajouter » pour en créer un.
-                                    </div>
-                                ) : (
-                                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                                        {memos.map((memo) => (
-                                            <div key={memo.id} className="group rounded-xl border border-slate-200 bg-white p-3 flex flex-col">
-                                                <div className="flex items-center justify-between gap-2 mb-1.5">
-                                                    <span className="text-[11px] text-slate-400 tabular-nums">
-                                                        {new Date(memo.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                                        {memo.updatedAt && <span className="text-slate-300"> · modifié</span>}
-                                                    </span>
-                                                    {isAdmin && (
-                                                        <div className="flex items-center gap-0.5 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity shrink-0">
-                                                            <button onClick={() => openEditMemo(memo)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors">
-                                                                <Pencil className="h-3.5 w-3.5" />
-                                                            </button>
-                                                            <button onClick={() => deleteMemo(memo.id)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors">
-                                                                <Trash2 className="h-3.5 w-3.5" />
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <p className="text-[13px] text-slate-600 leading-relaxed whitespace-pre-wrap line-clamp-4">{memo.content}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
                         {/* Two-column: Partenaires sidebar + supplier detail */}
                         <div className="flex flex-col lg:flex-row gap-4">
                             <motion.div
@@ -4019,12 +4328,47 @@ function ExpensesContentMain() {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {sortedExpenses.map((e, index) => {
+                                                    {factureRenderList.map((entry, index) => {
+                                                        if (entry.kind === 'header') {
+                                                            const collapsed = collapsedGroups.has(entry.name);
+                                                            const excluded = isGroupExcluded(entry.name);
+                                                            return (
+                                                                <tr key={`group-${entry.name}`} className="border-t border-slate-100 bg-slate-50/80">
+                                                                    <td colSpan={4} className="px-4 py-2.5">
+                                                                        <button onClick={() => toggleGroupCollapsed(entry.name)} className="flex items-center gap-2 min-w-0 text-left w-full">
+                                                                            <ChevronDown className={`h-4 w-4 text-slate-400 shrink-0 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+                                                                            <FolderOpen className={`h-4 w-4 shrink-0 ${excluded ? 'text-slate-300' : 'text-amber-500'}`} />
+                                                                            <span className={`text-sm font-semibold truncate ${excluded ? 'text-slate-400' : 'text-slate-900'}`}>{entry.name}</span>
+                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[10px] font-medium shrink-0">{entry.count}</span>
+                                                                            {excluded && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-500 text-[10px] font-medium shrink-0">Exclu des totaux</span>}
+                                                                        </button>
+                                                                    </td>
+                                                                    <td className="px-4 py-2.5 text-right">
+                                                                        <span className={`text-sm font-semibold tabular-nums ${excluded ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{formatValue(entry.total)} <span className="text-xs font-medium text-slate-400">DT</span></span>
+                                                                    </td>
+                                                                    <td className="px-4 py-2.5 text-right">
+                                                                        {isAdmin && (
+                                                                            <div className="inline-flex items-center gap-0.5">
+                                                                                <button onClick={() => toggleGroupExcluded(entry.name)} title={excluded ? 'Inclure dans les totaux' : 'Exclure des totaux'} className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${excluded ? 'text-slate-400 hover:bg-emerald-50 hover:text-emerald-600' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'}`}>
+                                                                                    {excluded ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                                                                                </button>
+                                                                                <button onClick={() => handleUngroup(entry.name)} title="Dissocier le groupe" className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors">
+                                                                                    <X className="h-3.5 w-3.5" />
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        }
+                                                        const e = entry.e;
+                                                        const inGroup = !!(e.groupName || '').trim();
+                                                        const rowExcluded = inGroup && isGroupExcluded((e.groupName || '').trim());
                                                         const isExpanded = expandedRows[e.id];
                                                         return (
                                                             <React.Fragment key={e.id}>
                                                                 <tr
-                                                                    className={`group border-t border-slate-100 cursor-pointer transition-colors ${isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
+                                                                    className={`group border-t border-slate-100 cursor-pointer transition-colors ${isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50'} ${inGroup ? 'border-l-2 border-l-amber-200' : ''} ${rowExcluded ? 'opacity-60' : ''}`}
                                                                     onClick={() => toggleRow(e.id)}
                                                                 >
                                                                     <td className="px-3 py-3 text-center" onClick={(ev) => ev.stopPropagation()}>
@@ -4045,6 +4389,7 @@ function ExpensesContentMain() {
                                                                             <span className="text-sm font-medium text-slate-900 inline-flex items-center gap-2">
                                                                                 {e.item}
                                                                                 {e.items && e.items.length > 0 && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-medium">{e.items.length} art.</span>}
+                                                                                {e.phaseId && phaseNameById[e.phaseId] && <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${phaseBadgeTone(e.phaseId)}`}>{phaseNameById[e.phaseId]}</span>}
                                                                             </span>
                                                                             <span className="text-xs text-slate-400 flex items-center gap-1.5">
                                                                                 <Clock className="h-3 w-3" /> {e.date}
@@ -4093,6 +4438,13 @@ function ExpensesContentMain() {
                                                                             </button>
                                                                             {isAdmin && (
                                                                                 <>
+                                                                                    <button
+                                                                                        onClick={() => openGroupModal([e.id])}
+                                                                                        title={(e.groupName || '').trim() ? `Groupe : ${e.groupName} — déplacer/retirer` : 'Ajouter à un groupe'}
+                                                                                        className={`inline-flex items-center justify-center w-9 h-9 rounded-lg transition-colors ${(e.groupName || '').trim() ? 'text-amber-500 hover:bg-amber-50' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'}`}
+                                                                                    >
+                                                                                        <FolderOpen className="h-4 w-4" />
+                                                                                    </button>
                                                                                     <button
                                                                                         onClick={() => handleOpenDocPicker('expense', e.id)}
                                                                                         className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
@@ -4255,10 +4607,39 @@ function ExpensesContentMain() {
                                             {sortedExpenses.length === 0 && (
                                                 <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-10 text-center text-sm text-slate-400">Aucune facture</div>
                                             )}
-                                            {sortedExpenses.map((e) => {
+                                            {factureRenderList.map((entry) => {
+                                                if (entry.kind === 'header') {
+                                                    const collapsed = collapsedGroups.has(entry.name);
+                                                    const excluded = isGroupExcluded(entry.name);
+                                                    return (
+                                                        <div key={`group-${entry.name}`} className={`rounded-2xl border px-4 py-3 flex items-center gap-2 ${excluded ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50/60'}`}>
+                                                            <button onClick={() => toggleGroupCollapsed(entry.name)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                                                                <ChevronDown className={`h-4 w-4 text-slate-400 shrink-0 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+                                                                <FolderOpen className={`h-4 w-4 shrink-0 ${excluded ? 'text-slate-300' : 'text-amber-500'}`} />
+                                                                <span className={`text-sm font-semibold truncate ${excluded ? 'text-slate-400' : 'text-slate-900'}`}>{entry.name}</span>
+                                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-white text-slate-600 text-[10px] font-medium shrink-0">{entry.count}</span>
+                                                                {excluded && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-white text-slate-500 text-[10px] font-medium shrink-0">Exclu</span>}
+                                                            </button>
+                                                            <span className={`text-sm font-semibold tabular-nums shrink-0 ${excluded ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{formatValue(entry.total)} <span className="text-xs font-medium text-slate-400">DT</span></span>
+                                                            {isAdmin && (
+                                                                <div className="flex items-center gap-0.5 shrink-0">
+                                                                    <button onClick={() => toggleGroupExcluded(entry.name)} title={excluded ? 'Inclure dans les totaux' : 'Exclure des totaux'} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-white hover:text-slate-700 transition-colors">
+                                                                        {excluded ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                                                                    </button>
+                                                                    <button onClick={() => handleUngroup(entry.name)} title="Dissocier le groupe" className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-white hover:text-slate-700 transition-colors">
+                                                                        <X className="h-3.5 w-3.5" />
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                }
+                                                const e = entry.e;
+                                                const inGroup = !!(e.groupName || '').trim();
+                                                const rowExcluded = inGroup && isGroupExcluded((e.groupName || '').trim());
                                                 const isExpanded = expandedRows[e.id];
                                                 return (
-                                                    <div key={e.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                                                    <div key={e.id} className={`rounded-2xl border border-slate-200 bg-white p-4 ${inGroup ? 'ml-3 border-l-2 border-l-amber-200' : ''} ${rowExcluded ? 'opacity-60' : ''}`}>
                                                         <div className="flex items-start gap-3">
                                                             <input
                                                                 type="checkbox"
@@ -4272,6 +4653,7 @@ function ExpensesContentMain() {
                                                                         <p className="text-sm font-medium text-slate-900 truncate flex items-center gap-2">
                                                                             {e.item}
                                                                             {e.items && e.items.length > 0 && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-medium shrink-0">{e.items.length} art.</span>}
+                                                                                {e.phaseId && phaseNameById[e.phaseId] && <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${phaseBadgeTone(e.phaseId)}`}>{phaseNameById[e.phaseId]}</span>}
                                                                         </p>
                                                                         <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
                                                                             <Clock className="h-3 w-3" /> {e.date}
@@ -4314,6 +4696,13 @@ function ExpensesContentMain() {
                                                                 </button>
                                                                 {isAdmin && (
                                                                     <>
+                                                                        <button
+                                                                            onClick={() => openGroupModal([e.id])}
+                                                                            title={(e.groupName || '').trim() ? `Groupe : ${e.groupName} — déplacer/retirer` : 'Ajouter à un groupe'}
+                                                                            className={`inline-flex items-center justify-center w-9 h-9 rounded-lg transition-colors ${(e.groupName || '').trim() ? 'text-amber-500 hover:bg-amber-50' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'}`}
+                                                                        >
+                                                                            <FolderOpen className="h-4 w-4" />
+                                                                        </button>
                                                                         <button
                                                                             onClick={() => handleOpenDocPicker('expense', e.id)}
                                                                             className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
@@ -4528,6 +4917,296 @@ function ExpensesContentMain() {
                     </div >
                 )
             }
+
+            {/* Group Name Modal */}
+            <Modal
+                open={showGroupModal}
+                onClose={() => { setShowGroupModal(false); setTempGroupName(''); setGroupTargetIds(null); }}
+                title="Grouper les factures"
+                description={`${groupTargetIds?.length ?? 0} facture${(groupTargetIds?.length ?? 0) > 1 ? 's' : ''} — choisissez ou créez un groupe`}
+                size="sm"
+                icon={<div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center"><FolderOpen className="h-5 w-5" /></div>}
+                footer={<>
+                    {(() => {
+                        const targetHasGroup = (groupTargetIds || []).some(id => ((currentSupplier?.expenses || []).find(e => e.id === id)?.groupName || '').trim() !== '');
+                        return targetHasGroup ? (
+                            <button
+                                onClick={handleRemoveFromGroup}
+                                className="mr-auto inline-flex items-center justify-center gap-1.5 h-10 px-3 rounded-xl bg-white border border-slate-200 text-rose-600 text-sm font-medium hover:bg-rose-50 hover:border-rose-200 transition-colors"
+                            >
+                                <X className="h-4 w-4" /> Retirer du groupe
+                            </button>
+                        ) : null;
+                    })()}
+                    <button
+                        onClick={() => { setShowGroupModal(false); setTempGroupName(''); setGroupTargetIds(null); }}
+                        className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
+                    >
+                        Annuler
+                    </button>
+                    <button
+                        onClick={handleGroupSelected}
+                        disabled={!tempGroupName.trim()}
+                        className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    >
+                        <FolderOpen className="h-4 w-4" /> Grouper
+                    </button>
+                </>}
+            >
+                <div className="space-y-3">
+                    <input
+                        type="text"
+                        value={tempGroupName}
+                        onChange={(e) => setTempGroupName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && tempGroupName.trim()) handleGroupSelected(); }}
+                        placeholder="Ex: Telescopie"
+                        autoFocus
+                        className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                    />
+                    {(() => {
+                        const existing = Array.from(new Set((currentSupplier?.expenses || []).map(e => (e.groupName || '').trim()).filter(Boolean)));
+                        return existing.length > 0 ? (
+                            <div className="space-y-1.5">
+                                <p className="text-xs text-slate-400">Ou ajouter à un groupe existant :</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {existing.map(g => (
+                                        <button
+                                            key={g}
+                                            onClick={() => setTempGroupName(g)}
+                                            className={`inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border text-xs font-medium transition-colors ${tempGroupName === g ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                        >
+                                            <FolderOpen className="h-3 w-3" /> {g}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null;
+                    })()}
+                </div>
+            </Modal>
+
+            {/* Phases Modal */}
+            <Modal
+                open={showPhasesModal}
+                onClose={() => { setShowPhasesModal(false); setAssigningPhaseId(null); setAssignSelection(new Set()); setEditingPhaseId(null); setEditPhaseName(''); }}
+                title="Phases du projet"
+                description="Coût par phase — les factures taguées portent le badge de leur phase"
+                size="xl"
+                icon={<div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center"><Layers className="h-5 w-5" /></div>}
+            >
+                <div className="space-y-4">
+                    {/* Create phase */}
+                    {isAdmin && (
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="text"
+                                value={newPhaseName}
+                                onChange={(e) => setNewPhaseName(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' && newPhaseName.trim()) handleCreatePhase(); }}
+                                placeholder="Ex: Phase 1 — Gros œuvre"
+                                className="flex-1 h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                            />
+                            <button
+                                onClick={handleCreatePhase}
+                                disabled={!newPhaseName.trim()}
+                                className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors shrink-0"
+                            >
+                                <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Créer</span>
+                            </button>
+                        </div>
+                    )}
+
+                    {phaseTotals.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-12 text-center">
+                            <Layers className="h-9 w-9 text-slate-300 mx-auto mb-2.5" />
+                            <p className="text-sm text-slate-500">Aucune phase. Créez « Phase 1 » pour commencer.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {phaseTotals.map((p) => (
+                                <div key={p.id} className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                                    <div className="px-4 py-3 flex items-center gap-3 border-b border-slate-100">
+                                        {editingPhaseId === p.id ? (
+                                            <div className="flex-1 min-w-0 space-y-2.5">
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={editPhaseName}
+                                                        onChange={(e) => setEditPhaseName(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter' && editPhaseName.trim()) handleRenamePhase(p.id);
+                                                            if (e.key === 'Escape') { setEditingPhaseId(null); setEditPhaseName(''); }
+                                                        }}
+                                                        autoFocus
+                                                        className="flex-1 min-w-0 h-9 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                                    />
+                                                    <button
+                                                        onClick={() => handleRenamePhase(p.id)}
+                                                        disabled={!editPhaseName.trim()}
+                                                        className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors shrink-0"
+                                                    >
+                                                        <CheckCircle2 className="h-4 w-4" /> <span className="hidden sm:inline">OK</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => { setEditingPhaseId(null); setEditPhaseName(''); }}
+                                                        className="inline-flex items-center justify-center w-9 h-9 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors shrink-0"
+                                                    >
+                                                        <X className="h-4 w-4" />
+                                                    </button>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <span className="text-xs text-slate-400 mr-1">Couleur :</span>
+                                                    {PHASE_COLOR_OPTIONS.map((c) => (
+                                                        <button
+                                                            key={c.key}
+                                                            onClick={() => handleSetPhaseColor(p.id, c.key)}
+                                                            title={c.key}
+                                                            className={`w-6 h-6 rounded-full ${c.dot} transition-transform hover:scale-110 ${p.color === c.key ? 'ring-2 ring-offset-2 ring-slate-900' : ''}`}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold shrink-0 ${phaseBadgeTone(p.id)}`}>{p.name}</span>
+                                                <span className="text-xs text-slate-400 tabular-nums shrink-0">{p.count} facture{p.count > 1 ? 's' : ''}</span>
+                                                <span className="flex-1" />
+                                                <span className="text-base font-semibold text-slate-900 tabular-nums shrink-0">{formatValue(p.total)} <span className="text-xs font-medium text-slate-400">DT</span></span>
+                                                {isAdmin && (
+                                                    <div className="flex items-center gap-0.5 shrink-0">
+                                                        <button
+                                                            onClick={() => { setEditingPhaseId(p.id); setEditPhaseName(p.name); }}
+                                                            title="Renommer la phase"
+                                                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                                        >
+                                                            <Pencil className="h-4 w-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => { setAssigningPhaseId(assigningPhaseId === p.id ? null : p.id); setAssignSelection(new Set()); }}
+                                                            title="Assigner des partenaires à cette phase"
+                                                            className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${assigningPhaseId === p.id ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'}`}
+                                                        >
+                                                            <Plus className="h-4 w-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeletePhase(p.id)}
+                                                            title="Supprimer la phase"
+                                                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {/* Per-supplier breakdown */}
+                                    {p.bySupplier.length > 0 && (
+                                        <div className="px-4 py-2.5 space-y-1.5">
+                                            {p.bySupplier.map(s => (
+                                                <div key={s.id} className="flex items-center justify-between gap-3 text-sm">
+                                                    <span className="text-slate-600 truncate">{s.name} <span className="text-xs text-slate-400">· {s.count}</span></span>
+                                                    <span className="font-medium text-slate-900 tabular-nums shrink-0">{formatValue(s.total)} <span className="text-xs text-slate-400">DT</span></span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Assign partenaires */}
+                                    {isAdmin && assigningPhaseId === p.id && (
+                                        <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/60 space-y-2.5">
+                                            <p className="text-xs text-slate-500">Taguer toutes les factures <span className="font-medium">sans phase</span> de ces partenaires avec « {p.name} » (les factures déjà taguées ne sont pas modifiées) :</p>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {orderedSuppliers.map((s: any) => {
+                                                    const on = assignSelection.has(s.id);
+                                                    return (
+                                                        <button
+                                                            key={s.id}
+                                                            onClick={() => setAssignSelection(prev => { const n = new Set(prev); if (n.has(s.id)) n.delete(s.id); else n.add(s.id); return n; })}
+                                                            className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border text-xs font-medium transition-colors ${on ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                                        >
+                                                            {on && <CheckCircle2 className="h-3.5 w-3.5" />}{s.name}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                            <button
+                                                onClick={() => handleAssignSuppliersToPhase(p.id)}
+                                                disabled={assignSelection.size === 0}
+                                                className="inline-flex items-center justify-center gap-2 h-9 px-3 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                                            >
+                                                Assigner ({assignSelection.size})
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </Modal>
+
+            {/* Memos Modal */}
+            <Modal
+                open={showMemosModal}
+                onClose={() => setShowMemosModal(false)}
+                title="Mémos du projet"
+                description={memos.length > 0 ? `${memos.length} mémo${memos.length > 1 ? 's' : ''} enregistré${memos.length > 1 ? 's' : ''}` : 'Notes datées du projet'}
+                size="xl"
+                icon={<div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center"><FileText className="h-5 w-5" /></div>}
+                footer={isAdmin ? (
+                    <button
+                        onClick={openNewMemo}
+                        className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors"
+                    >
+                        <Plus className="h-4 w-4" /> Nouveau mémo
+                    </button>
+                ) : undefined}
+            >
+                {memos.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-12 text-center">
+                        <FileText className="h-9 w-9 text-slate-300 mx-auto mb-2.5" />
+                        <p className="text-sm text-slate-500">Aucun mémo. Cliquez sur « Nouveau mémo » pour en créer un.</p>
+                    </div>
+                ) : (
+                    <div className="grid gap-2.5 sm:grid-cols-2">
+                        {[...memos].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((memo) => {
+                            const isLong = memo.content.length > 160 || memo.content.split('\n').length > 3;
+                            const expanded = expandedMemos.has(memo.id);
+                            return (
+                                <div key={memo.id} className="group rounded-xl border border-slate-200 bg-white p-3.5 flex flex-col">
+                                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                                        <span className="text-[11px] text-slate-400 tabular-nums">
+                                            {new Date(memo.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                            {memo.updatedAt && <span className="text-slate-300"> · modifié</span>}
+                                        </span>
+                                        {isAdmin && (
+                                            <div className="flex items-center gap-0.5 shrink-0">
+                                                <button onClick={() => openEditMemo(memo)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors">
+                                                    <Pencil className="h-3.5 w-3.5" />
+                                                </button>
+                                                <button onClick={() => deleteMemo(memo.id)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors">
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className={`text-[13px] text-slate-600 leading-relaxed whitespace-pre-wrap ${!expanded && isLong ? 'line-clamp-3' : ''}`}>{memo.content}</p>
+                                    {isLong && (
+                                        <button
+                                            onClick={() => setExpandedMemos(prev => { const n = new Set(prev); if (n.has(memo.id)) n.delete(memo.id); else n.add(memo.id); return n; })}
+                                            className="self-start mt-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors"
+                                        >
+                                            {expanded ? 'Voir moins' : 'Voir plus'}
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </Modal>
 
             {/* Note Editor Modal */}
             <Modal
@@ -4866,6 +5545,15 @@ function ExpensesContentMain() {
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
+                            {isAdmin && (
+                                <button
+                                    onClick={() => openGroupModal(Array.from(selectedExpenseIds))}
+                                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-white/10 text-white text-sm font-medium hover:bg-white/20 transition-colors"
+                                    title="Grouper les factures sélectionnées"
+                                >
+                                    <FolderOpen className="h-4 w-4" /> <span className="hidden sm:inline">Grouper</span>
+                                </button>
+                            )}
                             <button
                                 onClick={handleExportSupplierPDF}
                                 className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-white text-slate-900 text-sm font-medium hover:bg-slate-100 transition-colors"

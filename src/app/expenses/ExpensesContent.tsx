@@ -1279,6 +1279,22 @@ function ExpensesContentMain() {
         }
     };
 
+    // Select/unselect ALL factures of a group at once (the selection toast
+    // total updates accordingly — e.g. select all, then untick one group).
+    const toggleSelectGroup = (groupName: string) => {
+        if (!currentSupplier) return;
+        const ids = currentSupplier.expenses
+            .filter(e => (e.groupName || '').trim() === groupName)
+            .map(e => e.id);
+        if (ids.length === 0) return;
+        setSelectedExpenseIds(prev => {
+            const next = new Set(prev);
+            const allSelected = ids.every(id => next.has(id));
+            ids.forEach(id => { if (allSelected) next.delete(id); else next.add(id); });
+            return next;
+        });
+    };
+
     const handleSort = (key: 'date' | 'price') => {
         setSortConfig(current => ({
             key,
@@ -4332,9 +4348,20 @@ function ExpensesContentMain() {
                                                         if (entry.kind === 'header') {
                                                             const collapsed = collapsedGroups.has(entry.name);
                                                             const excluded = isGroupExcluded(entry.name);
+                                                            const memberIds = (currentSupplier?.expenses || []).filter(x => (x.groupName || '').trim() === entry.name).map(x => x.id);
+                                                            const groupSelected = memberIds.length > 0 && memberIds.every(id => selectedExpenseIds.has(id));
                                                             return (
                                                                 <tr key={`group-${entry.name}`} className="border-t border-slate-100 bg-slate-50/80">
-                                                                    <td colSpan={4} className="px-4 py-2.5">
+                                                                    <td className="px-3 py-2.5 text-center">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
+                                                                            checked={groupSelected}
+                                                                            onChange={() => toggleSelectGroup(entry.name)}
+                                                                            title={groupSelected ? 'Désélectionner le groupe' : 'Sélectionner le groupe'}
+                                                                        />
+                                                                    </td>
+                                                                    <td colSpan={3} className="px-4 py-2.5">
                                                                         <button onClick={() => toggleGroupCollapsed(entry.name)} className="flex items-center gap-2 min-w-0 text-left w-full">
                                                                             <ChevronDown className={`h-4 w-4 text-slate-400 shrink-0 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
                                                                             <FolderOpen className={`h-4 w-4 shrink-0 ${excluded ? 'text-slate-300' : 'text-amber-500'}`} />
@@ -4438,13 +4465,6 @@ function ExpensesContentMain() {
                                                                             </button>
                                                                             {isAdmin && (
                                                                                 <>
-                                                                                    <button
-                                                                                        onClick={() => openGroupModal([e.id])}
-                                                                                        title={(e.groupName || '').trim() ? `Groupe : ${e.groupName} — déplacer/retirer` : 'Ajouter à un groupe'}
-                                                                                        className={`inline-flex items-center justify-center w-9 h-9 rounded-lg transition-colors ${(e.groupName || '').trim() ? 'text-amber-500 hover:bg-amber-50' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'}`}
-                                                                                    >
-                                                                                        <FolderOpen className="h-4 w-4" />
-                                                                                    </button>
                                                                                     <button
                                                                                         onClick={() => handleOpenDocPicker('expense', e.id)}
                                                                                         className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
@@ -4611,8 +4631,17 @@ function ExpensesContentMain() {
                                                 if (entry.kind === 'header') {
                                                     const collapsed = collapsedGroups.has(entry.name);
                                                     const excluded = isGroupExcluded(entry.name);
+                                                    const memberIds = (currentSupplier?.expenses || []).filter(x => (x.groupName || '').trim() === entry.name).map(x => x.id);
+                                                    const groupSelected = memberIds.length > 0 && memberIds.every(id => selectedExpenseIds.has(id));
                                                     return (
                                                         <div key={`group-${entry.name}`} className={`rounded-2xl border px-4 py-3 flex items-center gap-2 ${excluded ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50/60'}`}>
+                                                            <input
+                                                                type="checkbox"
+                                                                className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20 shrink-0"
+                                                                checked={groupSelected}
+                                                                onChange={() => toggleSelectGroup(entry.name)}
+                                                                title={groupSelected ? 'Désélectionner le groupe' : 'Sélectionner le groupe'}
+                                                            />
                                                             <button onClick={() => toggleGroupCollapsed(entry.name)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
                                                                 <ChevronDown className={`h-4 w-4 text-slate-400 shrink-0 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
                                                                 <FolderOpen className={`h-4 w-4 shrink-0 ${excluded ? 'text-slate-300' : 'text-amber-500'}`} />
@@ -4696,13 +4725,6 @@ function ExpensesContentMain() {
                                                                 </button>
                                                                 {isAdmin && (
                                                                     <>
-                                                                        <button
-                                                                            onClick={() => openGroupModal([e.id])}
-                                                                            title={(e.groupName || '').trim() ? `Groupe : ${e.groupName} — déplacer/retirer` : 'Ajouter à un groupe'}
-                                                                            className={`inline-flex items-center justify-center w-9 h-9 rounded-lg transition-colors ${(e.groupName || '').trim() ? 'text-amber-500 hover:bg-amber-50' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'}`}
-                                                                        >
-                                                                            <FolderOpen className="h-4 w-4" />
-                                                                        </button>
                                                                         <button
                                                                             onClick={() => handleOpenDocPicker('expense', e.id)}
                                                                             className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"

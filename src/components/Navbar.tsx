@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
 
-import { Package, LogOut, ReceiptText, Building2, ShoppingCart, User, Shield, ChevronDown, Plus, Trash2, Users, Check, Menu } from 'lucide-react';
+import { Package, LogOut, ReceiptText, Building2, ShoppingCart, User, Shield, ChevronDown, Plus, Trash2, Users, Check, Menu, Camera } from 'lucide-react';
 import GlobalSearch from './GlobalSearch';
 import ProjectSettingsModal from './ProjectSettingsModal';
 import { useEffect, useState, useMemo, useRef } from 'react';
@@ -285,6 +285,13 @@ export default function Navbar() {
                             </div>
                             {/* Links */}
                             <div className="p-2">
+                                <Link
+                                    href="/inbox"
+                                    onClick={() => setIsMoreOpen(false)}
+                                    className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors ${pathname === '/inbox' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                                >
+                                    <Camera className="h-4 w-4" /> Ajout rapide facture
+                                </Link>
                                 <Link
                                     href="/orders"
                                     onClick={() => setIsMoreOpen(false)}

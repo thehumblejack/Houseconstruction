@@ -9,7 +9,7 @@ import {
     Plus, Receipt, FileText, Trash2, TrendingUp, DollarSign,
     Upload, X, CheckCircle2, Clock, Eye, EyeOff, AlertCircle, FileDown, ChevronDown,
     ArrowRight, ArrowUp, ArrowDown, ArrowUpDown, Search, Pencil, Image as ImageIcon, Package, GripVertical,
-    Store, FilePlus, Sparkles, Keyboard, ImagePlus, ClipboardList, FolderOpen, Layers
+    Store, FilePlus, Sparkles, Keyboard, ImagePlus, ClipboardList, FolderOpen, FolderInput, Layers, Inbox
 } from 'lucide-react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
 import { Modal, AnchoredDropdown } from '@/components/ui';
@@ -389,8 +389,17 @@ function ExpensesContentMain() {
     const [showGroupModal, setShowGroupModal] = useState(false);
     const [tempGroupName, setTempGroupName] = useState('');
     const [groupTargetIds, setGroupTargetIds] = useState<string[] | null>(null);
+    // "Déplacer vers" menu in the selection bar (anchored dropdown of existing groups)
+    const [moveMenuAnchor, setMoveMenuAnchor] = useState<HTMLElement | null>(null);
     // Groups excluded from the totals (keys: `${supplierId}::${groupName}`), persisted in project_settings.
     const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
+
+    // WhatsApp inbox — factures pending human review (nothing counts until accepted).
+    const [pendingFactures, setPendingFactures] = useState<any[]>([]);
+    const [showReviewModal, setShowReviewModal] = useState(false);
+    const [reviewEdits, setReviewEdits] = useState<Record<string, any>>({});
+    const [reviewBusyId, setReviewBusyId] = useState<string | null>(null);
+    const [allSuppliersList, setAllSuppliersList] = useState<Array<{ id: string; name: string }>>([]);
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [replacingDocId, setReplacingDocId] = useState<string | null>(null);
     const [lastReplacedDoc, setLastReplacedDoc] = useState<{ id: string, oldUrl: string, oldFileName: string } | null>(null);
@@ -564,6 +573,16 @@ function ExpensesContentMain() {
                 setPhases(phasesData || []);
                 setPhasesReady(true);
             }
+
+            // WhatsApp pending invoices (table may not exist yet — fail soft)
+            const { data: pendData, error: pendErr } = await supabase
+                .from('pending_factures').select('*').eq('status', 'pending').order('created_at', { ascending: false });
+            if (pendErr) {
+                setPendingFactures([]);
+            } else {
+                setPendingFactures(pendData || []);
+            }
+            setAllSuppliersList((allSuppliersRes.data || []).map((s: any) => ({ id: s.id, name: s.name })));
 
             // Also fetch ARCHIVED suppliers for the project
             const { data: archivedProjectSups } = await supabase.from('project_suppliers').select('supplier_id').eq('project_id', currentProject.id).not('deleted_at', 'is', null);
@@ -1657,6 +1676,22 @@ function ExpensesContentMain() {
         }
     };
 
+    // Move the current selection into an existing group of this partenaire.
+    const handleMoveSelectedToGroup = async (name: string) => {
+        if (!isAdmin || !currentProject || selectedExpenseIds.size === 0) return;
+        try {
+            const { error } = await supabase.from('expenses')
+                .update({ group_name: name })
+                .in('id', Array.from(selectedExpenseIds));
+            if (error) throw error;
+            setMoveMenuAnchor(null);
+            setSelectedExpenseIds(new Set());
+            fetchData();
+        } catch (e) {
+            console.error('Error moving to group:', e);
+        }
+    };
+
     // Remove the targeted facture(s) from their group (group_name -> null).
     const handleRemoveFromGroup = async () => {
         if (!isAdmin || !currentProject) return;
@@ -1717,6 +1752,71 @@ function ExpensesContentMain() {
     };
 
     const isGroupExcluded = (groupName: string) => excludedGroups.has(`${activeTab}::${groupName}`);
+
+    // ── WhatsApp review queue ────────────────────────────────────────────
+    const reviewValues = (p: any) => ({
+        supplierId: p.parsed_supplier_id || '',
+        amount: p.parsed_amount != null ? String(p.parsed_amount) : '',
+        item: p.parsed_description || p.raw_caption || '',
+        date: new Date(p.created_at).toISOString().split('T')[0],
+        status: 'pending' as PaymentStatus,
+        ...(reviewEdits[p.id] || {}),
+    });
+    const setReviewValue = (id: string, patch: Record<string, any>) =>
+        setReviewEdits(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }));
+
+    const handleAcceptPending = async (p: any) => {
+        if (!isAdmin || !currentProject) return;
+        const v = reviewValues(p);
+        const price = parseFloat(v.amount);
+        if (!v.supplierId) { alert('Choisissez un fournisseur.'); return; }
+        if (isNaN(price)) { alert('Montant invalide.'); return; }
+        setReviewBusyId(p.id);
+        try {
+            // Link the fournisseur to this project so the facture is visible.
+            await supabase.from('project_suppliers').upsert(
+                { project_id: currentProject.id, supplier_id: v.supplierId },
+                { onConflict: 'project_id,supplier_id' }
+            );
+            const [y, m, d] = v.date.split('-');
+            const { error } = await supabase.from('expenses').insert({
+                project_id: currentProject.id,
+                supplier_id: v.supplierId,
+                item: v.item || 'Facture WhatsApp',
+                price,
+                date: `${d}/${m}/${y}`,
+                status: v.status,
+                quantity: '1',
+                invoice_image: p.image_url || null,
+            });
+            if (error) throw error;
+            await supabase.from('pending_factures').update({ status: 'approved', reviewed_at: new Date().toISOString() }).eq('id', p.id);
+            setPendingFactures(prev => prev.filter(x => x.id !== p.id));
+            fetchData();
+        } catch (e: any) {
+            console.error('Error accepting pending facture:', e);
+            alert("Erreur lors de la validation" + (e?.message ? `: ${e.message}` : ''));
+        } finally {
+            setReviewBusyId(null);
+        }
+    };
+
+    const handleRejectPending = async (p: any) => {
+        if (!isAdmin) return;
+        if (!confirm("Supprimer cette facture en attente ? (l'image reste archivée)")) return;
+        try {
+            const { error } = await supabase.from('pending_factures').update({ status: 'rejected', reviewed_at: new Date().toISOString() }).eq('id', p.id);
+            if (error) throw error;
+            setPendingFactures(prev => prev.filter(x => x.id !== p.id));
+        } catch (e) {
+            console.error('Error rejecting pending facture:', e);
+        }
+    };
+
+    // Skip = decide later: just push it to the end of the queue (no DB change).
+    const handleSkipPending = (p: any) => {
+        setPendingFactures(prev => [...prev.filter(x => x.id !== p.id), p]);
+    };
 
     const handleAddSupplier = async () => {
         if (!isAdmin) return;
@@ -2443,6 +2543,15 @@ function ExpensesContentMain() {
                         {privacyMode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         <span className="hidden sm:inline">{privacyMode ? 'Mode discret' : 'Visible'}</span>
                     </button>
+                    {isAdmin && pendingFactures.length > 0 && (
+                        <button
+                            onClick={() => setShowReviewModal(true)}
+                            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium hover:bg-amber-100 active:scale-[0.99] transition-colors"
+                        >
+                            <Inbox className="h-4 w-4" /> <span className="hidden sm:inline">À vérifier</span>
+                            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-semibold tabular-nums">{pendingFactures.length}</span>
+                        </button>
+                    )}
                     {!isEmpty && phasesReady && (
                         <button
                             onClick={() => setShowPhasesModal(true)}
@@ -5169,6 +5278,152 @@ function ExpensesContentMain() {
                 </div>
             </Modal>
 
+            {/* WhatsApp Review Queue Modal */}
+            <Modal
+                open={showReviewModal}
+                onClose={() => setShowReviewModal(false)}
+                title="Factures à vérifier"
+                description="Reçues via WhatsApp — rien n'est comptabilisé avant validation"
+                size="xl"
+                icon={<div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center"><Inbox className="h-5 w-5" /></div>}
+            >
+                {pendingFactures.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-12 text-center">
+                        <CheckCircle2 className="h-9 w-9 text-emerald-400 mx-auto mb-2.5" />
+                        <p className="text-sm text-slate-500">Tout est vérifié. Envoyez une photo de facture sur WhatsApp pour en ajouter.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {pendingFactures.map((p) => {
+                            const v = reviewValues(p);
+                            const flags: string[] = Array.isArray(p.flags) ? p.flags : [];
+                            const alts: any[] = Array.isArray(p.alternatives) ? p.alternatives : [];
+                            const busy = reviewBusyId === p.id;
+                            return (
+                                <div key={p.id} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                                    <div className="flex items-start gap-3">
+                                        {p.image_url ? (
+                                            <button onClick={() => setViewingImage(p.image_url)} className="shrink-0" title="Voir l'image">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img src={p.image_url} alt="Facture reçue" className="h-20 w-16 object-cover rounded-lg border border-slate-200 hover:opacity-80 transition-opacity" />
+                                            </button>
+                                        ) : (
+                                            <div className="h-20 w-16 rounded-lg border border-dashed border-slate-200 flex items-center justify-center text-slate-300 shrink-0">
+                                                <ImageIcon className="h-5 w-5" />
+                                            </div>
+                                        )}
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-[13px] text-slate-600 leading-snug line-clamp-2">« {p.raw_caption || 'Sans légende'} »</p>
+                                            <p className="text-[11px] text-slate-400 mt-1 tabular-nums">{new Date(p.created_at).toLocaleString('fr-FR')} · {p.sender}</p>
+                                            <div className="flex flex-wrap gap-1 mt-1.5">
+                                                {flags.includes('unknown_fournisseur') && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[10px] font-medium">Fournisseur inconnu</span>}
+                                                {flags.includes('low_fournisseur_confidence') && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-medium">Fournisseur incertain</span>}
+                                                {flags.includes('missing_montant') && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-medium">Montant manquant</span>}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="col-span-2 sm:col-span-1">
+                                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Fournisseur</label>
+                                            <select
+                                                value={v.supplierId}
+                                                onChange={(e) => setReviewValue(p.id, { supplierId: e.target.value })}
+                                                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                            >
+                                                <option value="">Choisir…</option>
+                                                {allSuppliersList.map(s => (
+                                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                                ))}
+                                            </select>
+                                            {alts.length > 0 && (
+                                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                                    {alts.map((a: any) => (
+                                                        <button
+                                                            key={a.id}
+                                                            onClick={() => setReviewValue(p.id, { supplierId: a.id })}
+                                                            className={`inline-flex items-center h-6 px-2 rounded-lg border text-[11px] font-medium transition-colors ${v.supplierId === a.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                                        >
+                                                            {a.name} ?
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="col-span-2 sm:col-span-1">
+                                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Montant (DT)</label>
+                                            <input
+                                                type="number"
+                                                step="0.001"
+                                                value={v.amount}
+                                                onChange={(e) => setReviewValue(p.id, { amount: e.target.value })}
+                                                placeholder="0.000"
+                                                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 tabular-nums placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                            />
+                                        </div>
+                                        <div className="col-span-2">
+                                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Désignation</label>
+                                            <input
+                                                type="text"
+                                                value={v.item}
+                                                onChange={(e) => setReviewValue(p.id, { item: e.target.value })}
+                                                placeholder="Ex: Ciment"
+                                                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Date</label>
+                                            <input
+                                                type="date"
+                                                value={v.date}
+                                                onChange={(e) => setReviewValue(p.id, { date: e.target.value })}
+                                                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">État</label>
+                                            <select
+                                                value={v.status}
+                                                onChange={(e) => setReviewValue(p.id, { status: e.target.value as PaymentStatus })}
+                                                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                            >
+                                                <option value="pending">En attente</option>
+                                                <option value="paid">Payé</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 pt-1">
+                                        <button
+                                            onClick={() => handleAcceptPending(p)}
+                                            disabled={busy || !v.supplierId || !v.amount}
+                                            className="flex-1 inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                                        >
+                                            <CheckCircle2 className="h-4 w-4" /> {busy ? 'Validation…' : 'Accepter'}
+                                        </button>
+                                        <button
+                                            onClick={() => handleSkipPending(p)}
+                                            disabled={busy}
+                                            className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                                        >
+                                            Passer
+                                        </button>
+                                        <button
+                                            onClick={() => handleRejectPending(p)}
+                                            disabled={busy}
+                                            title="Supprimer"
+                                            className="inline-flex items-center justify-center w-10 h-10 rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 transition-colors"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </Modal>
+
             {/* Memos Modal */}
             <Modal
                 open={showMemosModal}
@@ -5567,6 +5822,39 @@ function ExpensesContentMain() {
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
+                            {isAdmin && (() => {
+                                const existingGroups = Array.from(new Set((currentSupplier?.expenses || []).map(e => (e.groupName || '').trim()).filter(Boolean)));
+                                return existingGroups.length > 0 ? (
+                                    <>
+                                        <button
+                                            onClick={(ev) => setMoveMenuAnchor(moveMenuAnchor ? null : ev.currentTarget)}
+                                            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-white/10 text-white text-sm font-medium hover:bg-white/20 transition-colors"
+                                            title="Déplacer la sélection vers un groupe existant"
+                                        >
+                                            <FolderInput className="h-4 w-4" /> <span className="hidden sm:inline">Déplacer</span>
+                                        </button>
+                                        <AnchoredDropdown
+                                            open={!!moveMenuAnchor}
+                                            anchorEl={moveMenuAnchor}
+                                            onClose={() => setMoveMenuAnchor(null)}
+                                            width={220}
+                                            maxHeight={240}
+                                        >
+                                            <p className="px-3 pt-2 pb-1 text-[11px] font-medium text-slate-400 uppercase tracking-wide">Déplacer vers</p>
+                                            {existingGroups.map(g => (
+                                                <button
+                                                    key={g}
+                                                    onClick={() => handleMoveSelectedToGroup(g)}
+                                                    className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                                                >
+                                                    <FolderOpen className="h-4 w-4 text-amber-500 shrink-0" />
+                                                    <span className="truncate">{g}</span>
+                                                </button>
+                                            ))}
+                                        </AnchoredDropdown>
+                                    </>
+                                ) : null;
+                            })()}
                             {isAdmin && (
                                 <button
                                     onClick={() => openGroupModal(Array.from(selectedExpenseIds))}

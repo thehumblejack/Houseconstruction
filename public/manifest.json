@@ -12,5 +12,13 @@
             "sizes": "64x64 32x32 24x24 16x16",
             "type": "image/x-icon"
         }
+    ],
+    "shortcuts": [
+        {
+            "name": "Ajouter une facture",
+            "short_name": "Facture",
+            "description": "Photographier une facture et l'envoyer en vérification",
+            "url": "/inbox"
+        }
     ]
 }

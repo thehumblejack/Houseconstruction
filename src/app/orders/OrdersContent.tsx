@@ -517,7 +517,7 @@ export default function OrdersContent() {
 
     return (
         <div className="min-h-screen font-jakarta">
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5">
+            <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5">
 
                 {/* Page Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

@@ -13,7 +13,7 @@ import { Camera, CheckCircle2, Loader2, Send, X, Inbox, ArrowRight, Lock, Search
 
 export default function InboxContent() {
     const { user, isApproved, loading } = useAuth();
-    const { userRole } = useProject();
+    const { userRole, currentProject } = useProject();
     const canAdd = userRole === 'admin' || userRole === 'editor';
     const supabase = useMemo(() => createClient(), []);
 
@@ -25,6 +25,9 @@ export default function InboxContent() {
     const [showSupplierList, setShowSupplierList] = useState(false);
     const [amount, setAmount] = useState('');
     const [designation, setDesignation] = useState('');
+    const [phases, setPhases] = useState<Array<{ id: string; name: string }>>([]);
+    const [phaseId, setPhaseId] = useState('');
+    const [suggestedPhaseId, setSuggestedPhaseId] = useState<string | null>(null);
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [done, setDone] = useState<{ supplier: string; amount: number } | null>(null);
@@ -37,6 +40,42 @@ export default function InboxContent() {
             setSuppliers(data || []);
         })();
     }, [supabase]);
+
+    // Phases of the current project (fail-soft if the table doesn't exist)
+    useEffect(() => {
+        if (!currentProject) { setPhases([]); return; }
+        (async () => {
+            const { data, error } = await supabase.from('phases').select('id, name').eq('project_id', currentProject.id).order('sort_order').order('created_at');
+            setPhases(error ? [] : (data || []));
+        })();
+    }, [supabase, currentProject]);
+
+    // When a fournisseur is picked, suggest the phase of their most recent
+    // facture — it's very likely the new one belongs to the same phase.
+    useEffect(() => {
+        if (!selectedSupplier || !currentProject || phases.length === 0) { setSuggestedPhaseId(null); return; }
+        let cancelled = false;
+        (async () => {
+            try {
+                const { data } = await supabase
+                    .from('expenses')
+                    .select('phase_id')
+                    .eq('project_id', currentProject.id)
+                    .eq('supplier_id', selectedSupplier.id)
+                    .not('phase_id', 'is', null)
+                    .is('deleted_at', null)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+                if (cancelled) return;
+                const suggestion = data?.[0]?.phase_id && phases.some(p => p.id === data[0].phase_id) ? data[0].phase_id : null;
+                setSuggestedPhaseId(suggestion);
+                if (suggestion) setPhaseId(prev => prev || suggestion);
+            } catch {
+                if (!cancelled) setSuggestedPhaseId(null);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [selectedSupplier, currentProject, phases, supabase]);
 
     useEffect(() => {
         return () => { if (preview) URL.revokeObjectURL(preview); };
@@ -76,6 +115,8 @@ export default function InboxContent() {
         setSelectedSupplier(null);
         setAmount('');
         setDesignation('');
+        setPhaseId('');
+        setSuggestedPhaseId(null);
         setDone(null);
         setError(null);
     };
@@ -106,7 +147,7 @@ export default function InboxContent() {
             }
 
             // 2. Stage it — explicit fournisseur + montant, no guessing needed.
-            const { error: insErr } = await supabase.from('pending_factures').insert({
+            const row: Record<string, any> = {
                 message_sid: sid,
                 sender: user?.email || 'app',
                 raw_caption: [selectedSupplier.name, designation.trim(), `${price} DT`].filter(Boolean).join(' · '),
@@ -118,7 +159,14 @@ export default function InboxContent() {
                 parsed_description: designation.trim(),
                 alternatives: [],
                 flags: [],
-            });
+            };
+            if (phaseId) row.phase_id = phaseId;
+            let { error: insErr } = await supabase.from('pending_factures').insert(row);
+            // The phase_id column requires a small migration — retry without it if missing.
+            if (insErr && phaseId && /phase_id/i.test(insErr.message)) {
+                delete row.phase_id;
+                ({ error: insErr } = await supabase.from('pending_factures').insert(row));
+            }
             if (insErr) throw new Error(insErr.message);
 
             setDone({ supplier: selectedSupplier.name, amount: price });
@@ -299,6 +347,28 @@ export default function InboxContent() {
                                 />
                             </div>
                         </div>
+
+                        {/* Phase (optional, suggested from the fournisseur's last facture) */}
+                        {phases.length > 0 && (
+                            <div>
+                                <label className="block text-[13px] font-medium text-slate-700 mb-1.5">
+                                    Phase
+                                    {suggestedPhaseId && phaseId === suggestedPhaseId && (
+                                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-medium">Suggérée (dernière facture)</span>
+                                    )}
+                                </label>
+                                <select
+                                    value={phaseId}
+                                    onChange={(e) => setPhaseId(e.target.value)}
+                                    className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                >
+                                    <option value="">Aucune phase</option>
+                                    {phases.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
 
                         {/* Désignation (optional) */}
                         <div>

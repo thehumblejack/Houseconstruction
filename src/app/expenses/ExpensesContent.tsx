@@ -389,6 +389,9 @@ function ExpensesContentMain() {
     const [showGroupModal, setShowGroupModal] = useState(false);
     const [tempGroupName, setTempGroupName] = useState('');
     const [groupTargetIds, setGroupTargetIds] = useState<string[] | null>(null);
+    // When set, the "Nouvelle facture" modal creates the facture directly inside this group.
+    const [newExpenseGroupName, setNewExpenseGroupName] = useState<string | null>(null);
+    const [pickerUploading, setPickerUploading] = useState(false);
     // "Déplacer vers" menu in the selection bar (anchored dropdown of existing groups)
     const [moveMenuAnchor, setMoveMenuAnchor] = useState<HTMLElement | null>(null);
     // Groups excluded from the totals (keys: `${supplierId}::${groupName}`), persisted in project_settings.
@@ -1760,6 +1763,7 @@ function ExpensesContentMain() {
         item: p.parsed_description || p.raw_caption || '',
         date: new Date(p.created_at).toISOString().split('T')[0],
         status: 'pending' as PaymentStatus,
+        phaseId: (p.phase_id as string) || '',
         ...(reviewEdits[p.id] || {}),
     });
     const setReviewValue = (id: string, patch: Record<string, any>) =>
@@ -1788,6 +1792,7 @@ function ExpensesContentMain() {
                 status: v.status,
                 quantity: '1',
                 invoice_image: p.image_url || null,
+                ...(phasesReady ? { phase_id: v.phaseId || null } : {}),
             });
             if (error) throw error;
             await supabase.from('pending_factures').update({ status: 'approved', reviewed_at: new Date().toISOString() }).eq('id', p.id);
@@ -2167,6 +2172,7 @@ function ExpensesContentMain() {
         });
         setInvoiceItems([]);
         setActiveArticleSearchIdx(null);
+        setNewExpenseGroupName(null);
         clearExpenseImage();
     };
 
@@ -2236,7 +2242,8 @@ function ExpensesContentMain() {
                     status: newExpenseData.status,
                     quantity: newExpenseData.quantity,
                     invoice_image: invoiceImageUrl,
-                    ...phasePayload
+                    ...phasePayload,
+                    ...(newExpenseGroupName ? { group_name: newExpenseGroupName } : {})
                 }).select().single();
                 if (error) throw error;
                 expenseId = newExp?.id;
@@ -2327,6 +2334,45 @@ function ExpensesContentMain() {
         } catch (error) {
             console.error('Error linking document:', error);
             alert('Erreur lors de la liaison du document');
+        }
+    };
+
+    // Upload a new image straight from the doc-picker modal, register it in the
+    // document library, then link it immediately to the targeted facture/acompte.
+    const handlePickerUpload = async (file: File | null) => {
+        if (!isAdmin || !file || !currentProject) return;
+        setPickerUploading(true);
+        try {
+            const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+            const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${ext}`;
+            const filePath = `${activeTab}/${fileName}`;
+
+            let bucketName = 'invoices';
+            let up = await supabase.storage.from(bucketName).upload(filePath, file, { contentType: file.type || 'image/jpeg' });
+            if (up.error) {
+                bucketName = 'documents';
+                up = await supabase.storage.from(bucketName).upload(filePath, file, { contentType: file.type || 'image/jpeg' });
+            }
+            if (up.error) throw up.error;
+            const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+            const publicUrl = data.publicUrl;
+
+            // Keep it in the document library too (non-fatal if it fails).
+            await supabase.from('uploaded_documents').insert({
+                project_id: currentProject.id,
+                supplier_id: activeTab,
+                file_url: publicUrl,
+                file_name: file.name.replace(/[:\\/]/g, '-'),
+                note: '',
+                created_by: user?.id
+            });
+
+            await handleSelectDocLink(publicUrl);
+        } catch (e: any) {
+            console.error('Picker upload failed:', e);
+            alert("Échec de l'envoi de l'image" + (e?.message ? `: ${e.message}` : ''));
+        } finally {
+            setPickerUploading(false);
         }
     };
 
@@ -2450,7 +2496,7 @@ function ExpensesContentMain() {
     if (loading || projectLoading) {
         return (
             <div className="min-h-screen font-jakarta">
-                <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5 animate-pulse">
+                <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5 animate-pulse">
                     {/* Header */}
                     <div className="flex items-center justify-between gap-3">
                         <div className="space-y-2">
@@ -2524,7 +2570,7 @@ function ExpensesContentMain() {
 
     return (
         <div className="min-h-screen font-jakarta">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5">
+          <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5">
             {/* Image Modal */}
             {viewingImage && <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} />}
 
@@ -3385,6 +3431,12 @@ function ExpensesContentMain() {
                 </>}
             >
                 <div className="space-y-4">
+                    {newExpenseGroupName && !editingExpenseId && (
+                        <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
+                            <FolderOpen className="h-4 w-4 text-amber-500 shrink-0" />
+                            Cette facture sera ajoutée au groupe <span className="font-semibold">« {newExpenseGroupName} »</span>
+                        </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-4">
                             <div>
@@ -4485,6 +4537,9 @@ function ExpensesContentMain() {
                                                                     <td className="px-4 py-2.5 text-right">
                                                                         {isAdmin && (
                                                                             <div className="inline-flex items-center gap-0.5">
+                                                                                <button onClick={() => { setNewExpenseGroupName(entry.name); setShowAddExpenseModal(true); }} title={`Ajouter une facture dans « ${entry.name} »`} className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors">
+                                                                                    <Plus className="h-3.5 w-3.5" />
+                                                                                </button>
                                                                                 <button onClick={() => toggleGroupExcluded(entry.name)} title={excluded ? 'Inclure dans les totaux' : 'Exclure des totaux'} className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${excluded ? 'text-slate-400 hover:bg-emerald-50 hover:text-emerald-600' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'}`}>
                                                                                     {excluded ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                                                                                 </button>
@@ -4537,7 +4592,7 @@ function ExpensesContentMain() {
                                                                             {isAdmin ? (
                                                                                 <button
                                                                                     onClick={() => updateStatus(e.id, e.status === 'paid' ? 'pending' : 'paid')}
-                                                                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${e.status === 'paid'
+                                                                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${e.status === 'paid'
                                                                                         ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                                                                                         : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
                                                                                         }`}
@@ -4547,7 +4602,7 @@ function ExpensesContentMain() {
                                                                                 </button>
                                                                             ) : (
                                                                                 <span
-                                                                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${e.status === 'paid'
+                                                                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${e.status === 'paid'
                                                                                         ? 'bg-emerald-50 text-emerald-700'
                                                                                         : 'bg-amber-50 text-amber-700'
                                                                                         }`}
@@ -4761,6 +4816,9 @@ function ExpensesContentMain() {
                                                             <span className={`text-sm font-semibold tabular-nums shrink-0 ${excluded ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{formatValue(entry.total)} <span className="text-xs font-medium text-slate-400">DT</span></span>
                                                             {isAdmin && (
                                                                 <div className="flex items-center gap-0.5 shrink-0">
+                                                                    <button onClick={() => { setNewExpenseGroupName(entry.name); setShowAddExpenseModal(true); }} title={`Ajouter une facture dans « ${entry.name} »`} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-white hover:text-slate-700 transition-colors">
+                                                                        <Plus className="h-3.5 w-3.5" />
+                                                                    </button>
                                                                     <button onClick={() => toggleGroupExcluded(entry.name)} title={excluded ? 'Inclure dans les totaux' : 'Exclure des totaux'} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-white hover:text-slate-700 transition-colors">
                                                                         {excluded ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                                                                     </button>
@@ -4805,7 +4863,7 @@ function ExpensesContentMain() {
                                                             {isAdmin ? (
                                                                 <button
                                                                     onClick={() => updateStatus(e.id, e.status === 'paid' ? 'pending' : 'paid')}
-                                                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${e.status === 'paid'
+                                                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${e.status === 'paid'
                                                                         ? 'bg-emerald-50 text-emerald-700'
                                                                         : 'bg-amber-50 text-amber-700'
                                                                         }`}
@@ -4815,7 +4873,7 @@ function ExpensesContentMain() {
                                                                 </button>
                                                             ) : (
                                                                 <span
-                                                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${e.status === 'paid'
+                                                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${e.status === 'paid'
                                                                         ? 'bg-emerald-50 text-emerald-700'
                                                                         : 'bg-amber-50 text-amber-700'
                                                                         }`}
@@ -5391,6 +5449,21 @@ function ExpensesContentMain() {
                                                 <option value="paid">Payé</option>
                                             </select>
                                         </div>
+                                        {phasesReady && phases.length > 0 && (
+                                            <div className="col-span-2">
+                                                <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Phase</label>
+                                                <select
+                                                    value={v.phaseId}
+                                                    onChange={(e) => setReviewValue(p.id, { phaseId: e.target.value })}
+                                                    className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                                >
+                                                    <option value="">Aucune phase</option>
+                                                    {phases.map(ph => (
+                                                        <option key={ph.id} value={ph.id}>{ph.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="flex items-center gap-2 pt-1">
@@ -5533,17 +5606,33 @@ function ExpensesContentMain() {
                     </button>
                 }
             >
-                            <div>
+                            <div className="space-y-3">
+                                {/* Direct upload — picks a file, saves it, links it immediately */}
+                                <label className={`flex items-center justify-center gap-2.5 h-12 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 text-sm font-medium text-slate-600 transition-colors ${pickerUploading ? 'opacity-60 pointer-events-none' : 'cursor-pointer hover:border-slate-400 hover:bg-slate-100'}`}>
+                                    {pickerUploading ? (
+                                        <>
+                                            <div className="h-4 w-4 border-2 border-slate-300 border-t-slate-700 rounded-full animate-spin" />
+                                            Envoi et liaison en cours…
+                                        </>
+                                    ) : (
+                                        <>
+                                            <ImagePlus className="h-4 w-4 text-slate-500" />
+                                            Téléverser une nouvelle image et la lier directement
+                                        </>
+                                    )}
+                                    <input
+                                        type="file"
+                                        accept="image/*,application/pdf"
+                                        className="hidden"
+                                        disabled={pickerUploading}
+                                        onChange={(e) => { handlePickerUpload(e.target.files?.[0] || null); e.target.value = ''; }}
+                                    />
+                                </label>
+
                                 {uploadedDocs.filter(d => d.supplierId === activeTab).length === 0 ? (
-                                    <div className="h-56 flex flex-col items-center justify-center text-slate-400 gap-3">
+                                    <div className="h-44 flex flex-col items-center justify-center text-slate-400 gap-3">
                                         <Upload className="h-10 w-10 text-slate-200" />
                                         <p className="text-sm text-slate-500">Aucun document importé pour ce fournisseur</p>
-                                        <button
-                                            onClick={() => { setShowDocPicker(false); setShowUploadModal(true); }}
-                                            className="text-sm font-medium text-slate-700 hover:underline"
-                                        >
-                                            Importer maintenant
-                                        </button>
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">

@@ -28,6 +28,9 @@ create table if not exists pending_factures (
   reviewed_at timestamptz
 );
 
+-- Phase carried from capture (quick-add) into the review queue.
+alter table pending_factures add column if not exists phase_id uuid;
+
 alter table pending_factures enable row level security;
 
 drop policy if exists "he_read_pending_factures" on pending_factures;

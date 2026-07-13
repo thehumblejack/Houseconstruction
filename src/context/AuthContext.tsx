@@ -99,7 +99,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             console.log('Auth: Handling session state', { hasSession: !!currentSession, email: currentSession?.user?.email });
 
             setSession(currentSession);
-            setUser(currentSession?.user ?? null);
+            // Preserve the user object's identity when it's still the same user.
+            // Supabase fires TOKEN_REFRESHED on tab focus; a new object reference
+            // here would cascade (ProjectContext refetch → new currentProject →
+            // every page refetches → skeleton), looking like a self-refresh.
+            setUser(prev => {
+                const next = currentSession?.user ?? null;
+                if ((prev?.id ?? null) === (next?.id ?? null)) return prev;
+                return next;
+            });
 
             if (currentSession?.user) {
                 // If we already have the profile for this user, don't refetch on every minor auth change

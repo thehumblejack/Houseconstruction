@@ -6,7 +6,8 @@ import { createClient } from '@/lib/supabase';
 import { useProject } from '@/context/ProjectContext';
 import {
     Plus, Search, Pencil, Save, Loader2, Package,
-    LayoutGrid, List, ChevronDown, Trash2, SlidersHorizontal, Trophy, ShoppingCart
+    LayoutGrid, List, ChevronDown, Trash2, SlidersHorizontal, Trophy, ShoppingCart,
+    Check, X, ArrowUpDown, Table2
 } from 'lucide-react';
 import { Modal } from '@/components/ui';
 
@@ -65,10 +66,18 @@ export default function ArticlesContent() {
     const [articles, setArticles] = useState<ArticleRow[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [suppliersList, setSuppliersList] = useState<{ id: string, name: string }[]>([]);
-    const [viewMode, setViewMode] = useState<'inventory' | 'matrix'>('matrix');
+    const [viewMode, setViewMode] = useState<'best' | 'matrix' | 'inventory'>('best');
     const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
     const [columnOrder, setColumnOrder] = useState<string[]>([]);
     const [showColumnSettings, setShowColumnSettings] = useState(false);
+
+    // Comparator filters (presentation-only, derived from matrixData)
+    const [activeCategory, setActiveCategory] = useState('');
+    const [supplierFilter, setSupplierFilter] = useState<string[]>([]);
+    const [sortBy, setSortBy] = useState<'name' | 'savings' | 'price'>('name');
+    const [comparableOnly, setComparableOnly] = useState(false);
+    const [showSupplierFilter, setShowSupplierFilter] = useState(false);
+    const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
 
     // Edit/Add States
     const [editingItem, setEditingItem] = useState<ArticleRow | null>(null);
@@ -109,6 +118,24 @@ export default function ArticlesContent() {
             document.removeEventListener('mousedown', handleClickOutside);
         };
     }, [showColumnSettings]);
+
+    // Close supplier filter when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (showSupplierFilter && !target.closest('.supplier-filter-container')) {
+                setShowSupplierFilter(false);
+            }
+        };
+
+        if (showSupplierFilter) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showSupplierFilter]);
 
     const fetchArticles = async () => {
         if (!currentProject) {
@@ -471,7 +498,46 @@ export default function ArticlesContent() {
     ];
 
     const activeMatrixCols = columnOrder.filter(s => visibleColumns.includes(s) && matrixData.suppliers.includes(s));
-    const matrixRows = matrixData.rows.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matrixRows = matrixData.rows.filter(r =>
+        r.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+        (!activeCategory || r.name.toUpperCase().includes(activeCategory.toUpperCase()))
+    );
+
+    // Comparator rows: matrix rows enriched with best price, filtered + sorted (derived only — no change to matrixData/bestPriceFor semantics)
+    const comparatorRows = useMemo(() => {
+        const enriched = matrixData.rows.map(row => {
+            const best = bestPriceFor(row.prices, visibleColumns);
+            const priceCount = Object.entries(row.prices).filter(([s, v]) => visibleColumns.includes(s) && v.price > 0).length;
+            return { ...row, best, priceCount };
+        });
+
+        const filtered = enriched.filter(r =>
+            r.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+            (!activeCategory || r.name.toUpperCase().includes(activeCategory.toUpperCase())) &&
+            (supplierFilter.length === 0 || supplierFilter.every(s => (r.prices[s]?.price ?? 0) > 0)) &&
+            (!comparableOnly || r.priceCount >= 2)
+        );
+
+        if (sortBy === 'savings') {
+            return [...filtered].sort((a, b) => (b.best?.savings ?? -Infinity) - (a.best?.savings ?? -Infinity));
+        }
+        if (sortBy === 'price') {
+            return [...filtered].sort((a, b) => (a.best?.price ?? Infinity) - (b.best?.price ?? Infinity));
+        }
+        return filtered; // 'name' keeps matrixData order (Fer d'abord, puis A–Z)
+    }, [matrixData, visibleColumns, searchTerm, activeCategory, supplierFilter, comparableOnly, sortBy]);
+
+    const activeFilterCount = (searchTerm ? 1 : 0) + (activeCategory ? 1 : 0) + supplierFilter.length + (comparableOnly ? 1 : 0);
+
+    const resetFilters = () => {
+        setSearchTerm('');
+        setActiveCategory('');
+        setSupplierFilter([]);
+        setComparableOnly(false);
+        setSortBy('name');
+    };
+
+    const toggleRow = (name: string) => setExpandedRows(prev => ({ ...prev, [name]: !prev[name] }));
 
     if (loading) {
         return (
@@ -483,7 +549,7 @@ export default function ArticlesContent() {
 
     return (
         <div className="min-h-screen font-jakarta">
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5">
+            <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5">
 
                 {/* Page header */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -502,15 +568,22 @@ export default function ArticlesContent() {
                     )}
                 </div>
 
-                {/* Controls: view switch + search */}
+                {/* Controls: view switch + search + colonnes */}
                 <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="inline-flex p-1 rounded-xl border border-slate-200 bg-white">
+                    <div className="inline-flex p-1 rounded-xl border border-slate-200 bg-white self-start">
+                        <button
+                            onClick={() => setViewMode('best')}
+                            className={`inline-flex items-center justify-center gap-2 h-8 px-3 rounded-lg text-sm font-medium transition-colors ${viewMode === 'best' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                        >
+                            <Trophy className="w-4 h-4" />
+                            Comparatif
+                        </button>
                         <button
                             onClick={() => setViewMode('matrix')}
                             className={`inline-flex items-center justify-center gap-2 h-8 px-3 rounded-lg text-sm font-medium transition-colors ${viewMode === 'matrix' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
                         >
-                            <LayoutGrid className="w-4 h-4" />
-                            Comparatif
+                            <Table2 className="w-4 h-4" />
+                            Matrice
                         </button>
                         <button
                             onClick={() => setViewMode('inventory')}
@@ -528,24 +601,77 @@ export default function ArticlesContent() {
                             placeholder="Rechercher un article..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300"
+                            className="w-full h-10 pl-9 pr-9 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300"
                         />
+                        {searchTerm && (
+                            <button
+                                onClick={() => setSearchTerm('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-6 h-6 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        )}
                     </div>
+
+                    {viewMode !== 'inventory' && (
+                        <div className="relative column-settings-container self-start">
+                            <button
+                                onClick={() => setShowColumnSettings(!showColumnSettings)}
+                                className={`inline-flex items-center justify-center gap-2 h-10 px-3 rounded-xl border text-sm font-medium transition-colors ${showColumnSettings ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                            >
+                                <SlidersHorizontal className="w-4 h-4" />
+                                Colonnes
+                                {visibleColumns.length < matrixData.suppliers.length && (
+                                    <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold tabular-nums">
+                                        {matrixData.suppliers.filter(s => visibleColumns.includes(s)).length}
+                                    </span>
+                                )}
+                            </button>
+
+                            {showColumnSettings && (
+                                <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-2xl shadow-lg border border-slate-200 p-3 z-[120] animate-in fade-in zoom-in-95 duration-150">
+                                    <p className="text-xs font-medium text-slate-500 px-1 pb-2">Fournisseurs comparés</p>
+                                    <div className="space-y-0.5 max-h-[360px] overflow-y-auto">
+                                        {matrixData.suppliers.map((s) => {
+                                            const checked = visibleColumns.includes(s);
+                                            return (
+                                                <label key={s} className="flex items-center gap-3 px-2 py-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors">
+                                                    <span className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${checked ? 'bg-slate-900 border-slate-900' : 'border-slate-300'}`}>
+                                                        {checked && <span className="w-1.5 h-1.5 bg-white rounded-sm" />}
+                                                    </span>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        onChange={() => {
+                                                            setVisibleColumns(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
+                                                        }}
+                                                        className="hidden"
+                                                    />
+                                                    <span className={`text-sm ${checked ? 'text-slate-900 font-medium' : 'text-slate-500'}`}>{s}</span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Content Area */}
-                {viewMode === 'matrix' ? (
+                {viewMode !== 'inventory' ? (
                     <div className="space-y-4 animate-in fade-in duration-300">
-                        {/* Filter chips + column settings */}
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                            <div className="flex flex-wrap gap-2">
+                        {/* Filters toolbar */}
+                        <div className="space-y-2">
+                            {/* Category chips — horizontal scroll on mobile */}
+                            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap">
                                 {filterChips.map((chip) => {
-                                    const isActive = searchTerm.toUpperCase() === chip.value.toUpperCase() || (chip.value === '' && searchTerm === '');
+                                    const isActive = activeCategory === chip.value;
                                     return (
                                         <button
                                             key={chip.label}
-                                            onClick={() => setSearchTerm(chip.value)}
-                                            className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${isActive ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:text-slate-900'}`}
+                                            onClick={() => setActiveCategory(chip.value)}
+                                            className={`shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${isActive ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:text-slate-900'}`}
                                         >
                                             {chip.label}
                                         </button>
@@ -553,44 +679,219 @@ export default function ArticlesContent() {
                                 })}
                             </div>
 
-                            <div className="relative column-settings-container">
+                            {/* Fournisseur filter + sort + comparables + reset */}
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="relative supplier-filter-container">
+                                    <button
+                                        onClick={() => setShowSupplierFilter(!showSupplierFilter)}
+                                        className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-xs font-medium transition-colors ${supplierFilter.length > 0 || showSupplierFilter ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                                    >
+                                        Fournisseurs
+                                        {supplierFilter.length > 0 && (
+                                            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-white/20 text-white text-[10px] font-semibold tabular-nums">
+                                                {supplierFilter.length}
+                                            </span>
+                                        )}
+                                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showSupplierFilter ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {showSupplierFilter && (
+                                        <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-2xl shadow-lg border border-slate-200 p-3 z-[120] animate-in fade-in zoom-in-95 duration-150">
+                                            <p className="text-xs font-medium text-slate-500 px-1 pb-2">Articles où participent :</p>
+                                            <div className="space-y-0.5 max-h-[300px] overflow-y-auto">
+                                                {matrixData.suppliers.map((s) => {
+                                                    const checked = supplierFilter.includes(s);
+                                                    return (
+                                                        <label key={s} className="flex items-center gap-3 px-2 py-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors">
+                                                            <span className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${checked ? 'bg-slate-900 border-slate-900' : 'border-slate-300'}`}>
+                                                                {checked && <Check className="w-3 h-3 text-white" />}
+                                                            </span>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={checked}
+                                                                onChange={() => {
+                                                                    setSupplierFilter(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
+                                                                }}
+                                                                className="hidden"
+                                                            />
+                                                            <span className={`text-sm ${checked ? 'text-slate-900 font-medium' : 'text-slate-500'}`}>{s}</span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                            {supplierFilter.length > 0 && (
+                                                <button
+                                                    onClick={() => setSupplierFilter([])}
+                                                    className="w-full mt-2 inline-flex items-center justify-center gap-1 h-8 rounded-lg text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                                >
+                                                    <X className="h-3.5 w-3.5" /> Effacer la sélection
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="relative">
+                                    <ArrowUpDown className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                                    <select
+                                        value={sortBy}
+                                        onChange={(e) => setSortBy(e.target.value as 'name' | 'savings' | 'price')}
+                                        className="h-9 pl-8 pr-8 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-700 appearance-none focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                    >
+                                        <option value="name">Nom (A–Z)</option>
+                                        <option value="savings">Plus grosse économie</option>
+                                        <option value="price">Prix croissant</option>
+                                    </select>
+                                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                                </div>
+
                                 <button
-                                    onClick={() => setShowColumnSettings(!showColumnSettings)}
-                                    className={`inline-flex items-center justify-center gap-2 h-9 px-3 rounded-xl border text-sm font-medium transition-colors ${showColumnSettings ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                                    onClick={() => setComparableOnly(!comparableOnly)}
+                                    className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-xs font-medium transition-colors ${comparableOnly ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
                                 >
-                                    <SlidersHorizontal className="w-4 h-4" />
-                                    Colonnes
+                                    <Check className="h-3.5 w-3.5" />
+                                    Comparables uniquement
                                 </button>
 
-                                {showColumnSettings && (
-                                    <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-2xl shadow-lg border border-slate-200 p-3 z-[120] animate-in fade-in zoom-in-95 duration-150">
-                                        <p className="text-xs font-medium text-slate-500 px-1 pb-2">Fournisseurs</p>
-                                        <div className="space-y-0.5 max-h-[360px] overflow-y-auto">
-                                            {matrixData.suppliers.map((s) => {
-                                                const checked = visibleColumns.includes(s);
-                                                return (
-                                                    <label key={s} className="flex items-center gap-3 px-2 py-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors">
-                                                        <span className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${checked ? 'bg-slate-900 border-slate-900' : 'border-slate-300'}`}>
-                                                            {checked && <span className="w-1.5 h-1.5 bg-white rounded-sm" />}
-                                                        </span>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={checked}
-                                                            onChange={() => {
-                                                                setVisibleColumns(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
-                                                            }}
-                                                            className="hidden"
-                                                        />
-                                                        <span className={`text-sm ${checked ? 'text-slate-900 font-medium' : 'text-slate-500'}`}>{s}</span>
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
+                                {activeFilterCount > 0 && (
+                                    <button
+                                        onClick={resetFilters}
+                                        className="inline-flex items-center gap-1 h-9 px-3 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                                    >
+                                        <X className="h-3.5 w-3.5" />
+                                        {activeFilterCount} filtre{activeFilterCount > 1 ? 's' : ''} · Réinitialiser
+                                    </button>
                                 )}
+
+                                <span className="ml-auto text-xs text-slate-400 tabular-nums">
+                                    {viewMode === 'best' ? comparatorRows.length : matrixRows.length} article{(viewMode === 'best' ? comparatorRows.length : matrixRows.length) > 1 ? 's' : ''}
+                                </span>
                             </div>
                         </div>
 
+                        {/* Comparatif — best-price-first list (default view) */}
+                        {viewMode === 'best' && (
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 items-start">
+                                {comparatorRows.map((row) => {
+                                    const best = row.best;
+                                    const isExpanded = !!expandedRows[row.name];
+                                    const nextBest = best && best.savings > 0 ? best.price + best.savings : null;
+                                    const pct = best && nextBest ? (best.savings / nextBest) * 100 : 0;
+                                    const supplierEntries = activeMatrixCols
+                                        .filter(s => (row.prices[s]?.price ?? 0) > 0)
+                                        .map(s => ({ sup: s, entry: row.prices[s]! }))
+                                        .sort((a, b) => a.entry.price - b.entry.price);
+                                    const maxPrice = supplierEntries.length ? Math.max(...supplierEntries.map(e => e.entry.price)) : 0;
+
+                                    return (
+                                        <div key={row.name} className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col">
+                                            <div
+                                                onClick={() => toggleRow(row.name)}
+                                                className="p-3.5 cursor-pointer hover:bg-slate-50 transition-colors"
+                                            >
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <p className="text-sm font-semibold text-slate-900 leading-snug min-w-0 flex-1" title={row.name}>{row.name}</p>
+                                                    <ChevronDown className={`h-4 w-4 text-slate-400 shrink-0 mt-0.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                                </div>
+
+                                                {best ? (
+                                                    <>
+                                                        <div className="flex items-center justify-between gap-2 mt-2.5">
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 min-w-0">
+                                                                <Trophy className="h-3 w-3 shrink-0" />
+                                                                <span className="truncate">{best.supplier}</span>
+                                                            </span>
+                                                            <p className="text-base font-semibold text-emerald-600 tabular-nums leading-none shrink-0">
+                                                                {best.price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] font-normal text-slate-400">DT</span>
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 mt-1.5 text-xs">
+                                                            {row.prices[best.supplier]?.isRef && (
+                                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700">CMD</span>
+                                                            )}
+                                                            {best.savings > 0 ? (
+                                                                <span className="font-medium text-emerald-600 tabular-nums truncate">
+                                                                    −{best.savings.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT · −{pct.toFixed(pct < 10 ? 1 : 0)}%
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-slate-300">—</span>
+                                                            )}
+                                                            <span className="ml-auto text-slate-400 tabular-nums shrink-0">
+                                                                {row.priceCount > 1 ? `${row.priceCount} prix` : 'Seul prix'}
+                                                            </span>
+                                                        </div>
+                                                        <Link
+                                                            href={`/orders?article=${encodeURIComponent(row.name)}&price=${best.price}&supplier=${encodeURIComponent(best.supplier)}`}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="mt-2.5 w-full inline-flex items-center justify-center gap-1.5 h-8 rounded-lg bg-slate-900 text-white text-xs font-medium hover:bg-slate-800 transition-colors"
+                                                        >
+                                                            <ShoppingCart className="h-3.5 w-3.5" /> Commander
+                                                        </Link>
+                                                    </>
+                                                ) : (
+                                                    <p className="text-xs text-slate-400 mt-2">Aucun prix parmi les fournisseurs visibles</p>
+                                                )}
+                                            </div>
+
+                                            {isExpanded && (
+                                                <div className="border-t border-slate-100 bg-slate-50/60 px-3.5 py-3 space-y-2 animate-in fade-in duration-150">
+                                                    {supplierEntries.length === 0 && (
+                                                        <p className="text-xs text-slate-400">Aucun prix parmi les fournisseurs visibles.</p>
+                                                    )}
+                                                    {supplierEntries.map(({ sup, entry }) => {
+                                                        const isBest = !!best && sup === best.supplier;
+                                                        const width = maxPrice > 0 ? (entry.price / maxPrice) * 100 : 0;
+                                                        const delta = best ? entry.price - best.price : 0;
+                                                        return (
+                                                            <div key={sup}>
+                                                                <div className="flex items-center justify-between gap-2 mb-1">
+                                                                    <span className={`text-xs truncate min-w-0 ${isBest ? 'font-semibold text-emerald-700' : 'text-slate-600'}`}>
+                                                                        {sup}
+                                                                        {entry.isRef && <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700">CMD</span>}
+                                                                    </span>
+                                                                    <span className="flex items-baseline gap-1.5 shrink-0">
+                                                                        <span className={`text-xs font-semibold tabular-nums ${isBest ? 'text-emerald-600' : 'text-slate-700'}`}>
+                                                                            {entry.price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] font-normal text-slate-400">DT</span>
+                                                                        </span>
+                                                                        {!isBest && delta > 0 && (
+                                                                            <span className="text-[10px] font-medium text-rose-600 tabular-nums">+{delta.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                                                                        )}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="h-1.5 rounded-full bg-slate-200/70 overflow-hidden">
+                                                                    <div
+                                                                        className={`h-full rounded-full ${isBest ? 'bg-emerald-500' : 'bg-slate-400/60'}`}
+                                                                        style={{ width: `${Math.max(width, 4)}%` }}
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+
+                                {comparatorRows.length === 0 && (
+                                    <div className="col-span-full flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-slate-200 bg-white py-16">
+                                        <Trophy className="h-10 w-10 text-slate-300 mb-3" />
+                                        <p className="text-sm text-slate-500">Aucun article ne correspond aux filtres.</p>
+                                        {activeFilterCount > 0 && (
+                                            <button
+                                                onClick={resetFilters}
+                                                className="mt-3 inline-flex items-center gap-1 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-50 transition-colors"
+                                            >
+                                                <X className="h-3.5 w-3.5" /> Réinitialiser les filtres
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {viewMode === 'matrix' && (
+                        <>
                         {/* Matrix — desktop table */}
                         <div className="hidden md:block rounded-2xl border border-slate-200 overflow-hidden bg-white">
                             <div className="overflow-x-auto">
@@ -746,6 +1047,8 @@ export default function ArticlesContent() {
                                 <LayoutGrid className="h-10 w-10 text-slate-300 mb-3" />
                                 <p className="text-sm text-slate-500">Aucun article à comparer.</p>
                             </div>
+                        )}
+                        </>
                         )}
                     </div>
                 ) : (

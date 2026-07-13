@@ -5,14 +5,11 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
-import { matchSupplier, extractAmount, cleanDescription } from '@/lib/invoice-inbox';
-import { Camera, CheckCircle2, Loader2, Send, X, Inbox, ArrowRight, Lock } from 'lucide-react';
+import { Camera, CheckCircle2, Loader2, Send, X, Inbox, ArrowRight, Lock, Search, Store, DollarSign } from 'lucide-react';
 
-// Quick-capture inbox: snap a photo of an invoice, add a short caption
-// ("Sotubi ciment 340dt"), send. It lands in `pending_factures` — nothing is
-// counted until it's approved in the Dépenses review queue. No third-party
-// messaging service involved: install the app icon on the home screen and
-// this page IS the WhatsApp-style inbox.
+// Quick-capture inbox: snap a photo, pick the fournisseur (searchable),
+// type the montant, send. It lands in `pending_factures` — nothing is counted
+// until it's approved in the Dépenses review queue.
 
 export default function InboxContent() {
     const { user, isApproved, loading } = useAuth();
@@ -22,16 +19,21 @@ export default function InboxContent() {
 
     const [file, setFile] = useState<File | null>(null);
     const [preview, setPreview] = useState<string | null>(null);
-    const [caption, setCaption] = useState('');
+    const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([]);
+    const [supplierSearch, setSupplierSearch] = useState('');
+    const [selectedSupplier, setSelectedSupplier] = useState<{ id: string; name: string } | null>(null);
+    const [showSupplierList, setShowSupplierList] = useState(false);
+    const [amount, setAmount] = useState('');
+    const [designation, setDesignation] = useState('');
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [done, setDone] = useState<{ supplier: string | null; amount: number | null } | null>(null);
-    const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([]);
+    const [done, setDone] = useState<{ supplier: string; amount: number } | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const supplierBoxRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         (async () => {
-            const { data } = await supabase.from('suppliers').select('id, name').is('deleted_at', null);
+            const { data } = await supabase.from('suppliers').select('id, name').is('deleted_at', null).order('name');
             setSuppliers(data || []);
         })();
     }, [supabase]);
@@ -39,6 +41,27 @@ export default function InboxContent() {
     useEffect(() => {
         return () => { if (preview) URL.revokeObjectURL(preview); };
     }, [preview]);
+
+    // Close the supplier list when tapping outside
+    useEffect(() => {
+        const onDown = (e: MouseEvent | TouchEvent) => {
+            if (supplierBoxRef.current && !supplierBoxRef.current.contains(e.target as Node)) {
+                setShowSupplierList(false);
+            }
+        };
+        document.addEventListener('mousedown', onDown);
+        document.addEventListener('touchstart', onDown);
+        return () => {
+            document.removeEventListener('mousedown', onDown);
+            document.removeEventListener('touchstart', onDown);
+        };
+    }, []);
+
+    const filteredSuppliers = useMemo(() => {
+        const q = supplierSearch.trim().toLowerCase();
+        const list = q ? suppliers.filter(s => s.name.toLowerCase().includes(q)) : suppliers;
+        return list.slice(0, 8);
+    }, [suppliers, supplierSearch]);
 
     const pickFile = (f: File | null) => {
         if (preview) URL.revokeObjectURL(preview);
@@ -49,13 +72,19 @@ export default function InboxContent() {
 
     const reset = () => {
         pickFile(null);
-        setCaption('');
+        setSupplierSearch('');
+        setSelectedSupplier(null);
+        setAmount('');
+        setDesignation('');
         setDone(null);
         setError(null);
     };
 
+    const canSend = !!selectedSupplier && !!amount && !isNaN(parseFloat(amount));
+
     const handleSend = async () => {
-        if (!canAdd || (!file && !caption.trim())) return;
+        if (!canAdd || !canSend || !selectedSupplier) return;
+        const price = parseFloat(amount);
         setSending(true);
         setError(null);
         try {
@@ -76,31 +105,23 @@ export default function InboxContent() {
                 imageUrl = supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
             }
 
-            // 2. Parse the caption against the real fournisseurs
-            const { best, confidence, alternatives } = matchSupplier(caption, suppliers);
-            const amount = extractAmount(caption);
-            const flags: string[] = [];
-            if (!best) flags.push('unknown_fournisseur');
-            else if (confidence < 0.8) flags.push('low_fournisseur_confidence');
-            if (amount == null) flags.push('missing_montant');
-
-            // 3. Stage it — the review queue in Dépenses does the rest
+            // 2. Stage it — explicit fournisseur + montant, no guessing needed.
             const { error: insErr } = await supabase.from('pending_factures').insert({
                 message_sid: sid,
                 sender: user?.email || 'app',
-                raw_caption: caption.trim(),
+                raw_caption: [selectedSupplier.name, designation.trim(), `${price} DT`].filter(Boolean).join(' · '),
                 image_url: imageUrl,
-                parsed_supplier_id: best?.id ?? null,
-                parsed_supplier_name: best?.name ?? null,
-                supplier_confidence: confidence,
-                parsed_amount: amount,
-                parsed_description: cleanDescription(caption, best?.name, amount),
-                alternatives,
-                flags,
+                parsed_supplier_id: selectedSupplier.id,
+                parsed_supplier_name: selectedSupplier.name,
+                supplier_confidence: 1,
+                parsed_amount: price,
+                parsed_description: designation.trim(),
+                alternatives: [],
+                flags: [],
             });
             if (insErr) throw new Error(insErr.message);
 
-            setDone({ supplier: best?.name ?? null, amount });
+            setDone({ supplier: selectedSupplier.name, amount: price });
         } catch (e: any) {
             console.error('Quick add failed:', e);
             setError(e?.message || "Échec de l'envoi.");
@@ -142,7 +163,7 @@ export default function InboxContent() {
                     </div>
                     <div>
                         <h1 className="text-lg font-semibold tracking-tight text-slate-900 leading-tight">Ajout rapide</h1>
-                        <p className="text-xs text-slate-500">Photo + légende → file de vérification</p>
+                        <p className="text-xs text-slate-500">Photo + fournisseur + montant → file de vérification</p>
                     </div>
                 </div>
 
@@ -155,7 +176,7 @@ export default function InboxContent() {
                         <CheckCircle2 className="h-10 w-10 text-emerald-600 mx-auto" />
                         <div>
                             <p className="text-sm font-semibold text-emerald-800">
-                                Reçu — {done.supplier ?? 'fournisseur ?'} · {done.amount != null ? `${done.amount} DT` : 'montant ?'}
+                                Reçu — {done.supplier} · {done.amount.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT
                             </p>
                             <p className="text-xs text-emerald-700/80 mt-1">En attente de validation dans Dépenses.</p>
                         </div>
@@ -188,7 +209,7 @@ export default function InboxContent() {
                         {preview ? (
                             <div className="relative">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={preview} alt="Facture" className="w-full max-h-[45vh] object-contain rounded-2xl border border-slate-200 bg-white" />
+                                <img src={preview} alt="Facture" className="w-full max-h-[38vh] object-contain rounded-2xl border border-slate-200 bg-white" />
                                 <button
                                     onClick={() => pickFile(null)}
                                     className="absolute top-2 right-2 inline-flex items-center justify-center w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-500 shadow-sm hover:text-rose-600 transition-colors"
@@ -200,28 +221,96 @@ export default function InboxContent() {
                         ) : (
                             <button
                                 onClick={() => fileInputRef.current?.click()}
-                                className="w-full flex flex-col items-center justify-center gap-2 h-44 rounded-2xl border-2 border-dashed border-slate-300 bg-white hover:border-slate-400 hover:bg-slate-50 transition-colors"
+                                className="w-full flex flex-col items-center justify-center gap-2 h-36 rounded-2xl border-2 border-dashed border-slate-300 bg-white hover:border-slate-400 hover:bg-slate-50 transition-colors"
                             >
-                                <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center">
-                                    <Camera className="h-6 w-6" />
+                                <div className="w-11 h-11 rounded-2xl bg-slate-900 text-white flex items-center justify-center">
+                                    <Camera className="h-5 w-5" />
                                 </div>
                                 <span className="text-sm font-medium text-slate-700">Prendre / choisir une photo</span>
                                 <span className="text-xs text-slate-400">Facture, bon ou reçu</span>
                             </button>
                         )}
 
-                        {/* Caption */}
+                        {/* Fournisseur — searchable */}
+                        <div ref={supplierBoxRef} className="relative">
+                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Fournisseur</label>
+                            {selectedSupplier ? (
+                                <div className="flex items-center gap-2.5 h-11 px-3 rounded-xl border border-slate-300 bg-white">
+                                    <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-slate-900 text-white text-xs font-semibold shrink-0">
+                                        {selectedSupplier.name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-900">{selectedSupplier.name}</span>
+                                    <button
+                                        onClick={() => { setSelectedSupplier(null); setSupplierSearch(''); setShowSupplierList(true); }}
+                                        className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                        aria-label="Changer de fournisseur"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            value={supplierSearch}
+                                            onChange={(e) => { setSupplierSearch(e.target.value); setShowSupplierList(true); }}
+                                            onFocus={() => setShowSupplierList(true)}
+                                            placeholder="Rechercher un fournisseur…"
+                                            className="w-full h-11 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                        />
+                                    </div>
+                                    {showSupplierList && (
+                                        <div className="absolute z-20 mt-1.5 w-full rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
+                                            {filteredSuppliers.length === 0 ? (
+                                                <p className="px-3 py-3 text-sm text-slate-400">Aucun fournisseur trouvé.</p>
+                                            ) : (
+                                                filteredSuppliers.map((s) => (
+                                                    <button
+                                                        key={s.id}
+                                                        onClick={() => { setSelectedSupplier(s); setShowSupplierList(false); }}
+                                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
+                                                    >
+                                                        <Store className="h-4 w-4 text-slate-400 shrink-0" />
+                                                        <span className="text-sm font-medium text-slate-900 truncate">{s.name}</span>
+                                                    </button>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        {/* Montant */}
                         <div>
-                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Légende</label>
+                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Montant (DT)</label>
+                            <div className="relative">
+                                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    step="0.001"
+                                    value={amount}
+                                    onChange={(e) => setAmount(e.target.value)}
+                                    placeholder="0.000"
+                                    className="w-full h-11 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-900 tabular-nums placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Désignation (optional) */}
+                        <div>
+                            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Désignation <span className="text-slate-400 font-normal">(optionnel)</span></label>
                             <input
                                 type="text"
-                                value={caption}
-                                onChange={(e) => setCaption(e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
-                                placeholder="Ex: Sotubi ciment 340dt"
+                                value={designation}
+                                onChange={(e) => setDesignation(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' && canSend) handleSend(); }}
+                                placeholder="Ex: Ciment"
                                 className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
                             />
-                            <p className="text-[11px] text-slate-400 mt-1.5">Fournisseur + description + montant — le tri se fait tout seul, vous validez après.</p>
                         </div>
 
                         {error && (
@@ -230,7 +319,7 @@ export default function InboxContent() {
 
                         <button
                             onClick={handleSend}
-                            disabled={sending || (!file && !caption.trim())}
+                            disabled={sending || !canSend}
                             className="w-full inline-flex items-center justify-center gap-2 h-12 rounded-2xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.99] transition-all"
                         >
                             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

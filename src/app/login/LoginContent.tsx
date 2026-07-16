@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { createClient } from '@/lib/supabase';
+import { AUTH_EMAIL_BASE } from '@/lib/app-url';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Loader2, AlertCircle, CheckCircle2, ArrowLeft, Building2, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
@@ -51,14 +52,14 @@ export default function LoginContent() {
                     email,
                     password,
                     options: {
-                        emailRedirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(returnUrl)}`,
+                        emailRedirectTo: `${AUTH_EMAIL_BASE}/auth/callback?next=${encodeURIComponent(returnUrl)}`,
                     },
                 });
                 if (error) throw error;
                 setMessage('Vérifiez vos e-mails pour le lien de confirmation.');
             } else if (mode === 'forgot') {
                 const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                    redirectTo: `${location.origin}/auth/update-password`,
+                    redirectTo: `${AUTH_EMAIL_BASE}/auth/update-password`,
                 });
                 if (error) throw error;
                 setMessage('Instructions envoyées par e-mail.');

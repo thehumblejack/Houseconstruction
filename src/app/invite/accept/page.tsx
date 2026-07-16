@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
+import { AUTH_EMAIL_BASE } from '@/lib/app-url';
 import { CheckCircle2, XCircle, Loader2, Eye, EyeOff, Building2, ChevronRight, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 
@@ -116,7 +117,7 @@ export default function AcceptInvitePage() {
                     email,
                     password,
                     options: {
-                        emailRedirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(`/invite/accept?token=${token}`)}`,
+                        emailRedirectTo: `${AUTH_EMAIL_BASE}/auth/callback?next=${encodeURIComponent(`/invite/accept?token=${token}`)}`,
                     },
                 });
                 if (error) throw error;

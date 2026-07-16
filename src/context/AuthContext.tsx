@@ -193,9 +193,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         ? (userProfile.role === 'admin' && userProfile.status === 'approved')
         : user?.email === 'hamzahadjtaieb@gmail.com';
 
+    // Since multi-tenant isolation, new users enter directly with their own
+    // empty project — "pending" no longer blocks. Only "rejected" locks out.
     const isApproved = userProfile
-        ? userProfile.status === 'approved'
-        : (user?.email === 'hamzahadjtaieb@gmail.com');
+        ? userProfile.status !== 'rejected'
+        : !!user;
 
     // Hard redirect on status change
     useEffect(() => {
@@ -204,10 +206,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const currentPath = window.location.pathname;
         if (userProfile.status === 'rejected' && currentPath !== '/auth/rejected') {
             window.location.href = '/auth/rejected';
-        } else if (userProfile.status === 'approved' && (currentPath === '/auth/pending' || currentPath === '/auth/rejected')) {
+        } else if (userProfile.status !== 'rejected' && (currentPath === '/auth/pending' || currentPath === '/auth/rejected')) {
             window.location.href = '/expenses';
-        } else if (userProfile.status === 'pending' && currentPath !== '/auth/pending' && currentPath !== '/login') {
-            window.location.href = '/auth/pending';
         }
     }, [userProfile?.status]);
 
@@ -229,26 +229,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 router.replace('/');
             }
         } else if (userProfile) {
-            // Logged in with profile
+            // Logged in with profile — only "rejected" is blocking now.
             console.log('Auth: User status:', userProfile.status);
-            if (userProfile.status === 'pending' && pathname !== '/auth/pending') {
-                console.log('Auth: Redirecting to pending page');
-                router.replace('/auth/pending');
-            } else if (userProfile.status === 'rejected' && pathname !== '/auth/rejected') {
+            if (userProfile.status === 'rejected' && pathname !== '/auth/rejected') {
                 console.log('Auth: Redirecting to rejected page');
                 router.replace('/auth/rejected');
-            } else if (userProfile.status === 'approved' && (isAuthPage || pathname === '/')) {
-                console.log('Auth: Approved user on auth or home page, redirecting to expenses');
+            } else if (userProfile.status !== 'rejected' && (isAuthPage || pathname === '/')) {
+                console.log('Auth: Signed-in user on auth or home page, redirecting to expenses');
                 router.replace('/expenses');
-            }
-        } else if (user && !userProfile && !isAuthPage) {
-            // Logged in but profile missing
-            console.log('Auth: No profile found for logged in user', user.email);
-            if (user.email === 'hamzahadjtaieb@gmail.com') {
-                console.log('Auth: Admin fallback activated');
-            } else {
-                console.log('Auth: Redirecting to pending (no profile found)');
-                router.replace('/auth/pending');
             }
         }
     }, [user, userProfile, loading, pathname, router]);

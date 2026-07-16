@@ -86,25 +86,42 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
                     .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
                 : [];
 
-            // AUTO-MIGRATION: If no members found, check for legacy projects and claim them
+            // No membership yet: two very different cases.
             if (mappedProjects.length === 0) {
-                const { data: legacyData } = await supabase.from('projects').select('*').order('created_at', { ascending: true });
-
-                if (legacyData && legacyData.length > 0) {
-                    const newMembers = legacyData.map((p: any) => ({
-                        project_id: p.id,
-                        user_id: user.id,
-                        role: 'admin'
-                    }));
-
-                    const { error: migError } = await supabase.from('project_members').insert(newMembers);
-
-                    if (!migError) {
+                const OWNER_EMAIL = 'hamzahadjtaieb@gmail.com';
+                if (user.email === OWNER_EMAIL) {
+                    // LEGACY MIGRATION (owner only): the original projects predate
+                    // project_members — the app owner may claim them once.
+                    const { data: legacyData } = await supabase.from('projects').select('*').order('created_at', { ascending: true });
+                    if (legacyData && legacyData.length > 0) {
+                        const newMembers = legacyData.map((p: any) => ({
+                            project_id: p.id,
+                            user_id: user.id,
+                            role: 'admin'
+                        }));
+                        await supabase.from('project_members').insert(newMembers);
                         mappedProjects = legacyData.map((p: any) => ({ ...p, role: 'admin' }));
                         setRawMemberships(newMembers);
-                    } else {
-                        mappedProjects = legacyData.map((p: any) => ({ ...p, role: 'admin' }));
-                        setRawMemberships(newMembers);
+                    }
+                } else {
+                    // NEW USER: bootstrap their own empty project. They must NEVER
+                    // inherit someone else's projects.
+                    const { data: created, error: createErr } = await supabase
+                        .from('projects')
+                        .insert({ name: 'Mon chantier', description: '' })
+                        .select()
+                        .single();
+                    if (!createErr && created) {
+                        const membership = { project_id: created.id, user_id: user.id, role: 'admin' };
+                        const { error: memErr } = await supabase.from('project_members').insert(membership);
+                        if (!memErr) {
+                            mappedProjects = [{ ...created, role: 'admin' }];
+                            setRawMemberships([membership]);
+                        } else {
+                            console.error('ProjectContext: bootstrap membership failed:', memErr.message);
+                        }
+                    } else if (createErr) {
+                        console.error('ProjectContext: bootstrap project failed:', createErr.message);
                     }
                 }
             }

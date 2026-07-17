@@ -330,7 +330,6 @@ function ExpensesContentMain() {
 
     const [showAddInvoiceItemsStep, setShowAddInvoiceItemsStep] = useState(false);
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
-    const [showAIComingSoonModal, setShowAIComingSoonModal] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
 
     const toggleRow = (id: string) => {
@@ -363,6 +362,121 @@ function ExpensesContentMain() {
     const handleInvoiceFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             setTempInvoiceFile(e.target.files[0]);
+        }
+    };
+
+    // ── AI invoice extraction ────────────────────────────────────────────
+    const [showAIExtractModal, setShowAIExtractModal] = useState(false);
+    const [aiStage, setAiStage] = useState<'upload' | 'analyzing' | 'review'>('upload');
+    const [aiFile, setAiFile] = useState<File | null>(null);
+    const [aiPreview, setAiPreview] = useState<string | null>(null);
+    const [aiError, setAiError] = useState<string | null>(null);
+    const aiFileInputRef = useRef<HTMLInputElement>(null);
+    // Editable review state (verify before committing)
+    const [aiSupplierId, setAiSupplierId] = useState<string>('');       // existing id, '' , or 'CREATING_NEW'
+    const [aiNewSupplierName, setAiNewSupplierName] = useState('');
+    const [aiItem, setAiItem] = useState('');
+    const [aiDate, setAiDate] = useState('');
+    const [aiStatus, setAiStatus] = useState<PaymentStatus>('pending');
+    const [aiPhaseId, setAiPhaseId] = useState('');
+    const [aiLineItems, setAiLineItems] = useState<Array<{ include: boolean; designation: string; quantity: number; unit: string; unitPrice: number; totalTTC: number }>>([]);
+    const [aiSaving, setAiSaving] = useState(false);
+
+    const resetAIFlow = () => {
+        if (aiPreview) URL.revokeObjectURL(aiPreview);
+        setAiFile(null); setAiPreview(null); setAiError(null); setAiStage('upload');
+        setAiSupplierId(''); setAiNewSupplierName(''); setAiItem(''); setAiDate(''); setAiStatus('pending'); setAiPhaseId('');
+        setAiLineItems([]); setAiSaving(false);
+    };
+
+    const handleAIFileSelect = (file: File | null) => {
+        if (aiPreview) URL.revokeObjectURL(aiPreview);
+        setAiError(null);
+        if (file) { setAiFile(file); setAiPreview(URL.createObjectURL(file)); }
+        else { setAiFile(null); setAiPreview(null); }
+    };
+
+    const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+
+    const runAIExtraction = async () => {
+        if (!aiFile) return;
+        setAiStage('analyzing');
+        setAiError(null);
+        try {
+            const base64 = await fileToBase64(aiFile);
+            const { data: { session } } = await supabase.auth.getSession();
+            const resp = await fetch('/api/extract-invoice', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+                body: JSON.stringify({ imageBase64: base64, mediaType: aiFile.type || 'image/jpeg' }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data?.error || "Échec de l'analyse.");
+
+            // Pre-match the supplier to an existing one by name.
+            const detectedName: string = (data.supplierName || '').trim();
+            let matchedId = '';
+            if (detectedName) {
+                const norm = detectedName.toLowerCase();
+                const match = allAvailableSuppliers.find((s: any) =>
+                    s.name && (s.name.toLowerCase() === norm || s.name.toLowerCase().includes(norm) || norm.includes(s.name.toLowerCase())));
+                if (match) matchedId = match.id;
+            }
+            if (matchedId) { setAiSupplierId(matchedId); setAiNewSupplierName(''); }
+            else if (detectedName) { setAiSupplierId('CREATING_NEW'); setAiNewSupplierName(detectedName); }
+            else { setAiSupplierId(activeTab || ''); setAiNewSupplierName(''); }
+
+            setAiItem(data.invoiceNumber || 'Facture');
+            setAiDate(data.date || new Date().toISOString().split('T')[0]);
+            setAiStatus(data.status === 'paid' ? 'paid' : 'pending');
+            setAiPhaseId('');
+            setAiLineItems((data.items || []).map((it: any) => ({
+                include: true,
+                designation: String(it.designation || ''),
+                quantity: Number(it.quantity) || 1,
+                unit: it.unit || 'u',
+                unitPrice: Number(it.unitPrice) || 0,
+                totalTTC: Number(it.total) || (Number(it.quantity) || 1) * (Number(it.unitPrice) || 0),
+            })));
+            setAiStage('review');
+        } catch (e: any) {
+            setAiError(e?.message || "Échec de l'analyse.");
+            setAiStage('upload');
+        }
+    };
+
+    const validateAIExtraction = async () => {
+        if (!aiSupplierId || (aiSupplierId === 'CREATING_NEW' && !aiNewSupplierName.trim())) {
+            setAiError('Veuillez choisir un fournisseur.'); return;
+        }
+        const chosen = aiLineItems.filter(i => i.include && i.designation.trim());
+        setAiSaving(true);
+        setAiError(null);
+        const ok = await commitInvoiceFlow({
+            supplierId: aiSupplierId,
+            newSupplierName: aiNewSupplierName.trim(),
+            newSupplierColor: 'bg-slate-500',
+            header: {
+                item: aiItem || 'Facture',
+                price: String(chosen.reduce((s, i) => s + i.totalTTC, 0)),
+                date: aiDate || new Date().toISOString().split('T')[0],
+                status: aiStatus,
+                quantity: '1',
+                phaseId: aiPhaseId,
+            },
+            items: chosen.map(i => ({ code: '', designation: i.designation, unit: i.unit, quantity: i.quantity, unitPrice: i.unitPrice, totalTTC: i.totalTTC })),
+            imageFile: aiFile,
+        });
+        setAiSaving(false);
+        if (ok) {
+            setShowAIExtractModal(false);
+            resetAIFlow();
+            setShowSuccessModal(true);
         }
     };
 
@@ -2159,6 +2273,106 @@ function ExpensesContentMain() {
         setShowAddDepositModal(true);
     };
 
+    // Shared save for the invoice wizard (Step 3 "Terminer") AND the AI flow
+    // ("Valider et ajouter"). Values default to the wizard state, but callers
+    // may pass explicit overrides (the AI flow does, to avoid stale-state races).
+    const commitInvoiceFlow = async (override?: {
+        items?: InvoiceItem[];
+        header?: typeof newExpenseData;
+        supplierId?: string;
+        newSupplierName?: string;
+        newSupplierColor?: string;
+        imageFile?: File | null;
+    }) => {
+        if (!isAdmin) return false;
+        const items = override?.items ?? invoiceItems;
+        const header = override?.header ?? newExpenseData;
+        const supplierIdInput = override?.supplierId ?? newInvoiceSupplierId;
+        const supName = override?.newSupplierName ?? newSupplierName;
+        const supColor = override?.newSupplierColor ?? newSupplierColor;
+        const imageFile = override?.imageFile !== undefined ? override.imageFile : tempInvoiceFile;
+
+        const totalFromItems = items.reduce((sum, i) => sum + i.totalTTC, 0);
+        const finalPrice = totalFromItems > 0 ? totalFromItems : parseFloat(header.price);
+
+        try {
+            const [y, m, d] = header.date.split('-');
+            const formattedDate = `${d}/${m}/${y}`;
+
+            // 1. Handle New Supplier Creation
+            let finalSupplierId = supplierIdInput;
+            if (supplierIdInput === 'CREATING_NEW') {
+                if (!supName) throw new Error("Nom du fournisseur manquant");
+                const id = supName.toLowerCase().replace(/\s+/g, '_');
+                const { error: supError } = await supabase.from('suppliers').upsert({
+                    id, name: supName, color: supColor
+                }, { onConflict: 'id' });
+                if (supError) throw supError;
+                const { error: linkError } = await supabase.from('project_suppliers').insert({
+                    project_id: currentProject?.id, supplier_id: id
+                });
+                if (linkError && linkError.code !== '23505') throw linkError;
+                finalSupplierId = id;
+                setSessionLinkedSuppliers(prev => new Set(prev).add(id));
+            }
+
+            // Upload the scanned/attached image if present
+            let invoiceImageUrl = null;
+            if (imageFile) {
+                const fileExt = imageFile.name.split('.').pop();
+                const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+                const filePath = `invoices/${fileName}`;
+                const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, imageFile);
+                if (!uploadError) {
+                    invoiceImageUrl = supabase.storage.from('documents').getPublicUrl(filePath).data.publicUrl;
+                } else {
+                    console.error('Error uploading file:', uploadError);
+                }
+            }
+
+            const { data: expData, error: expError } = await supabase.from('expenses').insert({
+                project_id: currentProject?.id,
+                supplier_id: finalSupplierId,
+                item: header.item,
+                price: finalPrice,
+                date: formattedDate,
+                status: header.status,
+                quantity: header.quantity,
+                invoice_image: invoiceImageUrl,
+                ...(phasesReady ? { phase_id: header.phaseId || null } : {})
+            }).select().single();
+            if (expError) throw expError;
+
+            if (supplierIdInput === 'CREATING_NEW') setActiveTab(finalSupplierId as any);
+
+            if (items.length > 0) {
+                const finalItems = items
+                    .filter(i => i.designation.trim() !== '')
+                    .map(i => ({
+                        project_id: currentProject?.id,
+                        expense_id: expData.id,
+                        designation: i.designation,
+                        quantity: i.quantity,
+                        unit: i.unit,
+                        unit_price: i.unitPrice,
+                        total_ttc: i.totalTTC
+                    }));
+                if (finalItems.length > 0) {
+                    const { error: itemsError } = await supabase.from('invoice_items').insert(finalItems);
+                    if (itemsError) throw itemsError;
+                }
+            }
+
+            setTempInvoiceFile(null);
+            fetchData();
+            return true;
+        } catch (error) {
+            console.error("Error saving invoice flow:", error);
+            alert("Erreur lors de l'enregistrement");
+            return false;
+        }
+    };
+
     const closeExpenseModal = () => {
         setShowAddExpenseModal(false);
         setEditingExpenseId(null);
@@ -2648,8 +2862,8 @@ function ExpensesContentMain() {
                         onClick={() => {
                             setInvoiceFlowMode('ai');
                             setShowAddInvoiceStep1(false);
-                            // Potential AI flow call here
-                            setShowAIComingSoonModal(true);
+                            resetAIFlow();
+                            setShowAIExtractModal(true);
                         }}
                         className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 transition-colors flex flex-col items-center gap-3 text-center"
                     >
@@ -2920,108 +3134,12 @@ function ExpensesContentMain() {
                     </button>
                     <button
                         onClick={async () => {
-                                        if (!isAdmin) return;
-                                        const totalFromItems = invoiceItems.reduce((sum, i) => sum + i.totalTTC, 0);
-                                        const finalPrice = totalFromItems > 0 ? totalFromItems : parseFloat(newExpenseData.price);
-
-                                        try {
-                                            const [y, m, d] = newExpenseData.date.split('-');
-                                            const formattedDate = `${d}/${m}/${y}`;
-
-                                            // 1. Handle New Supplier Creation
-                                            let finalSupplierId = newInvoiceSupplierId;
-                                            if (newInvoiceSupplierId === 'CREATING_NEW') {
-                                                if (!newSupplierName) throw new Error("Nom du fournisseur manquant");
-                                                const id = newSupplierName.toLowerCase().replace(/\s+/g, '_');
-
-                                                // Create global supplier
-                                                const { error: supError } = await supabase.from('suppliers').upsert({
-                                                    id,
-                                                    name: newSupplierName,
-                                                    color: newSupplierColor
-                                                }, { onConflict: 'id' });
-                                                if (supError) throw supError;
-
-                                                // Link to project
-                                                const { error: linkError } = await supabase.from('project_suppliers').insert({
-                                                    project_id: currentProject?.id,
-                                                    supplier_id: id
-                                                });
-                                                if (linkError && linkError.code !== '23505') throw linkError;
-
-                                                finalSupplierId = id;
-                                                setSessionLinkedSuppliers(prev => new Set(prev).add(id));
-                                            }
-
-                                            // Upload Image if exists
-                                            let invoiceImageUrl = null;
-                                            if (tempInvoiceFile) {
-                                                const fileExt = tempInvoiceFile.name.split('.').pop();
-                                                const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
-                                                const filePath = `invoices/${fileName}`;
-
-                                                const { error: uploadError } = await supabase.storage
-                                                    .from('documents')
-                                                    .upload(filePath, tempInvoiceFile);
-
-                                                if (uploadError) {
-                                                    console.error('Error uploading file:', uploadError);
-                                                    // Continue without image or alert user? For now continue but maybe alert.
-                                                } else {
-                                                    const { data: { publicUrl } } = supabase.storage
-                                                        .from('documents')
-                                                        .getPublicUrl(filePath);
-                                                    invoiceImageUrl = publicUrl;
-                                                }
-                                            }
-
-                                            const { data: expData, error: expError } = await supabase.from('expenses').insert({
-                                                project_id: currentProject?.id,
-                                                supplier_id: finalSupplierId,
-                                                item: newExpenseData.item,
-                                                price: finalPrice,
-                                                date: formattedDate,
-                                                status: newExpenseData.status,
-                                                quantity: newExpenseData.quantity,
-                                                invoice_image: invoiceImageUrl,
-                                                ...(phasesReady ? { phase_id: newExpenseData.phaseId || null } : {})
-                                            }).select().single();
-
-                                            if (expError) throw expError;
-
-                                            if (newInvoiceSupplierId === 'CREATING_NEW') {
-                                                // If we created a new supplier, let's switch to its tab to see the new invoice
-                                                setActiveTab(finalSupplierId as any);
-                                            }
-
-                                            if (invoiceItems.length > 0) {
-                                                const finalItems = invoiceItems
-                                                    .filter(i => i.designation.trim() !== '')
-                                                    .map(i => ({
-                                                        project_id: currentProject?.id,
-                                                        expense_id: expData.id,
-                                                        designation: i.designation,
-                                                        quantity: i.quantity,
-                                                        unit: i.unit,
-                                                        unit_price: i.unitPrice,
-                                                        total_ttc: i.totalTTC
-                                                    }));
-
-                                                if (finalItems.length > 0) {
-                                                    const { error: itemsError } = await supabase.from('invoice_items').insert(finalItems);
-                                                    if (itemsError) throw itemsError;
-                                                }
-                                            }
-
-                                            setShowAddInvoiceItemsStep(false);
-                                            setTempInvoiceFile(null); // Reset file
-                                            fetchData();
-                                            setShowSuccessModal(true);
-                                        } catch (error) {
-                                            console.error("Error saving invoice flow:", error);
-                                            alert("Erreur lors de l'enregistrement");
-                                        }
-                    }}
+                            const ok = await commitInvoiceFlow();
+                            if (ok) {
+                                setShowAddInvoiceItemsStep(false);
+                                setShowSuccessModal(true);
+                            }
+                        }}
                     className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors"
                 >
                     <CheckCircle2 className="h-4 w-4" />
@@ -5774,28 +5892,195 @@ function ExpensesContentMain() {
                 </div>
             </Modal>
 
-            {/* AI Coming Soon Modal */}
+            {/* AI Extraction Modal */}
             <Modal
-                open={showAIComingSoonModal}
-                onClose={() => setShowAIComingSoonModal(false)}
-                title="L'IA arrive bientôt"
-                size="sm"
+                open={showAIExtractModal}
+                onClose={() => { setShowAIExtractModal(false); resetAIFlow(); }}
+                title="Extraire avec l'IA"
+                description={aiStage === 'review' ? 'Vérifiez les données puis choisissez ce que vous ajoutez' : 'Scannez une facture, remplissage automatique'}
+                size="xl"
                 icon={<div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"><Sparkles className="h-5 w-5" /></div>}
-                footer={
+                footer={aiStage === 'review' ? <>
                     <button
-                        onClick={() => {
-                            setShowAIComingSoonModal(false);
-                            setShowAddInvoiceStep1(true);
-                        }}
-                        className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors"
+                        onClick={() => setAiStage('upload')}
+                        className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
                     >
-                        Compris, j'ai hâte !
+                        Recommencer
                     </button>
-                }
+                    <button
+                        onClick={validateAIExtraction}
+                        disabled={aiSaving}
+                        className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    >
+                        {aiSaving ? <><div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Ajout…</> : <><CheckCircle2 className="h-4 w-4" /> Valider et ajouter</>}
+                    </button>
+                </> : undefined}
             >
-                <p className="text-sm text-slate-600 leading-relaxed">
-                    Notre module d'extraction intelligente est en cours de finalisation. Vous pourrez bientôt scanner vos factures et les remplir automatiquement en un clin d'œil.
-                </p>
+                <input ref={aiFileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { handleAIFileSelect(e.target.files?.[0] || null); e.target.value = ''; }} />
+
+                {aiError && (
+                    <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700 flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" /> {aiError}
+                    </div>
+                )}
+
+                {/* Stage: upload */}
+                {aiStage === 'upload' && (
+                    <div className="space-y-3">
+                        {aiPreview ? (
+                            <div className="relative">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={aiPreview} alt="Facture" className="w-full max-h-[46vh] object-contain rounded-2xl border border-slate-200 bg-white" />
+                                <button onClick={() => handleAIFileSelect(null)} className="absolute top-2 right-2 inline-flex items-center justify-center w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-500 shadow-sm hover:text-rose-600 transition-colors">
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+                        ) : (
+                            <button onClick={() => aiFileInputRef.current?.click()} className="w-full flex flex-col items-center justify-center gap-2 h-44 rounded-2xl border-2 border-dashed border-slate-300 bg-white hover:border-blue-300 hover:bg-blue-50/40 transition-colors">
+                                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center"><ImagePlus className="h-6 w-6" /></div>
+                                <span className="text-sm font-medium text-slate-700">Prendre / choisir une photo de la facture</span>
+                                <span className="text-xs text-slate-400">JPG, PNG · l'IA lit fournisseur, montants et articles</span>
+                            </button>
+                        )}
+                        <button
+                            onClick={runAIExtraction}
+                            disabled={!aiFile}
+                            className="w-full inline-flex items-center justify-center gap-2 h-12 rounded-2xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.99] transition-all"
+                        >
+                            <Sparkles className="h-4 w-4" /> Analyser avec l'IA
+                        </button>
+                    </div>
+                )}
+
+                {/* Stage: analyzing */}
+                {aiStage === 'analyzing' && (
+                    <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+                        <div className="relative">
+                            <div className="h-12 w-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" />
+                            <Sparkles className="h-5 w-5 text-blue-600 absolute inset-0 m-auto" />
+                        </div>
+                        <div>
+                            <p className="text-sm font-medium text-slate-900">Lecture de la facture…</p>
+                            <p className="text-xs text-slate-400 mt-0.5">Extraction du fournisseur, des montants et des articles</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Stage: review */}
+                {aiStage === 'review' && (
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="sm:col-span-2">
+                                <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Fournisseur</label>
+                                <select
+                                    value={aiSupplierId}
+                                    onChange={(e) => setAiSupplierId(e.target.value)}
+                                    className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                >
+                                    <option value="">Choisir…</option>
+                                    {aiNewSupplierName && (
+                                        <option value="CREATING_NEW">➕ Créer « {aiNewSupplierName} »</option>
+                                    )}
+                                    {allAvailableSuppliers.map((s: any) => (
+                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                </select>
+                                {aiSupplierId === 'CREATING_NEW' && (
+                                    <input
+                                        type="text"
+                                        value={aiNewSupplierName}
+                                        onChange={(e) => setAiNewSupplierName(e.target.value)}
+                                        placeholder="Nom du nouveau fournisseur"
+                                        className="mt-2 w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                                    />
+                                )}
+                            </div>
+                            <div className="sm:col-span-2">
+                                <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Désignation (N° facture/bon)</label>
+                                <input type="text" value={aiItem} onChange={(e) => setAiItem(e.target.value)} className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition" />
+                            </div>
+                            <div>
+                                <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Date</label>
+                                <input type="date" value={aiDate} onChange={(e) => setAiDate(e.target.value)} className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition" />
+                            </div>
+                            <div>
+                                <label className="block text-[13px] font-medium text-slate-700 mb-1.5">État</label>
+                                <select value={aiStatus} onChange={(e) => setAiStatus(e.target.value as PaymentStatus)} className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition">
+                                    <option value="pending">En attente</option>
+                                    <option value="paid">Payé</option>
+                                </select>
+                            </div>
+                            {phasesReady && phases.length > 0 && (
+                                <div className="sm:col-span-2">
+                                    <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Phase</label>
+                                    <select value={aiPhaseId} onChange={(e) => setAiPhaseId(e.target.value)} className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition">
+                                        <option value="">Aucune phase</option>
+                                        {phases.map(p => (<option key={p.id} value={p.id}>{p.name}</option>))}
+                                    </select>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Line items with per-item include checkbox */}
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <p className="text-sm font-medium text-slate-900">Articles détectés</p>
+                                <p className="text-xs text-slate-500 tabular-nums">
+                                    {aiLineItems.filter(i => i.include).length}/{aiLineItems.length} · Total {aiLineItems.filter(i => i.include).reduce((s, i) => s + i.totalTTC, 0).toLocaleString(undefined, { minimumFractionDigits: 3 })} DT
+                                </p>
+                            </div>
+                            {aiLineItems.length === 0 ? (
+                                <div className="rounded-xl border border-dashed border-slate-200 bg-white py-6 text-center text-sm text-slate-400">
+                                    Aucun article détecté — le montant total sera utilisé.
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {aiLineItems.map((it, idx) => (
+                                        <div key={idx} className={`rounded-xl border p-3 transition-colors ${it.include ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
+                                            <div className="flex items-start gap-2.5">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={it.include}
+                                                    onChange={(e) => setAiLineItems(prev => prev.map((x, i) => i === idx ? { ...x, include: e.target.checked } : x))}
+                                                    className="mt-2 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20 shrink-0"
+                                                />
+                                                <div className="flex-1 min-w-0 space-y-2">
+                                                    <input
+                                                        type="text"
+                                                        value={it.designation}
+                                                        onChange={(e) => setAiLineItems(prev => prev.map((x, i) => i === idx ? { ...x, designation: e.target.value } : x))}
+                                                        placeholder="Désignation"
+                                                        className="w-full h-9 px-2.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition"
+                                                    />
+                                                    <div className="grid grid-cols-3 gap-2">
+                                                        <div>
+                                                            <label className="block text-[10px] text-slate-400 mb-0.5">Qté</label>
+                                                            <input type="number" step="any" value={it.quantity}
+                                                                onChange={(e) => setAiLineItems(prev => prev.map((x, i) => i === idx ? { ...x, quantity: parseFloat(e.target.value) || 0, totalTTC: (parseFloat(e.target.value) || 0) * x.unitPrice } : x))}
+                                                                className="w-full h-8 px-2 rounded-lg border border-slate-200 bg-white text-xs tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition" />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[10px] text-slate-400 mb-0.5">P.U. (DT)</label>
+                                                            <input type="number" step="any" value={it.unitPrice}
+                                                                onChange={(e) => setAiLineItems(prev => prev.map((x, i) => i === idx ? { ...x, unitPrice: parseFloat(e.target.value) || 0, totalTTC: (parseFloat(e.target.value) || 0) * x.quantity } : x))}
+                                                                className="w-full h-8 px-2 rounded-lg border border-slate-200 bg-white text-xs tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition" />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[10px] text-slate-400 mb-0.5">Total (DT)</label>
+                                                            <input type="number" step="any" value={it.totalTTC}
+                                                                onChange={(e) => setAiLineItems(prev => prev.map((x, i) => i === idx ? { ...x, totalTTC: parseFloat(e.target.value) || 0 } : x))}
+                                                                className="w-full h-8 px-2 rounded-lg border border-slate-200 bg-white text-xs tabular-nums font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
             </Modal>
 
             {/* Success Modal */}

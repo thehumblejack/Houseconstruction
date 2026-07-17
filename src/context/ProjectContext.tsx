@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 
@@ -42,6 +42,9 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
     const [rawMemberships, setRawMemberships] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const supabase = useMemo(() => createClient(), []);
+    // Guards the one-time "create first project" bootstrap against concurrent
+    // fetchProjects calls (auth events) that would each create a duplicate.
+    const bootstrappingRef = useRef(false);
 
     const fetchProjects = useCallback(async () => {
         try {
@@ -103,25 +106,31 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
                         mappedProjects = legacyData.map((p: any) => ({ ...p, role: 'admin' }));
                         setRawMemberships(newMembers);
                     }
-                } else {
-                    // NEW USER: bootstrap their own empty project. They must NEVER
-                    // inherit someone else's projects.
-                    const { data: created, error: createErr } = await supabase
-                        .from('projects')
-                        .insert({ name: 'Mon chantier', description: '' })
-                        .select()
-                        .single();
-                    if (!createErr && created) {
-                        const membership = { project_id: created.id, user_id: user.id, role: 'admin' };
-                        const { error: memErr } = await supabase.from('project_members').insert(membership);
-                        if (!memErr) {
-                            mappedProjects = [{ ...created, role: 'admin' }];
-                            setRawMemberships([membership]);
-                        } else {
-                            console.error('ProjectContext: bootstrap membership failed:', memErr.message);
+                } else if (!bootstrappingRef.current) {
+                    // NEW USER: ensure they have ONE project. Idempotent — reuse any
+                    // project they already created (prevents duplicate "Mon chantier"
+                    // when several auth events race). They never inherit others' data.
+                    bootstrappingRef.current = true;
+                    try {
+                        const { data: own } = await supabase
+                            .from('projects').select('*').eq('created_by', user.id).order('created_at', { ascending: true });
+                        let proj = own && own.length > 0 ? own[0] : null;
+                        if (!proj) {
+                            const { data: created, error: createErr } = await supabase
+                                .from('projects').insert({ name: 'Mon chantier', description: '' }).select().single();
+                            if (createErr) throw createErr;
+                            proj = created;
                         }
-                    } else if (createErr) {
-                        console.error('ProjectContext: bootstrap project failed:', createErr.message);
+                        // Ensure membership (ignore duplicate-key if it already exists).
+                        const membership = { project_id: proj.id, user_id: user.id, role: 'admin' };
+                        const { error: memErr } = await supabase.from('project_members').insert(membership);
+                        if (memErr && memErr.code !== '23505') throw memErr;
+                        mappedProjects = [{ ...proj, role: 'admin' }];
+                        setRawMemberships([membership]);
+                    } catch (e: any) {
+                        console.error('ProjectContext: bootstrap failed:', e?.message || e);
+                    } finally {
+                        bootstrappingRef.current = false;
                     }
                 }
             }

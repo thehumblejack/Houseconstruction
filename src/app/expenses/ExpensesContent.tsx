@@ -2334,14 +2334,16 @@ function ExpensesContentMain() {
             const [y, m, d] = header.date.split('-');
             const formattedDate = `${d}/${m}/${y}`;
 
-            // 1. Handle New Supplier Creation
+            // 1. Handle New Supplier Creation — always a fresh, UNIQUE id so we
+            // never collide with (and try to overwrite) another user's supplier.
             let finalSupplierId = supplierIdInput;
             if (supplierIdInput === 'CREATING_NEW') {
                 if (!supName) throw new Error("Nom du fournisseur manquant");
-                const id = supName.toLowerCase().replace(/\s+/g, '_');
-                const { error: supError } = await supabase.from('suppliers').upsert({
-                    id, name: supName, color: supColor
-                }, { onConflict: 'id' });
+                const slug = supName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'fournisseur';
+                const id = `${slug}_${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`;
+                const { error: supError } = await supabase.from('suppliers').insert({
+                    id, name: supName, color: supColor, created_by: user?.id
+                });
                 if (supError) throw supError;
                 const { error: linkError } = await supabase.from('project_suppliers').insert({
                     project_id: currentProject?.id, supplier_id: id

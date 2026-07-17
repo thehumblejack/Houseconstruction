@@ -441,6 +441,9 @@ function ExpensesContentMain() {
             const { data: { session } } = await supabase.auth.getSession();
             const resp = await fetch('/api/extract-invoice', {
                 method: 'POST',
+                // Omit cookies: the route authenticates via the Bearer token, and the
+                // chunked Supabase auth cookies would otherwise blow the header limit (431).
+                credentials: 'omit',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
                 body: JSON.stringify({ imageBase64: base64, mediaType }),
             });

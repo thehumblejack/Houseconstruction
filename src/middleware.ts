@@ -25,6 +25,7 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-    // Run on everything except static assets / image optimizer / favicon.
-    matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+    // Run on everything except static assets / image optimizer / favicon / API
+    // routes (API is Bearer-authenticated and never carries the ?code= param).
+    matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
 };

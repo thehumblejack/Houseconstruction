@@ -2401,9 +2401,10 @@ function ExpensesContentMain() {
             setTempInvoiceFile(null);
             fetchData();
             return true;
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error saving invoice flow:", error);
-            alert("Erreur lors de l'enregistrement");
+            const detail = error?.message || error?.error_description || error?.hint || (typeof error === 'string' ? error : JSON.stringify(error));
+            alert("Erreur lors de l'enregistrement" + (detail ? `\n\n${detail}` : '') + (error?.code ? `\n(code ${error.code})` : ''));
             return false;
         }
     };

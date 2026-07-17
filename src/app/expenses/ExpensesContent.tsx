@@ -403,19 +403,48 @@ function ExpensesContentMain() {
         reader.readAsDataURL(file);
     });
 
+    // Downscale + re-encode to JPEG so the payload stays small (phone photos are
+    // multi-MB; base64 in a serverless request body would drop the connection).
+    // Falls back to the raw file if canvas processing isn't available.
+    const compressImage = (file: File, maxDim = 1600, quality = 0.72): Promise<{ base64: string; mediaType: string }> =>
+        new Promise((resolve) => {
+            const fallback = async () => resolve({ base64: await fileToBase64(file), mediaType: file.type || 'image/jpeg' });
+            try {
+                const url = URL.createObjectURL(file);
+                const img = new Image();
+                img.onload = () => {
+                    try {
+                        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+                        const w = Math.max(1, Math.round(img.width * scale));
+                        const h = Math.max(1, Math.round(img.height * scale));
+                        const canvas = document.createElement('canvas');
+                        canvas.width = w; canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        if (!ctx) { URL.revokeObjectURL(url); fallback(); return; }
+                        ctx.drawImage(img, 0, 0, w, h);
+                        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+                        URL.revokeObjectURL(url);
+                        resolve({ base64: dataUrl.split(',')[1] || '', mediaType: 'image/jpeg' });
+                    } catch { URL.revokeObjectURL(url); fallback(); }
+                };
+                img.onerror = () => { URL.revokeObjectURL(url); fallback(); };
+                img.src = url;
+            } catch { fallback(); }
+        });
+
     const runAIExtraction = async () => {
         if (!aiFile) return;
         setAiStage('analyzing');
         setAiError(null);
         try {
-            const base64 = await fileToBase64(aiFile);
+            const { base64, mediaType } = await compressImage(aiFile);
             const { data: { session } } = await supabase.auth.getSession();
             const resp = await fetch('/api/extract-invoice', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-                body: JSON.stringify({ imageBase64: base64, mediaType: aiFile.type || 'image/jpeg' }),
+                body: JSON.stringify({ imageBase64: base64, mediaType }),
             });
-            const data = await resp.json();
+            const data = await resp.json().catch(() => ({ error: `Le serveur a renvoyé une erreur (${resp.status}).` }));
             if (!resp.ok) throw new Error(data?.error || "Échec de l'analyse.");
 
             // Pre-match the supplier to an existing one by name.
@@ -445,7 +474,10 @@ function ExpensesContentMain() {
             })));
             setAiStage('review');
         } catch (e: any) {
-            setAiError(e?.message || "Échec de l'analyse.");
+            const msg = /failed to fetch|network/i.test(e?.message || '')
+                ? "Connexion au serveur impossible. Vérifiez votre réseau et réessayez (l'image a été réduite automatiquement)."
+                : (e?.message || "Échec de l'analyse.");
+            setAiError(msg);
             setAiStage('upload');
         }
     };

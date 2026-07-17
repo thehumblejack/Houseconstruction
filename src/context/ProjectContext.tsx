@@ -106,10 +106,14 @@ export const ProjectProvider = ({ children }: { children: React.ReactNode }) => 
                         mappedProjects = legacyData.map((p: any) => ({ ...p, role: 'admin' }));
                         setRawMemberships(newMembers);
                     }
-                } else if (!bootstrappingRef.current) {
+                } else {
                     // NEW USER: ensure they have ONE project. Idempotent — reuse any
                     // project they already created (prevents duplicate "Mon chantier"
                     // when several auth events race). They never inherit others' data.
+                    // If another call is already bootstrapping, BAIL (return) rather
+                    // than fall through and overwrite its good state with empty —
+                    // that clobber is what hid the buttons until a manual refresh.
+                    if (bootstrappingRef.current) return;
                     bootstrappingRef.current = true;
                     try {
                         const { data: own } = await supabase

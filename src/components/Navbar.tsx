@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
 
-import { Package, LogOut, ReceiptText, Building2, ShoppingCart, User, Shield, ChevronDown, Plus, Trash2, Users, Check, Menu, Camera, Bell, X } from 'lucide-react';
+import { Package, LogOut, ReceiptText, HardHat, ShoppingCart, User, Shield, ChevronDown, Plus, Trash2, Users, Check, Menu, Camera, Bell, X } from 'lucide-react';
 import GlobalSearch from './GlobalSearch';
 import ProjectSettingsModal from './ProjectSettingsModal';
 import { useEffect, useState, useMemo, useRef } from 'react';
@@ -155,7 +155,7 @@ export default function Navbar() {
                     {/* Logo */}
                     <Link href="/" className="flex items-center gap-2 pl-1 pr-1.5">
                         <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center">
-                            <Building2 className="h-4 w-4 text-white" strokeWidth={2.4} />
+                            <HardHat className="h-4 w-4 text-white" strokeWidth={2.4} />
                         </div>
                         <span className="hidden xl:block text-sm font-semibold text-slate-900 tracking-tight">HouseExpert</span>
                     </Link>

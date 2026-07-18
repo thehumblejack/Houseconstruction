@@ -455,7 +455,7 @@ function ExpensesContentMain() {
             let matchedId = '';
             if (detectedName) {
                 const norm = detectedName.toLowerCase();
-                const match = allAvailableSuppliers.find((s: any) =>
+                const match = orderedSuppliers.find((s: any) =>
                     s.name && (s.name.toLowerCase() === norm || s.name.toLowerCase().includes(norm) || norm.includes(s.name.toLowerCase())));
                 if (match) matchedId = match.id;
             }
@@ -551,7 +551,6 @@ function ExpensesContentMain() {
     const [showReviewModal, setShowReviewModal] = useState(false);
     const [reviewEdits, setReviewEdits] = useState<Record<string, any>>({});
     const [reviewBusyId, setReviewBusyId] = useState<string | null>(null);
-    const [allSuppliersList, setAllSuppliersList] = useState<Array<{ id: string; name: string }>>([]);
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [replacingDocId, setReplacingDocId] = useState<string | null>(null);
     const [lastReplacedDoc, setLastReplacedDoc] = useState<{ id: string, oldUrl: string, oldFileName: string } | null>(null);
@@ -734,7 +733,6 @@ function ExpensesContentMain() {
             } else {
                 setPendingFactures(pendData || []);
             }
-            setAllSuppliersList((allSuppliersRes.data || []).map((s: any) => ({ id: s.id, name: s.name })));
 
             // Also fetch ARCHIVED suppliers for the project
             const { data: archivedProjectSups } = await supabase.from('project_suppliers').select('supplier_id').eq('project_id', currentProject.id).not('deleted_at', 'is', null);
@@ -3001,7 +2999,7 @@ function ExpensesContentMain() {
                                 }}
                             >
                                 <option value="">Sélectionner...</option>
-                                {allAvailableSuppliers.map(s => (
+                                {orderedSuppliers.map(s => (
                                     <option key={s.id} value={s.id}>{s.name}</option>
                                 ))}
                                 <option value="new">+ Ajouter nouveau</option>
@@ -5546,7 +5544,7 @@ function ExpensesContentMain() {
                                                 className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
                                             >
                                                 <option value="">Choisir…</option>
-                                                {allSuppliersList.map(s => (
+                                                {orderedSuppliers.map(s => (
                                                     <option key={s.id} value={s.id}>{s.name}</option>
                                                 ))}
                                             </select>
@@ -6019,7 +6017,7 @@ function ExpensesContentMain() {
                                     {aiNewSupplierName && (
                                         <option value="CREATING_NEW">➕ Créer « {aiNewSupplierName} »</option>
                                     )}
-                                    {allAvailableSuppliers.map((s: any) => (
+                                    {orderedSuppliers.map((s: any) => (
                                         <option key={s.id} value={s.id}>{s.name}</option>
                                     ))}
                                 </select>

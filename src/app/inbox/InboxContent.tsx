@@ -35,11 +35,19 @@ export default function InboxContent() {
     const supplierBoxRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
+        // Only the CURRENT PROJECT's partenaires — never other users'/projects'
+        // suppliers (duplicated names across tenants would be a data hazard).
+        if (!currentProject) { setSuppliers([]); return; }
         (async () => {
-            const { data } = await supabase.from('suppliers').select('id, name').is('deleted_at', null).order('name');
+            const { data: links } = await supabase
+                .from('project_suppliers').select('supplier_id').eq('project_id', currentProject.id);
+            const ids = (links || []).map((l: any) => l.supplier_id);
+            if (ids.length === 0) { setSuppliers([]); return; }
+            const { data } = await supabase
+                .from('suppliers').select('id, name').in('id', ids).is('deleted_at', null).order('name');
             setSuppliers(data || []);
         })();
-    }, [supabase]);
+    }, [supabase, currentProject]);
 
     // Phases of the current project (fail-soft if the table doesn't exist)
     useEffect(() => {

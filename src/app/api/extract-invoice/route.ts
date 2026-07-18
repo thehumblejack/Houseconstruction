@@ -18,7 +18,7 @@ export const maxDuration = 60;
 // Also needs: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const GROQ_MODEL = process.env.GROQ_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'qwen/qwen3.6-27b';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.2-11b-vision-instruct:free';
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
@@ -123,6 +123,9 @@ async function callGroq(imageBase64: string, mt: string): Promise<string> {
             model: GROQ_MODEL,
             temperature: 0,
             response_format: { type: 'json_object' },
+            // qwen models are reasoning models: disable thinking so the output
+            // is pure JSON (thinking tokens break Groq's json_object validation).
+            ...(GROQ_MODEL.includes('qwen') ? { reasoning_effort: 'none' } : {}),
             messages: [{ role: 'user', content: [
                 { type: 'text', text: EXTRACTION_PROMPT },
                 { type: 'image_url', image_url: { url: `data:${mt};base64,${imageBase64}` } },
@@ -229,8 +232,10 @@ function geminiFriendlyError(status: number, body: string): string {
 
 function safeParseJson(text: string): any | null {
     if (!text) return null;
-    try { return JSON.parse(text); } catch { /* */ }
-    const m = text.match(/\{[\s\S]*\}/);
+    // Reasoning models may prepend <think>…</think> — strip it before parsing.
+    const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    try { return JSON.parse(cleaned); } catch { /* */ }
+    const m = cleaned.match(/\{[\s\S]*\}/);
     if (m) { try { return JSON.parse(m[0]); } catch { /* */ } }
     return null;
 }

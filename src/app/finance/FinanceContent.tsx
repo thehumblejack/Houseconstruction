@@ -445,6 +445,12 @@ export default function FinanceContent() {
                             ))}
                         </div>
                         <button onClick={() => setShowConvModal(true)} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-[13px] font-medium hover:bg-slate-50 transition-colors"><ArrowRightLeft className="h-4 w-4 text-slate-400" /> Convertir</button>
+                        {canEdit && (
+                            <>
+                                <button onClick={() => openMovement('out')} disabled={accounts.length === 0} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-[13px] font-medium hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"><TrendingDown className="h-4 w-4 text-rose-500" /> Sortie</button>
+                                <button onClick={() => openMovement('in')} disabled={accounts.length === 0} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-[13px] font-medium hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"><TrendingUp className="h-4 w-4 text-emerald-500" /> Entrée</button>
+                            </>
+                        )}
                         <button onClick={() => setPrivacy(!privacy)} className={`inline-flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${privacy ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{privacy ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
                     </div>
                 </div>
@@ -461,9 +467,9 @@ export default function FinanceContent() {
                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">Exécutez les migrations finance dans Supabase pour activer les comptes.</div>
                 )}
 
-                {/* ── Row 1: Hero (disponible) · Sortie/Entrée · Comptes ── */}
-                <div className={`grid grid-cols-1 gap-4 items-stretch ${canEdit ? 'lg:grid-cols-[2fr_120px_1fr]' : 'lg:grid-cols-3'}`}>
-                    <div className={`${canEdit ? '' : 'lg:col-span-2'} rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 flex flex-col`}>
+                {/* ── Row 1: Disponible · Entrées vs sorties · Mes comptes ── */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 flex flex-col">
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                                 <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{includeDebts ? 'Disponible projeté' : 'Disponible en banque'}</p>
@@ -512,19 +518,42 @@ export default function FinanceContent() {
                         </div>
                     </div>
 
-                    {/* Sortie / Entrée — entre le disponible et les comptes */}
-                    {canEdit && (
-                        <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
-                            <button onClick={() => openMovement('out')} disabled={accounts.length === 0} className="rounded-2xl border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 disabled:opacity-50 disabled:pointer-events-none transition-colors flex flex-col items-center justify-center gap-2 min-h-[96px]">
-                                <span className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center"><TrendingDown className="h-5 w-5" /></span>
-                                <span className="text-[13px] font-semibold text-slate-900">Sortie</span>
-                            </button>
-                            <button onClick={() => openMovement('in')} disabled={accounts.length === 0} className="rounded-2xl border border-slate-200 bg-white hover:bg-emerald-50 hover:border-emerald-200 disabled:opacity-50 disabled:pointer-events-none transition-colors flex flex-col items-center justify-center gap-2 min-h-[96px]">
-                                <span className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center"><TrendingUp className="h-5 w-5" /></span>
-                                <span className="text-[13px] font-semibold text-slate-900">Entrée</span>
-                            </button>
+                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col">
+                        <div className={panelHead}>
+                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-slate-400" /> Entrées vs sorties <span className="hidden sm:inline text-[11px] font-normal text-slate-400">· 6 derniers mois</span></p>
+                            <div className="flex items-center gap-3 text-[11px] text-slate-500">
+                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500" /> Encaissé</span>
+                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-500" /> Charges</span>
+                            </div>
                         </div>
-                    )}
+                        <div className="px-3 sm:px-5 pt-4 pb-2 flex-1">
+                            <div className="flex items-end gap-2 sm:gap-4 h-44 border-b border-slate-200">
+                                {series6.map((m) => (
+                                    <div key={m.key} className="flex-1 min-w-0 h-full flex items-end justify-center gap-1 sm:gap-1.5">
+                                        <div className="flex flex-col items-center justify-end h-full w-full max-w-[26px]">
+                                            {m.in > 0 && <span className="text-[9px] sm:text-[10px] text-emerald-600 tabular-nums mb-0.5">{fmtc(m.in)}</span>}
+                                            <div className="w-full rounded-t bg-emerald-500 transition-all" style={{ height: `${(m.in / seriesMax) * 82}%` }} />
+                                        </div>
+                                        <div className="flex flex-col items-center justify-end h-full w-full max-w-[26px]">
+                                            {m.out > 0 && <span className="text-[9px] sm:text-[10px] text-rose-600 tabular-nums mb-0.5">{fmtc(m.out)}</span>}
+                                            <div className="w-full rounded-t bg-rose-500 transition-all" style={{ height: `${(m.out / seriesMax) * 82}%` }} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-6 gap-2 sm:gap-4 mt-2">
+                                {series6.map((m) => {
+                                    const net = m.in - m.out;
+                                    return (
+                                        <div key={m.key} className="text-center min-w-0">
+                                            <p className="text-[11px] text-slate-500 capitalize truncate">{m.short}</p>
+                                            <p className={`text-[11px] font-semibold tabular-nums truncate ${net === 0 ? 'text-slate-300' : net < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{net === 0 ? '—' : `${net > 0 ? '+' : ''}${fmtc(net)}`}</p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
 
                     {/* Comptes — solde + entrées/sorties de la période */}
                     <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col">
@@ -576,45 +605,8 @@ export default function FinanceContent() {
                     </div>
                 </div>
 
-                {/* ── Row 2: Graphique 6 mois · Prévision mensuelle ── */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
-                    <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col">
-                        <div className={panelHead}>
-                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-slate-400" /> Entrées vs sorties <span className="hidden sm:inline text-[11px] font-normal text-slate-400">· 6 derniers mois</span></p>
-                            <div className="flex items-center gap-3 text-[11px] text-slate-500">
-                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500" /> Encaissé</span>
-                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-500" /> Charges</span>
-                            </div>
-                        </div>
-                        <div className="px-3 sm:px-5 pt-4 pb-2 flex-1">
-                            <div className="flex items-end gap-2 sm:gap-4 h-44 border-b border-slate-200">
-                                {series6.map((m) => (
-                                    <div key={m.key} className="flex-1 min-w-0 h-full flex items-end justify-center gap-1 sm:gap-1.5">
-                                        <div className="flex flex-col items-center justify-end h-full w-full max-w-[26px]">
-                                            {m.in > 0 && <span className="text-[9px] sm:text-[10px] text-emerald-600 tabular-nums mb-0.5">{fmtc(m.in)}</span>}
-                                            <div className="w-full rounded-t bg-emerald-500 transition-all" style={{ height: `${(m.in / seriesMax) * 82}%` }} />
-                                        </div>
-                                        <div className="flex flex-col items-center justify-end h-full w-full max-w-[26px]">
-                                            {m.out > 0 && <span className="text-[9px] sm:text-[10px] text-rose-600 tabular-nums mb-0.5">{fmtc(m.out)}</span>}
-                                            <div className="w-full rounded-t bg-rose-500 transition-all" style={{ height: `${(m.out / seriesMax) * 82}%` }} />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="grid grid-cols-6 gap-2 sm:gap-4 mt-2">
-                                {series6.map((m) => {
-                                    const net = m.in - m.out;
-                                    return (
-                                        <div key={m.key} className="text-center min-w-0">
-                                            <p className="text-[11px] text-slate-500 capitalize truncate">{m.short}</p>
-                                            <p className={`text-[11px] font-semibold tabular-nums truncate ${net === 0 ? 'text-slate-300' : net < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{net === 0 ? '—' : `${net > 0 ? '+' : ''}${fmtc(net)}`}</p>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-
+                {/* ── Row 2: Prévision mensuelle · Créances & dettes ── */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
                     {/* Prévision mensuelle */}
                     <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col">
                         <div className={panelHead}>
@@ -658,10 +650,7 @@ export default function FinanceContent() {
                             </div>
                         )}
                     </div>
-                </div>
 
-                {/* ── Row 3: Créances & dettes · Mouvements par jour ── */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
                     <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
                         <div className={panelHead}>
                             <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><HandCoins className="h-4 w-4 text-slate-400" /> Créances &amp; dettes</p>
@@ -764,9 +753,12 @@ export default function FinanceContent() {
                             </div>
                         )}
                     </div>
+                </div>
 
+                {/* ── Row 3: Mouvements ── */}
+                <div className="grid grid-cols-1 gap-4">
                     {/* Mouvements — groupés par jour, filtre par compte */}
-                    <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
                         <div className={panelHead}>
                             <p className="text-sm font-semibold text-slate-900">Mouvements <span className="text-[11px] font-normal text-slate-400">· {periodLabel.toLowerCase()} · {shownMovs.length}</span></p>
                             {accounts.length > 1 && (

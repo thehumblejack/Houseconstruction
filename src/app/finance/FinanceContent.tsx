@@ -418,7 +418,7 @@ export default function FinanceContent() {
                                                 {foreign && <p className="text-[10px] text-slate-400 tabular-nums">≈ {fmt(toTND(b.balance, a.currency))} DT</p>}
                                             </div>
                                             {canEdit && (
-                                                <div className="flex items-center gap-0.5 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                                <div className="flex items-center gap-0.5 shrink-0 transition-opacity">
                                                     <button onClick={() => openEditAccount(a)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
                                                     <button onClick={() => deleteAccount(a)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                                                 </div>
@@ -458,7 +458,7 @@ export default function FinanceContent() {
                                             : <button onClick={() => settleDebt(d)} title="Régler (crée le mouvement)" className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-lg bg-slate-900 text-white text-[12px] font-medium hover:bg-slate-800 transition-colors">Régler</button>
                                         )}
                                         {canEdit && (
-                                            <div className="flex items-center gap-0.5 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                            <div className="flex items-center gap-0.5 shrink-0 transition-opacity">
                                                 {!d.settled && <button onClick={() => toggleDebtSettled(d)} title="Marquer réglé (sans mouvement)" className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Check className="h-3.5 w-3.5" /></button>}
                                                 <button onClick={() => openEditDebt(d)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
                                                 <button onClick={() => deleteDebt(d)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -534,7 +534,7 @@ export default function FinanceContent() {
                                                 : <button onClick={() => applyRecur(r)} className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-lg bg-slate-900 text-white text-[12px] font-medium hover:bg-slate-800 transition-colors">Encaisser</button>
                                             )}
                                             {canEdit && (
-                                                <div className="flex items-center gap-0.5 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                                <div className="flex items-center gap-0.5 shrink-0 transition-opacity">
                                                     <button onClick={() => openEditRecur(r)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
                                                     <button onClick={() => deleteRecur(r)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                                                 </div>
@@ -567,7 +567,7 @@ export default function FinanceContent() {
                                                 <p className={`text-[13px] font-semibold tabular-nums ${m.direction === 'out' ? 'text-rose-600' : 'text-emerald-600'}`}>{m.direction === 'out' ? '−' : '+'}{fmt(m.amount)} {CUR_SYMBOL[cur]}</p>
                                                 {cur !== 'TND' && <p className="text-[10px] text-slate-400 tabular-nums">≈ {m.direction === 'out' ? '−' : '+'}{fmt(toTND(m.amount, cur))} DT</p>}
                                             </div>
-                                            {canEdit && <button onClick={() => deleteMovement(m)} className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600 transition-colors sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-3.5 w-3.5" /></button>}
+                                            {canEdit && <button onClick={() => deleteMovement(m)} className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>}
                                         </div>
                                     );
                                 })}

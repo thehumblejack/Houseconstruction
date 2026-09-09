@@ -22,7 +22,7 @@ import { Modal } from '@/components/ui';
 import {
     Wallet, Plus, Loader2, Lock, Landmark, ArrowDownRight, ArrowUpRight,
     Pencil, Trash2, TrendingDown, TrendingUp, EyeOff, Eye, CheckCircle2,
-    ArrowRightLeft, HandCoins, Repeat, Check,
+    ArrowRightLeft, HandCoins, Repeat, Check, BarChart3,
 } from 'lucide-react';
 
 type Currency = 'TND' | 'USD' | 'EUR';
@@ -35,6 +35,8 @@ const ACCOUNT_TONES = ['bg-blue-600', 'bg-emerald-600', 'bg-violet-600', 'bg-amb
 const CUR_SYMBOL: Record<Currency, string> = { TND: 'DT', USD: '$', EUR: '€' };
 const DEFAULT_RATES: Record<Currency, number> = { TND: 1, USD: 3.15, EUR: 3.40 };
 const thisMonthKey = () => new Date().toISOString().slice(0, 7);
+const MONTHS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const monthLabel = (k: string) => { const [y, m] = k.split('-'); return `${MONTHS_FR[parseInt(m, 10) - 1] || m} ${y}`; };
 
 export default function FinanceContent() {
     const { user, isApproved, loading: authLoading } = useAuth();
@@ -160,6 +162,21 @@ export default function FinanceContent() {
         return { available, out, inSum, receivable, payable, monthlyIn };
     }, [accounts, perAccount, movements, debts, recurring, toTND, accCurrency_]);
 
+    // Charges (sorties) vs encaissements (entrées) par mois, en TND — pour comparer.
+    const monthlyCompare = useMemo(() => {
+        const map = new Map<string, { in: number; out: number }>();
+        for (const m of movements) {
+            const k = (m.date || '').slice(0, 7);
+            if (!k) continue;
+            const tnd = toTND(m.amount, accCurrency_(m.account_id));
+            const e = map.get(k) || { in: 0, out: 0 };
+            if (m.direction === 'in') e.in += tnd; else e.out += tnd;
+            map.set(k, e);
+        }
+        return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]))
+            .map(([k, v]) => ({ key: k, label: monthLabel(k), in: v.in, out: v.out, net: v.in - v.out }));
+    }, [movements, accCurrency_, toTND]);
+
     const supplierName = useCallback((id: string | null) => id ? (suppliers.find((s) => s.id === id)?.name || '') : '', [suppliers]);
     const accountName = useCallback((id: string) => accounts.find((a) => a.id === id)?.name || '—', [accounts]);
     const tone = (id: string) => ACCOUNT_TONES[Math.abs(id.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % ACCOUNT_TONES.length];
@@ -267,6 +284,20 @@ export default function FinanceContent() {
             fetchAll();
         } catch (e: any) { alert('Erreur : ' + (e?.message || e)); } finally { setSaving(false); }
     };
+    const undoRecur = async (r: Recurring) => {
+        if (!canEdit || !currentProject || !r.account_id) return;
+        if (!confirm("Annuler l'encaissement de ce mois ?")) return;
+        setSaving(true);
+        try {
+            // Supprime le(s) mouvement(s) générés ce mois-ci par ce récurrent.
+            await supabase.from('finance_movements').delete()
+                .eq('project_id', currentProject.id).eq('account_id', r.account_id)
+                .eq('direction', r.direction).eq('label', r.label).eq('amount', r.amount)
+                .gte('date', thisMonthKey() + '-01');
+            await supabase.from('finance_recurring').update({ last_applied: null }).eq('id', r.id);
+            fetchAll();
+        } catch (e: any) { alert('Erreur : ' + (e?.message || e)); } finally { setSaving(false); }
+    };
 
     const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.EUR)); setShowRatesModal(true); };
     const saveRates = async () => {
@@ -286,111 +317,85 @@ export default function FinanceContent() {
             </div>
         </div>
     );
-    if (notReady) return (
-        <div className="min-h-screen font-jakarta"><div className="max-w-2xl mx-auto px-4 sm:px-6 py-10">
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center">
-                <Landmark className="h-10 w-10 text-amber-500 mx-auto mb-3" />
-                <h2 className="text-base font-semibold text-slate-900">Finance pas encore activée</h2>
-                <p className="text-sm text-slate-600 mt-1.5">Exécutez les migrations finance dans Supabase, puis rechargez.</p>
-            </div>
-        </div></div>
-    );
-
     const inputClass = "w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition";
     const labelClass = "block text-[13px] font-medium text-slate-700 mb-1.5";
     const convResult = (parseFloat(convAmount) || 0) * (rates[convFrom] || 1);
+    const kpis: Array<{ label: string; value: number; tone: 'emerald' | 'rose' | 'slate'; icon: any }> = [
+        { label: 'Disponible', value: totals.available, tone: totals.available < 0 ? 'rose' : 'slate', icon: Landmark },
+        { label: 'Encaissé', value: totals.inSum, tone: 'emerald', icon: ArrowDownRight },
+        { label: 'Charges', value: totals.out, tone: 'rose', icon: ArrowUpRight },
+        { label: 'Net', value: totals.inSum - totals.out, tone: (totals.inSum - totals.out) < 0 ? 'rose' : 'slate', icon: BarChart3 },
+        { label: 'À recevoir', value: totals.receivable, tone: 'emerald', icon: HandCoins },
+        { label: 'À payer', value: totals.payable, tone: 'rose', icon: HandCoins },
+    ];
+    const kpiText = (t: string) => t === 'emerald' ? 'text-emerald-600' : t === 'rose' ? 'text-rose-600' : 'text-slate-900';
+    const kpiIcon = (t: string) => t === 'emerald' ? 'text-emerald-500' : t === 'rose' ? 'text-rose-500' : 'text-slate-400';
+    const panelHead = "flex items-center justify-between px-4 py-3 border-b border-slate-100";
 
     return (
         <div className="min-h-screen font-jakarta">
-            <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5">
+            <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-4">
 
-                <div className="flex items-center justify-between gap-3">
+                {/* Header */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="min-w-0">
                         <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">Finance</h1>
-                        <p className="text-sm text-slate-500 mt-0.5">Trésorerie, créances et revenus — l'argent réellement disponible</p>
-                    </div>
-                    <button onClick={() => setPrivacy(!privacy)} className={`shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${privacy ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                        {privacy ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                            <p className="text-xs text-slate-500">Disponible en banque</p>
-                            <p className={`text-2xl sm:text-3xl font-semibold tabular-nums mt-1 ${totals.available < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(totals.available)} <span className="text-sm font-medium text-slate-400">DT</span></p>
-                        </div>
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${totals.available < 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}><Landmark className="h-5 w-5" /></div>
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                        <div className="rounded-xl bg-slate-50 px-3 py-2.5 min-w-0">
-                            <p className="text-[11px] text-slate-500 flex items-center gap-1"><ArrowDownRight className="h-3 w-3 text-emerald-500" /> Entrées</p>
-                            <p className="text-[13px] sm:text-sm font-semibold text-emerald-600 tabular-nums mt-0.5">{fmtc(totals.inSum)}</p>
-                        </div>
-                        <div className="rounded-xl bg-slate-50 px-3 py-2.5 min-w-0">
-                            <p className="text-[11px] text-slate-500 flex items-center gap-1"><ArrowUpRight className="h-3 w-3 text-rose-500" /> Sorties</p>
-                            <p className="text-[13px] sm:text-sm font-semibold text-rose-600 tabular-nums mt-0.5">{fmtc(totals.out)}</p>
-                        </div>
-                        <div className="rounded-xl bg-emerald-50 px-3 py-2.5 min-w-0">
-                            <p className="text-[11px] text-emerald-700/70">À recevoir</p>
-                            <p className="text-[13px] sm:text-sm font-semibold text-emerald-700 tabular-nums mt-0.5">{fmtc(totals.receivable)}</p>
-                        </div>
-                        <div className="rounded-xl bg-rose-50 px-3 py-2.5 min-w-0">
-                            <p className="text-[11px] text-rose-700/70">À payer</p>
-                            <p className="text-[13px] sm:text-sm font-semibold text-rose-700 tabular-nums mt-0.5">{fmtc(totals.payable)}</p>
-                        </div>
-                    </div>
-                    {canEdit && (
-                        <div className="mt-4 flex gap-2">
-                            <button onClick={() => openMovement('out')} disabled={accounts.length === 0} className="flex-1 inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"><TrendingDown className="h-4 w-4" /> Sortie</button>
-                            <button onClick={() => openMovement('in')} disabled={accounts.length === 0} className="flex-1 inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"><TrendingUp className="h-4 w-4" /> Entrée</button>
-                        </div>
-                    )}
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className="flex items-center justify-between mb-3">
-                        <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><ArrowRightLeft className="h-4 w-4 text-slate-400" /> Convertisseur</p>
-                        <button onClick={openRates} className="text-[12px] font-medium text-slate-500 hover:text-slate-900 transition-colors">Taux : 1$={rates.USD} · 1€={rates.EUR}</button>
+                        <p className="text-[13px] text-slate-500">Trésorerie, créances &amp; revenus</p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <select value={convFrom} onChange={(e) => setConvFrom(e.target.value as Currency)} className="h-11 px-2.5 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition shrink-0">
-                            <option value="USD">USD $</option>
-                            <option value="EUR">EUR €</option>
-                            <option value="TND">TND</option>
-                        </select>
-                        <input type="number" inputMode="decimal" value={convAmount} onChange={(e) => setConvAmount(e.target.value)} placeholder="Montant" className={`${inputClass} tabular-nums`} />
-                        <span className="text-slate-400 shrink-0">=</span>
-                        <div className="h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center min-w-[110px] justify-end shrink-0">
-                            <span className="text-sm font-semibold text-slate-900 tabular-nums">{convResult.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs text-slate-400">DT</span></span>
-                        </div>
+                        {canEdit && (
+                            <>
+                                <button onClick={() => openMovement('out')} disabled={accounts.length === 0} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-slate-900 text-white text-[13px] font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"><TrendingDown className="h-4 w-4" /> Sortie</button>
+                                <button onClick={() => openMovement('in')} disabled={accounts.length === 0} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-[13px] font-medium hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"><TrendingUp className="h-4 w-4" /> Entrée</button>
+                            </>
+                        )}
+                        <button onClick={() => setPrivacy(!privacy)} className={`inline-flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${privacy ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{privacy ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
                     </div>
                 </div>
 
-                <div className="space-y-2.5">
-                    <div className="flex items-center justify-between px-1">
-                        <p className="text-sm font-semibold text-slate-900">Mes comptes</p>
-                        {canEdit && <button onClick={openNewAccount} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-slate-600 hover:bg-slate-100 text-sm font-medium transition-colors"><Plus className="h-4 w-4" /> Ajouter</button>}
-                    </div>
-                    {accounts.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-12 text-center">
-                            <Wallet className="h-9 w-9 text-slate-300 mx-auto mb-2.5" />
-                            <p className="text-sm text-slate-500">Aucun compte. Ajoutez vos comptes bancaires.</p>
+                {/* KPI strip */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
+                    {kpis.map((k) => (
+                        <div key={k.label} className="rounded-2xl border border-slate-200 bg-white px-3.5 py-3 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                                <p className="text-[11px] text-slate-500 truncate">{k.label}</p>
+                                <k.icon className={`h-3.5 w-3.5 shrink-0 ${kpiIcon(k.tone)}`} />
+                            </div>
+                            <p className={`text-base sm:text-lg font-semibold tabular-nums mt-1 truncate ${kpiText(k.tone)}`}>{fmtc(k.value)} <span className="text-[10px] font-normal text-slate-400">DT</span></p>
                         </div>
-                    ) : (
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {accounts.map((a) => {
-                                const b = perAccount.get(a.id) || { in: 0, out: 0, balance: a.initial_balance };
-                                const foreign = a.currency !== 'TND';
-                                return (
-                                    <div key={a.id} className="group rounded-2xl border border-slate-200 bg-white p-4">
-                                        <div className="flex items-start justify-between gap-2">
-                                            <div className="flex items-center gap-2.5 min-w-0">
-                                                <div className={`w-9 h-9 rounded-xl ${tone(a.id)} text-white flex items-center justify-center shrink-0`}><Landmark className="h-4 w-4" /></div>
-                                                <div className="min-w-0">
-                                                    <p className="text-sm font-semibold text-slate-900 truncate">{a.name}</p>
-                                                    {foreign && <p className="text-[10px] font-medium text-slate-400">{a.currency}</p>}
-                                                </div>
+                    ))}
+                </div>
+
+                {notReady && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">Exécutez les migrations finance dans Supabase pour activer les comptes.</div>
+                )}
+
+                {/* Dashboard panels */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+
+                    {/* Comptes */}
+                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                        <div className={panelHead}>
+                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Landmark className="h-4 w-4 text-slate-400" /> Mes comptes</p>
+                            {canEdit && <button onClick={openNewAccount} className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-slate-600 hover:bg-slate-100 text-[13px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
+                        </div>
+                        {accounts.length === 0 ? (
+                            <p className="px-4 py-8 text-center text-sm text-slate-400">Aucun compte — ajoutez vos comptes bancaires.</p>
+                        ) : (
+                            <div className="divide-y divide-slate-100">
+                                {accounts.map((a) => {
+                                    const b = perAccount.get(a.id) || { in: 0, out: 0, balance: a.initial_balance };
+                                    const foreign = a.currency !== 'TND';
+                                    return (
+                                        <div key={a.id} className="group flex items-center gap-3 px-3.5 py-2.5">
+                                            <div className={`w-8 h-8 rounded-lg ${tone(a.id)} text-white flex items-center justify-center shrink-0`}><Landmark className="h-4 w-4" /></div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-[13px] font-medium text-slate-900 truncate">{a.name}{foreign && <span className="text-slate-400 font-normal"> · {a.currency}</span>}</p>
+                                                <p className="text-[11px] text-slate-400 truncate">Initial {fmt(a.initial_balance)}{b.out > 0 ? ` · −${fmt(b.out)}` : ''}{b.in > 0 ? ` · +${fmt(b.in)}` : ''}</p>
+                                            </div>
+                                            <div className="text-right shrink-0">
+                                                <p className={`text-[13px] font-semibold tabular-nums ${b.balance < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(b.balance)} <span className="text-[10px] font-normal text-slate-400">{CUR_SYMBOL[a.currency]}</span></p>
+                                                {foreign && <p className="text-[10px] text-slate-400 tabular-nums">≈ {fmt(toTND(b.balance, a.currency))} DT</p>}
                                             </div>
                                             {canEdit && (
                                                 <div className="flex items-center gap-0.5 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
@@ -399,119 +404,175 @@ export default function FinanceContent() {
                                                 </div>
                                             )}
                                         </div>
-                                        <p className={`text-xl font-semibold tabular-nums mt-3 ${b.balance < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(b.balance)} <span className="text-xs font-medium text-slate-400">{CUR_SYMBOL[a.currency]}</span></p>
-                                        {foreign && <p className="text-[11px] text-slate-400 tabular-nums mt-0.5">≈ {fmt(toTND(b.balance, a.currency))} DT</p>}
-                                        <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-400">
-                                            <span>Initial {fmt(a.initial_balance)}</span>
-                                            {b.out > 0 && <span className="text-rose-500">− {fmt(b.out)}</span>}
-                                            {b.in > 0 && <span className="text-emerald-500">+ {fmt(b.in)}</span>}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-
-                <div className="space-y-2.5">
-                    <div className="flex items-center justify-between px-1">
-                        <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><HandCoins className="h-4 w-4 text-slate-400" /> Créances & dettes</p>
-                        {canEdit && (
-                            <div className="flex items-center gap-1">
-                                <button onClick={() => openNewDebt('receivable')} className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-emerald-700 hover:bg-emerald-50 text-[13px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> On me doit</button>
-                                <button onClick={() => openNewDebt('payable')} className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-rose-700 hover:bg-rose-50 text-[13px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Je dois</button>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
-                    {debts.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-8 text-center text-sm text-slate-400">Aucune créance ni dette</div>
-                    ) : (
-                        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden divide-y divide-slate-100">
-                            {debts.map((d) => (
-                                <div key={d.id} className={`group flex items-center gap-3 px-3.5 py-3 ${d.settled ? 'opacity-50' : ''}`}>
-                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${d.direction === 'receivable' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                                        {d.direction === 'receivable' ? <ArrowDownRight className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className={`text-[13px] font-medium text-slate-900 truncate ${d.settled ? 'line-through' : ''}`}>{d.person}</p>
-                                        <p className="text-[11px] text-slate-400 truncate">{d.direction === 'receivable' ? 'On me doit' : 'Je dois'}{d.note ? ` · ${d.note}` : ''}{d.settled ? ' · réglé' : ''}</p>
-                                    </div>
-                                    <p className={`text-[13px] font-semibold tabular-nums shrink-0 ${d.direction === 'receivable' ? 'text-emerald-600' : 'text-rose-600'}`}>{fmt(d.amount)} DT</p>
-                                    {canEdit && !d.settled && (
-                                        <button onClick={() => settleDebt(d)} title="Régler (crée le mouvement)" className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-lg bg-slate-900 text-white text-[12px] font-medium hover:bg-slate-800 transition-colors">Régler</button>
-                                    )}
-                                    {canEdit && (
-                                        <div className="flex items-center gap-0.5 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => toggleDebtSettled(d)} title={d.settled ? 'Rouvrir' : 'Marquer réglé'} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Check className="h-3.5 w-3.5" /></button>
-                                            <button onClick={() => openEditDebt(d)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                                            <button onClick={() => deleteDebt(d)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
+
+                    {/* Charges & encaissements */}
+                    {monthlyCompare.length > 0 && (
+                        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                            <div className={panelHead}>
+                                <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-slate-400" /> Charges &amp; encaissements</p>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm min-w-[420px]">
+                                    <thead>
+                                        <tr className="text-[11px] text-slate-400 border-b border-slate-100">
+                                            <th className="text-left font-medium px-3.5 py-2.5">Mois</th>
+                                            <th className="text-right font-medium px-3 py-2.5">Encaissé</th>
+                                            <th className="text-right font-medium px-3 py-2.5">Charges</th>
+                                            <th className="text-right font-medium px-3.5 py-2.5">Net</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {monthlyCompare.map((row) => (
+                                            <tr key={row.key} className="hover:bg-slate-50/60 transition-colors">
+                                                <td className="px-3.5 py-2.5 text-slate-700 capitalize whitespace-nowrap">{row.label}</td>
+                                                <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600 font-medium">{fmtc(row.in)}</td>
+                                                <td className="px-3 py-2.5 text-right tabular-nums text-rose-600 font-medium">{fmtc(row.out)}</td>
+                                                <td className={`px-3.5 py-2.5 text-right tabular-nums font-semibold ${row.net < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{row.net >= 0 ? '+' : ''}{fmtc(row.net)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr className="border-t border-slate-200 bg-slate-50 text-[13px]">
+                                            <td className="px-3.5 py-2.5 font-semibold text-slate-900">Total</td>
+                                            <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-600">{fmtc(totals.inSum)}</td>
+                                            <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-rose-600">{fmtc(totals.out)}</td>
+                                            <td className={`px-3.5 py-2.5 text-right tabular-nums font-bold ${(totals.inSum - totals.out) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(totals.inSum - totals.out) >= 0 ? '+' : ''}{fmtc(totals.inSum - totals.out)}</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
                         </div>
                     )}
-                </div>
 
-                <div className="space-y-2.5">
-                    <div className="flex items-center justify-between px-1">
-                        <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Repeat className="h-4 w-4 text-slate-400" /> Revenus récurrents {totals.monthlyIn > 0 && <span className="text-[11px] font-normal text-slate-400">· {fmtc(totals.monthlyIn)} DT / mois</span>}</p>
-                        {canEdit && <button onClick={openNewRecur} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-slate-600 hover:bg-slate-100 text-sm font-medium transition-colors"><Plus className="h-4 w-4" /> Ajouter</button>}
-                    </div>
-                    {recurring.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-8 text-center text-sm text-slate-400">Ajoutez un salaire ou un revenu mensuel</div>
-                    ) : (
-                        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden divide-y divide-slate-100">
-                            {recurring.map((r) => {
-                                const doneThisMonth = (r.last_applied || '').slice(0, 7) === thisMonthKey();
-                                return (
-                                    <div key={r.id} className="group flex items-center gap-3 px-3.5 py-3">
-                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${r.direction === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Repeat className="h-4 w-4" /></div>
+                    {/* Créances & dettes */}
+                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                        <div className={panelHead}>
+                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><HandCoins className="h-4 w-4 text-slate-400" /> Créances &amp; dettes</p>
+                            {canEdit && (
+                                <div className="flex items-center gap-1">
+                                    <button onClick={() => openNewDebt('receivable')} className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-emerald-700 hover:bg-emerald-50 text-[12px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> On me doit</button>
+                                    <button onClick={() => openNewDebt('payable')} className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-rose-700 hover:bg-rose-50 text-[12px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Je dois</button>
+                                </div>
+                            )}
+                        </div>
+                        {debts.length === 0 ? (
+                            <p className="px-4 py-8 text-center text-sm text-slate-400">Aucune créance ni dette</p>
+                        ) : (
+                            <div className="divide-y divide-slate-100">
+                                {debts.map((d) => (
+                                    <div key={d.id} className={`group flex items-center gap-3 px-3.5 py-2.5 ${d.settled ? 'opacity-50' : ''}`}>
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${d.direction === 'receivable' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{d.direction === 'receivable' ? <ArrowDownRight className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}</div>
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-[13px] font-medium text-slate-900 truncate">{r.label}</p>
-                                            <p className="text-[11px] text-slate-400 truncate">{accountName(r.account_id || '')} · le {r.day_of_month || 1} du mois</p>
+                                            <p className={`text-[13px] font-medium text-slate-900 truncate ${d.settled ? 'line-through' : ''}`}>{d.person}</p>
+                                            <p className="text-[11px] text-slate-400 truncate">{d.direction === 'receivable' ? 'On me doit' : 'Je dois'}{d.note ? ` · ${d.note}` : ''}{d.settled ? ' · réglé' : ''}</p>
                                         </div>
-                                        <p className={`text-[13px] font-semibold tabular-nums shrink-0 ${r.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.direction === 'in' ? '+' : '−'}{fmt(r.amount)} {CUR_SYMBOL[r.currency]}</p>
-                                        {canEdit && (
-                                            doneThisMonth
-                                                ? <span className="shrink-0 inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-emerald-50 text-emerald-700 text-[12px] font-medium"><CheckCircle2 className="h-3.5 w-3.5" /> Ce mois</span>
-                                                : <button onClick={() => applyRecur(r)} className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-lg bg-slate-900 text-white text-[12px] font-medium hover:bg-slate-800 transition-colors">Encaisser</button>
+                                        <p className={`text-[13px] font-semibold tabular-nums shrink-0 ${d.direction === 'receivable' ? 'text-emerald-600' : 'text-rose-600'}`}>{fmt(d.amount)} DT</p>
+                                        {canEdit && (d.settled
+                                            ? <button onClick={() => toggleDebtSettled(d)} title="Rouvrir (marquer non réglé)" className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-lg bg-white border border-slate-200 text-slate-600 text-[12px] font-medium hover:bg-slate-50 transition-colors">Rouvrir</button>
+                                            : <button onClick={() => settleDebt(d)} title="Régler (crée le mouvement)" className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-lg bg-slate-900 text-white text-[12px] font-medium hover:bg-slate-800 transition-colors">Régler</button>
                                         )}
                                         {canEdit && (
                                             <div className="flex items-center gap-0.5 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                                <button onClick={() => openEditRecur(r)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                                                <button onClick={() => deleteRecur(r)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                                                {!d.settled && <button onClick={() => toggleDebtSettled(d)} title="Marquer réglé (sans mouvement)" className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Check className="h-3.5 w-3.5" /></button>}
+                                                <button onClick={() => openEditDebt(d)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                                                <button onClick={() => deleteDebt(d)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                                             </div>
                                         )}
                                     </div>
-                                );
-                            })}
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Revenus récurrents */}
+                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                        <div className={panelHead}>
+                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Repeat className="h-4 w-4 text-slate-400" /> Revenus récurrents {totals.monthlyIn > 0 && <span className="text-[11px] font-normal text-slate-400">· {fmtc(totals.monthlyIn)} DT/mois</span>}</p>
+                            {canEdit && <button onClick={openNewRecur} className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-slate-600 hover:bg-slate-100 text-[13px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
+                        </div>
+                        {recurring.length === 0 ? (
+                            <p className="px-4 py-8 text-center text-sm text-slate-400">Ajoutez un salaire ou un revenu mensuel</p>
+                        ) : (
+                            <div className="divide-y divide-slate-100">
+                                {recurring.map((r) => {
+                                    const doneThisMonth = (r.last_applied || '').slice(0, 7) === thisMonthKey();
+                                    return (
+                                        <div key={r.id} className="group flex items-center gap-3 px-3.5 py-2.5">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${r.direction === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Repeat className="h-4 w-4" /></div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-[13px] font-medium text-slate-900 truncate">{r.label}</p>
+                                                <p className="text-[11px] text-slate-400 truncate">{accountName(r.account_id || '')} · le {r.day_of_month || 1}</p>
+                                            </div>
+                                            <p className={`text-[13px] font-semibold tabular-nums shrink-0 ${r.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.direction === 'in' ? '+' : '−'}{fmt(r.amount)} {CUR_SYMBOL[r.currency]}</p>
+                                            {canEdit && (doneThisMonth
+                                                ? <button onClick={() => undoRecur(r)} title="Annuler l'encaissement de ce mois" className="shrink-0 inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-emerald-50 text-emerald-700 text-[12px] font-medium hover:bg-emerald-100 transition-colors"><CheckCircle2 className="h-3.5 w-3.5" /> Encaissé</button>
+                                                : <button onClick={() => applyRecur(r)} className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-lg bg-slate-900 text-white text-[12px] font-medium hover:bg-slate-800 transition-colors">Encaisser</button>
+                                            )}
+                                            {canEdit && (
+                                                <div className="flex items-center gap-0.5 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={() => openEditRecur(r)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                                                    <button onClick={() => deleteRecur(r)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Convertisseur */}
+                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                        <div className={panelHead}>
+                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><ArrowRightLeft className="h-4 w-4 text-slate-400" /> Convertisseur</p>
+                            <button onClick={openRates} className="text-[12px] font-medium text-slate-500 hover:text-slate-900 transition-colors">1$={rates.USD} · 1€={rates.EUR}</button>
+                        </div>
+                        <div className="p-4 flex items-center gap-2">
+                            <select value={convFrom} onChange={(e) => setConvFrom(e.target.value as Currency)} className="h-11 px-2.5 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition shrink-0">
+                                <option value="USD">USD $</option><option value="EUR">EUR €</option><option value="TND">TND</option>
+                            </select>
+                            <input type="number" inputMode="decimal" value={convAmount} onChange={(e) => setConvAmount(e.target.value)} placeholder="Montant" className="w-full min-w-0 h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 tabular-nums placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition" />
+                            <span className="text-slate-400 shrink-0">=</span>
+                            <div className="h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center min-w-[104px] justify-end shrink-0">
+                                <span className="text-sm font-semibold text-slate-900 tabular-nums">{convResult.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs text-slate-400">DT</span></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Mouvements */}
+                    {movements.length > 0 && (
+                        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden lg:col-span-2">
+                            <div className={panelHead}>
+                                <p className="text-sm font-semibold text-slate-900">Derniers mouvements</p>
+                            </div>
+                            <div className="divide-y divide-slate-100 max-h-[520px] overflow-y-auto">
+                                {movements.slice(0, 60).map((m) => {
+                                    const sn = supplierName(m.supplier_id);
+                                    const cur = accCurrency_(m.account_id);
+                                    return (
+                                        <div key={m.id} className="group flex items-center gap-3 px-3.5 py-2.5">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${m.direction === 'out' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>{m.direction === 'out' ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}</div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-[13px] font-medium text-slate-900 truncate">{m.label || (m.direction === 'out' ? 'Paiement' : 'Entrée')}{sn && <span className="text-slate-400 font-normal"> · {sn}</span>}</p>
+                                                <p className="text-[11px] text-slate-400 truncate">{accountName(m.account_id)} · {new Date(m.date).toLocaleDateString('fr-FR')}</p>
+                                            </div>
+                                            <div className="text-right shrink-0">
+                                                <p className={`text-[13px] font-semibold tabular-nums ${m.direction === 'out' ? 'text-rose-600' : 'text-emerald-600'}`}>{m.direction === 'out' ? '−' : '+'}{fmt(m.amount)} {CUR_SYMBOL[cur]}</p>
+                                                {cur !== 'TND' && <p className="text-[10px] text-slate-400 tabular-nums">≈ {m.direction === 'out' ? '−' : '+'}{fmt(toTND(m.amount, cur))} DT</p>}
+                                            </div>
+                                            {canEdit && <button onClick={() => deleteMovement(m)} className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600 transition-colors sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-3.5 w-3.5" /></button>}
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     )}
                 </div>
-
-                {movements.length > 0 && (
-                    <div className="space-y-2.5">
-                        <p className="text-sm font-semibold text-slate-900 px-1">Derniers mouvements</p>
-                        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden divide-y divide-slate-100">
-                            {movements.slice(0, 40).map((m) => {
-                                const sn = supplierName(m.supplier_id);
-                                const cur = accCurrency_(m.account_id);
-                                return (
-                                    <div key={m.id} className="group flex items-center gap-3 px-3.5 py-3">
-                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${m.direction === 'out' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>{m.direction === 'out' ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}</div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="text-[13px] font-medium text-slate-900 truncate">{m.label || (m.direction === 'out' ? 'Paiement' : 'Entrée')}{sn && <span className="text-slate-400 font-normal"> · {sn}</span>}</p>
-                                            <p className="text-[11px] text-slate-400 truncate">{accountName(m.account_id)} · {new Date(m.date).toLocaleDateString('fr-FR')}</p>
-                                        </div>
-                                        <p className={`text-[13px] font-semibold tabular-nums shrink-0 ${m.direction === 'out' ? 'text-rose-600' : 'text-emerald-600'}`}>{m.direction === 'out' ? '−' : '+'}{fmt(m.amount)} {CUR_SYMBOL[cur]}</p>
-                                        {canEdit && <button onClick={() => deleteMovement(m)} className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600 transition-colors sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-3.5 w-3.5" /></button>}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
             </div>
 
             <Modal open={showAccountModal} onClose={() => setShowAccountModal(false)} title={editingAccount ? 'Modifier le compte' : 'Nouveau compte'} description="Banque, caisse, ou toute source d'argent" size="sm" icon={<div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center"><Landmark className="h-5 w-5" /></div>}

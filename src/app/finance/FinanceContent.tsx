@@ -22,7 +22,7 @@ import { Modal } from '@/components/ui';
 import {
     Wallet, Plus, Loader2, Lock, Landmark, ArrowDownRight, ArrowUpRight,
     Pencil, Trash2, TrendingDown, TrendingUp, EyeOff, Eye, CheckCircle2,
-    ArrowRightLeft, HandCoins, Repeat, Check, BarChart3,
+    ArrowRightLeft, HandCoins, Repeat, Check, BarChart3, ChevronDown,
 } from 'lucide-react';
 
 type Currency = 'TND' | 'USD' | 'EUR';
@@ -61,6 +61,7 @@ export default function FinanceContent() {
     const [privacy, setPrivacy] = useState(false);
     // Disponible projeté : inclure créances (à recevoir) et dettes (à payer) dans le héro.
     const [includeDebts, setIncludeDebts] = useState(false);
+    const [expandedDebt, setExpandedDebt] = useState<string | null>(null);
     useEffect(() => { try { setIncludeDebts(localStorage.getItem('he_fin_include_debts') === '1'); } catch { /* */ } }, []);
     const toggleIncludeDebts = () => setIncludeDebts((v) => { try { localStorage.setItem('he_fin_include_debts', v ? '0' : '1'); } catch { /* */ } return !v; });
     // Période active (pilote les stats, les comptes et la liste) — défaut : ce mois.
@@ -177,6 +178,12 @@ export default function FinanceContent() {
         }
         return map;
     }, [movements, toTND, accCurrency_]);
+    // Historique des versements par dette (liste déjà triée date desc)
+    const debtMovs = useMemo(() => {
+        const map = new Map<string, Movement[]>();
+        for (const m of movements) { if (!m.debt_id) continue; const arr = map.get(m.debt_id) || []; arr.push(m); map.set(m.debt_id, arr); }
+        return map;
+    }, [movements]);
     const debtRemaining = useCallback((d: Debt) => Math.max(0, d.amount - (debtPaid.get(d.id)?.paid || 0)), [debtPaid]);
     const isSettled = useCallback((d: Debt) => d.settled || debtRemaining(d) <= 0.0005, [debtRemaining]);
 
@@ -668,11 +675,14 @@ export default function FinanceContent() {
                                     const partial = !!pd && pd.paid > 0 && !done;
                                     const pct = d.amount > 0 ? Math.min(100, ((d.amount - rem) / d.amount) * 100) : 100;
                                     const recv = d.direction === 'receivable';
+                                    const list = debtMovs.get(d.id) || [];
+                                    const open = expandedDebt === d.id;
+                                    const byAcc = Array.from(list.reduce((m, x) => m.set(x.account_id, (m.get(x.account_id) || 0) + x.amount), new Map<string, number>()).entries());
                                     return (
                                         <div key={d.id} className={`px-3.5 py-2 ${done ? 'opacity-50' : ''}`}>
                                             <div className="flex items-center gap-2.5">
                                                 <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${recv ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{recv ? <ArrowDownRight className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}</div>
-                                                <div className="min-w-0 flex-1">
+                                                <div className="min-w-0 flex-1 cursor-pointer select-none" onClick={() => setExpandedDebt(open ? null : d.id)} title="Voir les versements">
                                                     <p className={`text-[13px] font-medium text-slate-900 truncate ${done ? 'line-through' : ''}`}>{d.person}</p>
                                                     <p className="text-[10px] text-slate-400 truncate">
                                                         {recv ? 'On me doit' : 'Je dois'}{d.note ? ` · ${d.note}` : ''}
@@ -680,6 +690,7 @@ export default function FinanceContent() {
                                                         {done ? ' · réglé' : ''}
                                                     </p>
                                                 </div>
+                                                <button onClick={() => setExpandedDebt(open ? null : d.id)} title="Voir les versements" className={`${iconBtn} w-6 h-6`}><ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} /></button>
                                                 <div className="text-right shrink-0">
                                                     <p className={`text-[12px] font-semibold tabular-nums ${recv ? 'text-emerald-600' : 'text-rose-600'}`}>{partial ? `reste ${fmtc(rem)}` : fmtc(d.amount)} DT</p>
                                                     {partial && <p className="text-[10px] text-slate-400 tabular-nums">sur {fmtc(d.amount)}</p>}
@@ -701,6 +712,42 @@ export default function FinanceContent() {
                                             {pd && pd.paid > 0 && (
                                                 <div className="mt-1.5 ml-[38px] h-1 rounded-full bg-slate-100 overflow-hidden">
                                                     <div className={`h-full ${recv ? 'bg-emerald-500' : 'bg-rose-500'}`} style={{ width: `${pct}%` }} />
+                                                </div>
+                                            )}
+                                            {open && (
+                                                <div className="mt-2 ml-[38px] rounded-xl border border-slate-200 bg-slate-50/60 overflow-hidden">
+                                                    <div className="grid grid-cols-3 divide-x divide-slate-200 border-b border-slate-200">
+                                                        <div className="px-2.5 py-1.5 min-w-0"><p className="text-[9px] uppercase tracking-wide text-slate-400">Total</p><p className="text-[12px] font-semibold text-slate-900 tabular-nums truncate">{fmtc(d.amount)} DT</p></div>
+                                                        <div className="px-2.5 py-1.5 min-w-0"><p className="text-[9px] uppercase tracking-wide text-slate-400">Réglé</p><p className={`text-[12px] font-semibold tabular-nums truncate ${recv ? 'text-emerald-600' : 'text-rose-600'}`}>{fmtc(Math.min(pd?.paid || 0, d.amount))} DT</p></div>
+                                                        <div className="px-2.5 py-1.5 min-w-0"><p className="text-[9px] uppercase tracking-wide text-slate-400">Reste</p><p className={`text-[12px] font-semibold tabular-nums truncate ${rem > 0 ? 'text-slate-900' : 'text-emerald-600'}`}>{fmtc(rem)} DT</p></div>
+                                                    </div>
+                                                    {byAcc.length > 0 && (
+                                                        <div className="px-2.5 py-1.5 flex flex-wrap gap-x-3 gap-y-1 border-b border-slate-200">
+                                                            {byAcc.map(([accId, amt]) => (
+                                                                <span key={accId} className="text-[11px] text-slate-600 flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${tone(accId)}`} />{accountName(accId)} <span className="font-semibold tabular-nums text-slate-900">{fmtc(amt)} {CUR_SYMBOL[accCurrency_(accId)]}</span></span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {list.length === 0 ? (
+                                                        <p className="px-2.5 py-2 text-[11px] text-slate-400">Aucun versement — cliquez « Régler » pour en enregistrer un.</p>
+                                                    ) : (
+                                                        <div className="divide-y divide-slate-200">
+                                                            {list.map((m) => {
+                                                                const cur = accCurrency_(m.account_id);
+                                                                return (
+                                                                    <div key={m.id} className="flex items-center gap-2 px-2.5 py-1.5">
+                                                                        <p className="text-[11px] text-slate-500 tabular-nums w-[84px] shrink-0 capitalize">{new Date(m.date + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })}</p>
+                                                                        <p className="text-[11px] text-slate-700 flex items-center gap-1 flex-1 min-w-0 truncate"><span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tone(m.account_id)}`} />{accountName(m.account_id)}</p>
+                                                                        <div className="text-right shrink-0">
+                                                                            <p className="text-[12px] font-semibold tabular-nums text-slate-900">{fmt(m.amount)} {CUR_SYMBOL[cur]}</p>
+                                                                            {cur !== 'TND' && <p className="text-[9px] text-slate-400 tabular-nums">≈ {fmtc(toTND(m.amount, cur))} DT</p>}
+                                                                        </div>
+                                                                        {canEdit && <button onClick={() => deleteMovement(m)} title="Supprimer ce versement" className={`${iconBtn} w-6 h-6 hover:bg-rose-50 hover:text-rose-600`}><Trash2 className="h-3 w-3" /></button>}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>

@@ -85,6 +85,7 @@ export default function FinanceContent() {
     const [recurDay, setRecurDay] = useState('1');
 
     const [showRatesModal, setShowRatesModal] = useState(false);
+    const [showConvModal, setShowConvModal] = useState(false);
     const [tmpUsd, setTmpUsd] = useState('');
     const [tmpEur, setTmpEur] = useState('');
     const [convFrom, setConvFrom] = useState<Currency>('USD');
@@ -159,7 +160,8 @@ export default function FinanceContent() {
         const receivable = debts.filter((d) => d.direction === 'receivable' && !d.settled).reduce((s, d) => s + d.amount, 0);
         const payable = debts.filter((d) => d.direction === 'payable' && !d.settled).reduce((s, d) => s + d.amount, 0);
         const monthlyIn = recurring.filter((r) => r.active && r.direction === 'in').reduce((s, r) => s + toTND(r.amount, r.currency), 0);
-        return { available, out, inSum, receivable, payable, monthlyIn };
+        const monthlyOut = recurring.filter((r) => r.active && r.direction === 'out').reduce((s, r) => s + toTND(r.amount, r.currency), 0);
+        return { available, out, inSum, receivable, payable, monthlyIn, monthlyOut };
     }, [accounts, perAccount, movements, debts, recurring, toTND, accCurrency_]);
 
     // Charges (sorties) vs encaissements (entrées) par mois, en TND — pour comparer.
@@ -342,19 +344,20 @@ export default function FinanceContent() {
                         <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">Finance</h1>
                         <p className="text-[13px] text-slate-500">Trésorerie, créances &amp; revenus</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button onClick={() => setShowConvModal(true)} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-[13px] font-medium hover:bg-slate-50 transition-colors"><ArrowRightLeft className="h-4 w-4 text-slate-400" /> Convertir</button>
                         {canEdit && (
                             <>
-                                <button onClick={() => openMovement('out')} disabled={accounts.length === 0} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-slate-900 text-white text-[13px] font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"><TrendingDown className="h-4 w-4" /> Sortie</button>
-                                <button onClick={() => openMovement('in')} disabled={accounts.length === 0} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-[13px] font-medium hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"><TrendingUp className="h-4 w-4" /> Entrée</button>
+                                <button onClick={() => openMovement('out')} disabled={accounts.length === 0} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-[13px] font-medium hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"><TrendingDown className="h-4 w-4 text-rose-500" /> Sortie</button>
+                                <button onClick={() => openMovement('in')} disabled={accounts.length === 0} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-[13px] font-medium hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"><TrendingUp className="h-4 w-4 text-emerald-500" /> Entrée</button>
                             </>
                         )}
                         <button onClick={() => setPrivacy(!privacy)} className={`inline-flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${privacy ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{privacy ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
                     </div>
                 </div>
 
-                {/* Top zone: KPIs (left) + compact converter (top-right) */}
-                <div className="grid grid-cols-1 lg:grid-cols-[1fr,300px] gap-3 items-start">
+                {/* Top zone: KPIs (left) + Mes comptes (top-right) */}
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr,360px] gap-3 items-start">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
                     {kpis.map((k) => (
                         <div key={k.label} className="rounded-2xl border border-slate-200 bg-white px-3.5 py-3 min-w-0">
@@ -367,33 +370,7 @@ export default function FinanceContent() {
                     ))}
                 </div>
 
-                    {/* Compact converter — top right */}
-                    <div className="rounded-2xl border border-slate-200 bg-white p-3">
-                        <div className="flex items-center justify-between mb-2">
-                            <p className="text-[12px] font-semibold text-slate-900 flex items-center gap-1.5"><ArrowRightLeft className="h-3.5 w-3.5 text-slate-400" /> Convertir</p>
-                            <button onClick={openRates} className="text-[11px] font-medium text-slate-500 hover:text-slate-900 transition-colors tabular-nums">1$={rates.USD} · 1€={rates.EUR}</button>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                            <select value={convFrom} onChange={(e) => setConvFrom(e.target.value as Currency)} className="h-9 px-2 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition shrink-0">
-                                <option value="USD">$</option><option value="EUR">€</option><option value="TND">DT</option>
-                            </select>
-                            <input type="number" inputMode="decimal" value={convAmount} onChange={(e) => setConvAmount(e.target.value)} placeholder="Montant" className="w-full min-w-0 h-9 px-2.5 rounded-lg border border-slate-200 bg-white text-[13px] text-slate-900 tabular-nums placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition" />
-                            <span className="text-slate-300 shrink-0 text-xs">=</span>
-                            <div className="h-9 px-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center shrink-0 min-w-[92px] justify-end">
-                                <span className="text-[13px] font-semibold text-slate-900 tabular-nums">{convResult.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">DT</span></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {notReady && (
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">Exécutez les migrations finance dans Supabase pour activer les comptes.</div>
-                )}
-
-                {/* Dashboard panels */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-
-                    {/* Comptes */}
+                    {/* Comptes (top-right) */}
                     <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
                         <div className={panelHead}>
                             <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Landmark className="h-4 w-4 text-slate-400" /> Mes comptes</p>
@@ -402,7 +379,7 @@ export default function FinanceContent() {
                         {accounts.length === 0 ? (
                             <p className="px-4 py-8 text-center text-sm text-slate-400">Aucun compte — ajoutez vos comptes bancaires.</p>
                         ) : (
-                            <div className="divide-y divide-slate-100">
+                            <div className="divide-y divide-slate-100 max-h-[320px] overflow-y-auto">
                                 {accounts.map((a) => {
                                     const b = perAccount.get(a.id) || { in: 0, out: 0, balance: a.initial_balance };
                                     const foreign = a.currency !== 'TND';
@@ -429,7 +406,14 @@ export default function FinanceContent() {
                             </div>
                         )}
                     </div>
+                </div>
 
+                {notReady && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">Exécutez les migrations finance dans Supabase pour activer les comptes.</div>
+                )}
+
+                {/* Row A — Créances (30%, far left) + Prévision mensuelle (70%) */}
+                <div className="grid grid-cols-1 lg:grid-cols-[3fr_7fr] gap-4 items-start">
                     {/* Créances & dettes */}
                     <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
                         <div className={panelHead}>
@@ -469,7 +453,62 @@ export default function FinanceContent() {
                             </div>
                         )}
                     </div>
+                    {/* Revenus récurrents */}
+                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                        <div className={panelHead}>
+                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Repeat className="h-4 w-4 text-slate-400" /> Prévision mensuelle</p>
+                            {canEdit && <button onClick={openNewRecur} className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-slate-600 hover:bg-slate-100 text-[13px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
+                        </div>
+                        {recurring.length > 0 && (
+                            <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
+                                <div className="px-3 py-2.5 text-center min-w-0">
+                                    <p className="text-[10px] text-slate-500">Encaissé / mois</p>
+                                    <p className="text-[13px] font-semibold text-emerald-600 tabular-nums mt-0.5 truncate">+{fmtc(totals.monthlyIn)}</p>
+                                </div>
+                                <div className="px-3 py-2.5 text-center min-w-0">
+                                    <p className="text-[10px] text-slate-500">Dépensé / mois</p>
+                                    <p className="text-[13px] font-semibold text-rose-600 tabular-nums mt-0.5 truncate">−{fmtc(totals.monthlyOut)}</p>
+                                </div>
+                                <div className="px-3 py-2.5 text-center min-w-0">
+                                    <p className="text-[10px] text-slate-500">Net / mois</p>
+                                    <p className={`text-[13px] font-semibold tabular-nums mt-0.5 truncate ${(totals.monthlyIn - totals.monthlyOut) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(totals.monthlyIn - totals.monthlyOut) >= 0 ? '+' : ''}{fmtc(totals.monthlyIn - totals.monthlyOut)}</p>
+                                </div>
+                            </div>
+                        )}
+                        {recurring.length === 0 ? (
+                            <p className="px-4 py-8 text-center text-sm text-slate-400">Ajoutez vos revenus (salaire…) et charges mensuelles récurrents</p>
+                        ) : (
+                            <div className="divide-y divide-slate-100">
+                                {recurring.map((r) => {
+                                    const doneThisMonth = (r.last_applied || '').slice(0, 7) === thisMonthKey();
+                                    return (
+                                        <div key={r.id} className="group flex items-center gap-3 px-3.5 py-2.5">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${r.direction === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Repeat className="h-4 w-4" /></div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-[13px] font-medium text-slate-900 truncate">{r.label}</p>
+                                                <p className="text-[11px] text-slate-400 truncate">{accountName(r.account_id || '')} · le {r.day_of_month || 1}</p>
+                                            </div>
+                                            <p className={`text-[13px] font-semibold tabular-nums shrink-0 ${r.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.direction === 'in' ? '+' : '−'}{fmt(r.amount)} {CUR_SYMBOL[r.currency]}</p>
+                                            {canEdit && (doneThisMonth
+                                                ? <button onClick={() => undoRecur(r)} title="Annuler l'encaissement de ce mois" className="shrink-0 inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-emerald-50 text-emerald-700 text-[12px] font-medium hover:bg-emerald-100 transition-colors"><CheckCircle2 className="h-3.5 w-3.5" /> Encaissé</button>
+                                                : <button onClick={() => applyRecur(r)} className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-lg bg-slate-900 text-white text-[12px] font-medium hover:bg-slate-800 transition-colors">Encaisser</button>
+                                            )}
+                                            {canEdit && (
+                                                <div className="flex items-center gap-0.5 shrink-0 transition-opacity">
+                                                    <button onClick={() => openEditRecur(r)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                                                    <button onClick={() => deleteRecur(r)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
 
+                {/* Row B — Charges & encaissements + Mouvements */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
                     {/* Charges & encaissements */}
                     {monthlyCompare.length > 0 && (
                         <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
@@ -508,47 +547,9 @@ export default function FinanceContent() {
                             </div>
                         </div>
                     )}
-
-                    {/* Revenus récurrents */}
-                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-                        <div className={panelHead}>
-                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Repeat className="h-4 w-4 text-slate-400" /> Revenus récurrents {totals.monthlyIn > 0 && <span className="text-[11px] font-normal text-slate-400">· {fmtc(totals.monthlyIn)} DT/mois</span>}</p>
-                            {canEdit && <button onClick={openNewRecur} className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-slate-600 hover:bg-slate-100 text-[13px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
-                        </div>
-                        {recurring.length === 0 ? (
-                            <p className="px-4 py-8 text-center text-sm text-slate-400">Ajoutez un salaire ou un revenu mensuel</p>
-                        ) : (
-                            <div className="divide-y divide-slate-100">
-                                {recurring.map((r) => {
-                                    const doneThisMonth = (r.last_applied || '').slice(0, 7) === thisMonthKey();
-                                    return (
-                                        <div key={r.id} className="group flex items-center gap-3 px-3.5 py-2.5">
-                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${r.direction === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Repeat className="h-4 w-4" /></div>
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-[13px] font-medium text-slate-900 truncate">{r.label}</p>
-                                                <p className="text-[11px] text-slate-400 truncate">{accountName(r.account_id || '')} · le {r.day_of_month || 1}</p>
-                                            </div>
-                                            <p className={`text-[13px] font-semibold tabular-nums shrink-0 ${r.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.direction === 'in' ? '+' : '−'}{fmt(r.amount)} {CUR_SYMBOL[r.currency]}</p>
-                                            {canEdit && (doneThisMonth
-                                                ? <button onClick={() => undoRecur(r)} title="Annuler l'encaissement de ce mois" className="shrink-0 inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-emerald-50 text-emerald-700 text-[12px] font-medium hover:bg-emerald-100 transition-colors"><CheckCircle2 className="h-3.5 w-3.5" /> Encaissé</button>
-                                                : <button onClick={() => applyRecur(r)} className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-lg bg-slate-900 text-white text-[12px] font-medium hover:bg-slate-800 transition-colors">Encaisser</button>
-                                            )}
-                                            {canEdit && (
-                                                <div className="flex items-center gap-0.5 shrink-0 transition-opacity">
-                                                    <button onClick={() => openEditRecur(r)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                                                    <button onClick={() => deleteRecur(r)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-
                     {/* Mouvements */}
                     {movements.length > 0 && (
-                        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden lg:col-span-2">
+                        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
                             <div className={panelHead}>
                                 <p className="text-sm font-semibold text-slate-900">Derniers mouvements</p>
                             </div>
@@ -575,6 +576,7 @@ export default function FinanceContent() {
                         </div>
                     )}
                 </div>
+
             </div>
 
             <Modal open={showAccountModal} onClose={() => setShowAccountModal(false)} title={editingAccount ? 'Modifier le compte' : 'Nouveau compte'} description="Banque, caisse, ou toute source d'argent" size="sm" icon={<div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center"><Landmark className="h-5 w-5" /></div>}
@@ -641,6 +643,18 @@ export default function FinanceContent() {
                         <div><label className={labelClass}>Compte crédité</label><select value={recurAccount} onChange={(e) => setRecurAccount(e.target.value)} className={inputClass}>{accounts.length === 0 && <option value="">— aucun compte —</option>}{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
                         <div><label className={labelClass}>Jour du mois</label><input type="number" min="1" max="31" value={recurDay} onChange={(e) => setRecurDay(e.target.value)} className={`${inputClass} tabular-nums`} /></div>
                     </div>
+                </div>
+            </Modal>
+
+            <Modal open={showConvModal} onClose={() => setShowConvModal(false)} title="Convertisseur" description="USD/EUR ↔ TND au taux actuel" size="sm" icon={<div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center"><ArrowRightLeft className="h-5 w-5" /></div>}>
+                <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                        <select value={convFrom} onChange={(e) => setConvFrom(e.target.value as Currency)} className="h-11 px-2.5 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition shrink-0"><option value="USD">USD $</option><option value="EUR">EUR €</option><option value="TND">TND</option></select>
+                        <input type="number" inputMode="decimal" value={convAmount} onChange={(e) => setConvAmount(e.target.value)} placeholder="Montant" autoFocus className="w-full min-w-0 h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 tabular-nums placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition" />
+                        <span className="text-slate-400 shrink-0">=</span>
+                        <div className="h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center min-w-[104px] justify-end shrink-0"><span className="text-sm font-semibold text-slate-900 tabular-nums">{convResult.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs text-slate-400">DT</span></span></div>
+                    </div>
+                    <button onClick={openRates} className="text-[12px] font-medium text-slate-500 hover:text-slate-900 transition-colors tabular-nums">Taux : 1$={rates.USD} · 1€={rates.EUR} — modifier</button>
                 </div>
             </Modal>
 

@@ -37,6 +37,13 @@ const DEFAULT_RATES: Record<Currency, number> = { TND: 1, USD: 3.15, EUR: 3.40 }
 const thisMonthKey = () => new Date().toISOString().slice(0, 7);
 const MONTHS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 const monthLabel = (k: string) => { const [y, m] = k.split('-'); return `${MONTHS_FR[parseInt(m, 10) - 1] || m} ${y}`; };
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const localISO = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const dayLabel = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'long' });
+type Period = 'month' | '3m' | 'year' | 'all' | 'custom';
+const PERIODS: Array<{ key: Period; label: string }> = [
+    { key: 'month', label: 'Ce mois' }, { key: '3m', label: '3 mois' }, { key: 'year', label: 'Année' }, { key: 'all', label: 'Tout' }, { key: 'custom', label: 'Dates' },
+];
 
 export default function FinanceContent() {
     const { user, isApproved, loading: authLoading } = useAuth();
@@ -52,6 +59,11 @@ export default function FinanceContent() {
     const [recurring, setRecurring] = useState<Recurring[]>([]);
     const [rates, setRates] = useState<Record<Currency, number>>(DEFAULT_RATES);
     const [privacy, setPrivacy] = useState(false);
+    // Période active (pilote les stats, les comptes et la liste) — défaut : ce mois.
+    const [period, setPeriod] = useState<Period>('month');
+    const [customFrom, setCustomFrom] = useState('');
+    const [customTo, setCustomTo] = useState('');
+    const [accFilter, setAccFilter] = useState('');
 
     const [showAccountModal, setShowAccountModal] = useState(false);
     const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -179,9 +191,65 @@ export default function FinanceContent() {
             .map(([k, v]) => ({ key: k, label: monthLabel(k), in: v.in, out: v.out, net: v.in - v.out }));
     }, [movements, accCurrency_, toTND]);
 
+    // Bornes de la période active
+    const range = useMemo(() => {
+        const today = new Date();
+        if (period === 'custom') return { from: customFrom || '0000-01-01', to: customTo || '9999-12-31' };
+        if (period === 'all') return { from: '0000-01-01', to: '9999-12-31' };
+        if (period === 'month') return { from: localISO(new Date(today.getFullYear(), today.getMonth(), 1)), to: localISO(today) };
+        if (period === '3m') return { from: localISO(new Date(today.getFullYear(), today.getMonth() - 2, 1)), to: localISO(today) };
+        return { from: `${today.getFullYear()}-01-01`, to: localISO(today) };
+    }, [period, customFrom, customTo]);
+    const periodLabel = PERIODS.find((x) => x.key === period)?.label || '';
+
+    const periodMovs = useMemo(() => movements.filter((m) => m.date >= range.from && m.date <= range.to), [movements, range]);
+    const shownMovs = useMemo(() => accFilter ? periodMovs.filter((m) => m.account_id === accFilter) : periodMovs, [periodMovs, accFilter]);
+
+    const periodTotals = useMemo(() => {
+        let inSum = 0, out = 0;
+        for (const m of periodMovs) { const t = toTND(m.amount, accCurrency_(m.account_id)); if (m.direction === 'in') inSum += t; else out += t; }
+        return { inSum, out, net: inSum - out, count: periodMovs.length };
+    }, [periodMovs, toTND, accCurrency_]);
+
+    // Par compte sur la période (en devise du compte)
+    const perAccountPeriod = useMemo(() => {
+        const map = new Map<string, { in: number; out: number }>();
+        for (const a of accounts) map.set(a.id, { in: 0, out: 0 });
+        for (const m of periodMovs) { const e = map.get(m.account_id); if (!e) continue; if (m.direction === 'in') e.in += m.amount; else e.out += m.amount; }
+        return map;
+    }, [accounts, periodMovs]);
+
+    // 6 derniers mois (mois vides inclus) pour le graphique
+    const series6 = useMemo(() => {
+        const today = new Date();
+        const rows: Array<{ key: string; short: string; in: number; out: number }> = [];
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+            const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+            const f = monthlyCompare.find((r) => r.key === key);
+            rows.push({ key, short: MONTHS_FR[d.getMonth()].slice(0, 4), in: f?.in || 0, out: f?.out || 0 });
+        }
+        return rows;
+    }, [monthlyCompare]);
+    const seriesMax = Math.max(1, ...series6.flatMap((x) => [x.in, x.out]));
+
+    // Répartition du disponible par compte (TND)
+    const accountShares = useMemo(() => {
+        const rows = accounts.map((a) => { const b = perAccount.get(a.id); return { id: a.id, name: a.name, tnd: toTND(b?.balance ?? a.initial_balance, a.currency) }; });
+        const total = rows.reduce((acc, r) => acc + Math.max(0, r.tnd), 0) || 1;
+        return rows.map((r) => ({ ...r, pct: (Math.max(0, r.tnd) / total) * 100 }));
+    }, [accounts, perAccount, toTND]);
+
+    // Mouvements groupés par jour (liste déjà triée date desc)
+    const movsByDay = useMemo(() => {
+        const groups: Array<{ date: string; items: Movement[] }> = [];
+        for (const m of shownMovs) { const g = groups[groups.length - 1]; if (g && g.date === m.date) g.items.push(m); else groups.push({ date: m.date, items: [m] }); }
+        return groups;
+    }, [shownMovs]);
+
     const supplierName = useCallback((id: string | null) => id ? (suppliers.find((s) => s.id === id)?.name || '') : '', [suppliers]);
     const accountName = useCallback((id: string) => accounts.find((a) => a.id === id)?.name || '—', [accounts]);
-    const tone = (id: string) => ACCOUNT_TONES[Math.abs(id.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % ACCOUNT_TONES.length];
+    const tone = (id: string) => { const i = accounts.findIndex((a) => a.id === id); return i < 0 ? 'bg-slate-400' : ACCOUNT_TONES[i % ACCOUNT_TONES.length]; };
 
     const openNewAccount = () => { setEditingAccount(null); setAccName(''); setAccBalance(''); setAccCurrency('TND'); setShowAccountModal(true); };
     const openEditAccount = (a: Account) => { setEditingAccount(a); setAccName(a.name); setAccBalance(String(a.initial_balance)); setAccCurrency(a.currency); setShowAccountModal(true); };
@@ -322,29 +390,25 @@ export default function FinanceContent() {
     const inputClass = "w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition";
     const labelClass = "block text-[13px] font-medium text-slate-700 mb-1.5";
     const convResult = (parseFloat(convAmount) || 0) * (rates[convFrom] || 1);
-    const kpis: Array<{ label: string; value: number; tone: 'emerald' | 'rose' | 'slate'; icon: any }> = [
-        { label: 'Disponible', value: totals.available, tone: totals.available < 0 ? 'rose' : 'slate', icon: Landmark },
-        { label: 'Encaissé', value: totals.inSum, tone: 'emerald', icon: ArrowDownRight },
-        { label: 'Charges', value: totals.out, tone: 'rose', icon: ArrowUpRight },
-        { label: 'Net', value: totals.inSum - totals.out, tone: (totals.inSum - totals.out) < 0 ? 'rose' : 'slate', icon: BarChart3 },
-        { label: 'À recevoir', value: totals.receivable, tone: 'emerald', icon: HandCoins },
-        { label: 'À payer', value: totals.payable, tone: 'rose', icon: HandCoins },
-    ];
-    const kpiText = (t: string) => t === 'emerald' ? 'text-emerald-600' : t === 'rose' ? 'text-rose-600' : 'text-slate-900';
-    const kpiIcon = (t: string) => t === 'emerald' ? 'text-emerald-500' : t === 'rose' ? 'text-rose-500' : 'text-slate-400';
-    const panelHead = "flex items-center justify-between px-4 py-3 border-b border-slate-100";
+    const panelHead = "flex items-center justify-between gap-2 px-4 py-2.5 border-b border-slate-100";
+    const iconBtn = "inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors";
 
     return (
         <div className="min-h-screen font-jakarta">
             <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-4">
 
-                {/* Header */}
+                {/* ── Header: title · period · actions ── */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="min-w-0">
                         <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">Finance</h1>
-                        <p className="text-[13px] text-slate-500">Trésorerie, créances &amp; revenus</p>
+                        <p className="text-[13px] text-slate-500">Trésorerie · {periodLabel.toLowerCase()} · {periodTotals.count} mouvement{periodTotals.count > 1 ? 's' : ''}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center bg-white border border-slate-200 rounded-xl p-0.5 h-9">
+                            {PERIODS.map((x) => (
+                                <button key={x.key} onClick={() => setPeriod(x.key)} className={`h-8 px-2.5 rounded-lg text-[12px] font-medium transition-colors ${period === x.key ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{x.label}</button>
+                            ))}
+                        </div>
                         <button onClick={() => setShowConvModal(true)} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-[13px] font-medium hover:bg-slate-50 transition-colors"><ArrowRightLeft className="h-4 w-4 text-slate-400" /> Convertir</button>
                         {canEdit && (
                             <>
@@ -355,49 +419,188 @@ export default function FinanceContent() {
                         <button onClick={() => setPrivacy(!privacy)} className={`inline-flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${privacy ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{privacy ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
                     </div>
                 </div>
+                {period === 'custom' && (
+                    <div className="flex flex-wrap items-center gap-2 -mt-1">
+                        <span className="text-[12px] text-slate-500">Du</span>
+                        <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-9 px-2.5 rounded-lg border border-slate-200 bg-white text-[13px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10" />
+                        <span className="text-[12px] text-slate-500">au</span>
+                        <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-9 px-2.5 rounded-lg border border-slate-200 bg-white text-[13px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10" />
+                    </div>
+                )}
 
-                {/* Top zone: KPIs (left) + Mes comptes (top-right) */}
-                <div className="grid grid-cols-1 lg:grid-cols-[1fr,360px] gap-3 items-start">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
-                    {kpis.map((k) => (
-                        <div key={k.label} className="rounded-2xl border border-slate-200 bg-white px-3.5 py-3 min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                                <p className="text-[11px] text-slate-500 truncate">{k.label}</p>
-                                <k.icon className={`h-3.5 w-3.5 shrink-0 ${kpiIcon(k.tone)}`} />
+                {notReady && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">Exécutez les migrations finance dans Supabase pour activer les comptes.</div>
+                )}
+
+                {/* ── Row 1: Hero (disponible + répartition + stats période) · Comptes ── */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+                    <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 flex flex-col">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Disponible en banque</p>
+                                <p className={`text-[28px] sm:text-4xl font-semibold tabular-nums mt-1 leading-none ${totals.available < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(totals.available)} <span className="text-base font-medium text-slate-400">DT</span></p>
                             </div>
-                            <p className={`text-base sm:text-lg font-semibold tabular-nums mt-1 truncate ${kpiText(k.tone)}`}>{fmtc(k.value)} <span className="text-[10px] font-normal text-slate-400">DT</span></p>
+                            <div className={`shrink-0 rounded-xl px-3 py-2 text-right ${periodTotals.net < 0 ? 'bg-rose-50' : 'bg-emerald-50'}`}>
+                                <p className="text-[10px] text-slate-500">Net · {periodLabel.toLowerCase()}</p>
+                                <p className={`text-base font-semibold tabular-nums ${periodTotals.net < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{periodTotals.net >= 0 ? '+' : ''}{fmtc(periodTotals.net)} DT</p>
+                            </div>
                         </div>
-                    ))}
-                </div>
 
-                    {/* Comptes (top-right) */}
-                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                        {/* répartition par compte */}
+                        {accounts.length > 0 && (
+                            <div className="mt-4">
+                                <div className="h-2.5 w-full rounded-full bg-slate-100 overflow-hidden flex">
+                                    {accountShares.map((a) => a.pct > 0 && <div key={a.id} className={`h-full ${tone(a.id)}`} style={{ width: `${a.pct}%` }} title={`${a.name} · ${fmtc(a.tnd)} DT`} />)}
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                                    {accountShares.map((a) => (
+                                        <p key={a.id} className="text-[11px] text-slate-500 flex items-center gap-1.5"><span className={`w-2 h-2 rounded-full ${tone(a.id)}`} /> {a.name} <span className="text-slate-900 font-medium tabular-nums">{fmtc(a.tnd)}</span> <span className="text-slate-400 tabular-nums">{a.pct.toFixed(0)}%</span></p>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* stats de la période */}
+                        <div className="mt-auto pt-4 grid grid-cols-3 sm:grid-cols-5 gap-2">
+                            {[
+                                { l: `Encaissé`, v: periodTotals.inSum, c: 'text-emerald-600', sign: '+' },
+                                { l: `Charges`, v: periodTotals.out, c: 'text-rose-600', sign: '−' },
+                                { l: `Net`, v: periodTotals.net, c: periodTotals.net < 0 ? 'text-rose-600' : 'text-slate-900', sign: periodTotals.net >= 0 ? '+' : '' },
+                                { l: 'À recevoir', v: totals.receivable, c: 'text-emerald-600', sign: '' },
+                                { l: 'À payer', v: totals.payable, c: 'text-rose-600', sign: '' },
+                            ].map((k) => (
+                                <div key={k.l} className="rounded-xl bg-slate-50 px-3 py-2 min-w-0">
+                                    <p className="text-[10px] text-slate-500 truncate">{k.l}</p>
+                                    <p className={`text-[15px] font-semibold tabular-nums truncate ${k.c}`}>{k.sign}{fmtc(k.v)}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Comptes — solde + entrées/sorties de la période */}
+                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col">
                         <div className={panelHead}>
-                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Landmark className="h-4 w-4 text-slate-400" /> Mes comptes</p>
-                            {canEdit && <button onClick={openNewAccount} className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-slate-600 hover:bg-slate-100 text-[13px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
+                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Landmark className="h-4 w-4 text-slate-400" /> Mes comptes <span className="text-[11px] font-normal text-slate-400">· {periodLabel.toLowerCase()}</span></p>
+                            {canEdit && <button onClick={openNewAccount} className="inline-flex items-center gap-1 h-7 px-2 rounded-lg text-slate-600 hover:bg-slate-100 text-[12px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
                         </div>
                         {accounts.length === 0 ? (
                             <p className="px-4 py-8 text-center text-sm text-slate-400">Aucun compte — ajoutez vos comptes bancaires.</p>
                         ) : (
-                            <div className="divide-y divide-slate-100 max-h-[320px] overflow-y-auto">
+                            <div className="divide-y divide-slate-100 overflow-y-auto max-h-[360px]">
                                 {accounts.map((a) => {
                                     const b = perAccount.get(a.id) || { in: 0, out: 0, balance: a.initial_balance };
+                                    const pp = perAccountPeriod.get(a.id) || { in: 0, out: 0 };
+                                    const tot = pp.in + pp.out;
                                     const foreign = a.currency !== 'TND';
                                     return (
-                                        <div key={a.id} className="group flex items-center gap-3 px-3.5 py-2.5">
-                                            <div className={`w-8 h-8 rounded-lg ${tone(a.id)} text-white flex items-center justify-center shrink-0`}><Landmark className="h-4 w-4" /></div>
+                                        <div key={a.id} className="px-3.5 py-2.5">
+                                            <div className="flex items-center gap-2.5">
+                                                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${tone(a.id)}`} />
+                                                <p className="text-[13px] font-medium text-slate-900 truncate flex-1 min-w-0">{a.name}{foreign && <span className="text-slate-400 font-normal"> · {a.currency}</span>}</p>
+                                                <div className="text-right shrink-0">
+                                                    <p className={`text-[13px] font-semibold tabular-nums ${b.balance < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(b.balance)} <span className="text-[10px] font-normal text-slate-400">{CUR_SYMBOL[a.currency]}</span></p>
+                                                    {foreign && <p className="text-[10px] text-slate-400 tabular-nums">≈ {fmtc(toTND(b.balance, a.currency))} DT</p>}
+                                                </div>
+                                                {canEdit && (
+                                                    <div className="flex items-center gap-0.5 shrink-0">
+                                                        <button onClick={() => openEditAccount(a)} className={iconBtn}><Pencil className="h-3.5 w-3.5" /></button>
+                                                        <button onClick={() => deleteAccount(a)} className={`${iconBtn} hover:bg-rose-50 hover:text-rose-600`}><Trash2 className="h-3.5 w-3.5" /></button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="mt-1.5 pl-5 flex items-center gap-2">
+                                                <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden flex">
+                                                    {tot > 0 && <div className="h-full bg-emerald-500" style={{ width: `${(pp.in / tot) * 100}%` }} />}
+                                                    {tot > 0 && <div className="h-full bg-rose-500" style={{ width: `${(pp.out / tot) * 100}%` }} />}
+                                                </div>
+                                                <p className="text-[10px] tabular-nums shrink-0">
+                                                    {tot > 0
+                                                        ? <><span className="text-emerald-600">+{fmtc(pp.in)}</span> <span className="text-slate-300">/</span> <span className="text-rose-600">−{fmtc(pp.out)}</span> <span className="text-slate-400">{CUR_SYMBOL[a.currency]}</span></>
+                                                        : <span className="text-slate-400">aucun mouvement</span>}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* ── Row 2: Graphique 6 mois · Prévision mensuelle ── */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+                    <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col">
+                        <div className={panelHead}>
+                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-slate-400" /> Entrées vs sorties <span className="hidden sm:inline text-[11px] font-normal text-slate-400">· 6 derniers mois</span></p>
+                            <div className="flex items-center gap-3 text-[11px] text-slate-500">
+                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500" /> Encaissé</span>
+                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-500" /> Charges</span>
+                            </div>
+                        </div>
+                        <div className="px-3 sm:px-5 pt-4 pb-2 flex-1">
+                            <div className="flex items-end gap-2 sm:gap-4 h-44 border-b border-slate-200">
+                                {series6.map((m) => (
+                                    <div key={m.key} className="flex-1 min-w-0 h-full flex items-end justify-center gap-1 sm:gap-1.5">
+                                        <div className="flex flex-col items-center justify-end h-full w-full max-w-[26px]">
+                                            {m.in > 0 && <span className="text-[9px] sm:text-[10px] text-emerald-600 tabular-nums mb-0.5">{fmtc(m.in)}</span>}
+                                            <div className="w-full rounded-t bg-emerald-500 transition-all" style={{ height: `${(m.in / seriesMax) * 82}%` }} />
+                                        </div>
+                                        <div className="flex flex-col items-center justify-end h-full w-full max-w-[26px]">
+                                            {m.out > 0 && <span className="text-[9px] sm:text-[10px] text-rose-600 tabular-nums mb-0.5">{fmtc(m.out)}</span>}
+                                            <div className="w-full rounded-t bg-rose-500 transition-all" style={{ height: `${(m.out / seriesMax) * 82}%` }} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-6 gap-2 sm:gap-4 mt-2">
+                                {series6.map((m) => {
+                                    const net = m.in - m.out;
+                                    return (
+                                        <div key={m.key} className="text-center min-w-0">
+                                            <p className="text-[11px] text-slate-500 capitalize truncate">{m.short}</p>
+                                            <p className={`text-[11px] font-semibold tabular-nums truncate ${net === 0 ? 'text-slate-300' : net < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{net === 0 ? '—' : `${net > 0 ? '+' : ''}${fmtc(net)}`}</p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Prévision mensuelle */}
+                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col">
+                        <div className={panelHead}>
+                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Repeat className="h-4 w-4 text-slate-400" /> Prévision mensuelle</p>
+                            {canEdit && <button onClick={openNewRecur} className="inline-flex items-center gap-1 h-7 px-2 rounded-lg text-slate-600 hover:bg-slate-100 text-[12px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
+                        </div>
+                        {recurring.length > 0 && (
+                            <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
+                                <div className="px-2 py-2 text-center min-w-0"><p className="text-[10px] text-slate-500">Encaissé</p><p className="text-[13px] font-semibold text-emerald-600 tabular-nums truncate">+{fmtc(totals.monthlyIn)}</p></div>
+                                <div className="px-2 py-2 text-center min-w-0"><p className="text-[10px] text-slate-500">Dépensé</p><p className="text-[13px] font-semibold text-rose-600 tabular-nums truncate">−{fmtc(totals.monthlyOut)}</p></div>
+                                <div className="px-2 py-2 text-center min-w-0"><p className="text-[10px] text-slate-500">Net / mois</p><p className={`text-[13px] font-semibold tabular-nums truncate ${(totals.monthlyIn - totals.monthlyOut) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(totals.monthlyIn - totals.monthlyOut) >= 0 ? '+' : ''}{fmtc(totals.monthlyIn - totals.monthlyOut)}</p></div>
+                            </div>
+                        )}
+                        {recurring.length === 0 ? (
+                            <p className="px-4 py-8 text-center text-sm text-slate-400">Ajoutez vos revenus (salaire…) et charges mensuelles récurrents</p>
+                        ) : (
+                            <div className="divide-y divide-slate-100 overflow-y-auto max-h-[300px]">
+                                {recurring.map((r) => {
+                                    const doneThisMonth = (r.last_applied || '').slice(0, 7) === thisMonthKey();
+                                    return (
+                                        <div key={r.id} className="flex items-center gap-2.5 px-3.5 py-2">
+                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${r.direction === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Repeat className="h-3.5 w-3.5" /></div>
                                             <div className="min-w-0 flex-1">
-                                                <p className="text-[13px] font-medium text-slate-900 truncate">{a.name}{foreign && <span className="text-slate-400 font-normal"> · {a.currency}</span>}</p>
-                                                <p className="text-[11px] text-slate-400 truncate">Initial {fmt(a.initial_balance)}{b.out > 0 ? ` · −${fmt(b.out)}` : ''}{b.in > 0 ? ` · +${fmt(b.in)}` : ''}</p>
+                                                <p className="text-[13px] font-medium text-slate-900 truncate">{r.label}</p>
+                                                <p className="text-[10px] text-slate-400 truncate">{accountName(r.account_id || '')} · le {r.day_of_month || 1}</p>
                                             </div>
-                                            <div className="text-right shrink-0">
-                                                <p className={`text-[13px] font-semibold tabular-nums ${b.balance < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(b.balance)} <span className="text-[10px] font-normal text-slate-400">{CUR_SYMBOL[a.currency]}</span></p>
-                                                {foreign && <p className="text-[10px] text-slate-400 tabular-nums">≈ {fmt(toTND(b.balance, a.currency))} DT</p>}
-                                            </div>
+                                            <p className={`text-[12px] font-semibold tabular-nums shrink-0 ${r.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.direction === 'in' ? '+' : '−'}{fmtc(r.amount)} {CUR_SYMBOL[r.currency]}</p>
+                                            {canEdit && (doneThisMonth
+                                                ? <button onClick={() => undoRecur(r)} title="Annuler l'encaissement de ce mois" className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"><CheckCircle2 className="h-3.5 w-3.5" /></button>
+                                                : <button onClick={() => applyRecur(r)} title="Encaisser ce mois" className="shrink-0 inline-flex items-center justify-center h-7 px-2 rounded-lg bg-slate-900 text-white text-[11px] font-medium hover:bg-slate-800 transition-colors">Encaisser</button>
+                                            )}
                                             {canEdit && (
-                                                <div className="flex items-center gap-0.5 shrink-0 transition-opacity">
-                                                    <button onClick={() => openEditAccount(a)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                                                    <button onClick={() => deleteAccount(a)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                                                <div className="flex items-center shrink-0">
+                                                    <button onClick={() => openEditRecur(r)} className={iconBtn}><Pencil className="h-3.5 w-3.5" /></button>
+                                                    <button onClick={() => deleteRecur(r)} className={`${iconBtn} hover:bg-rose-50 hover:text-rose-600`}><Trash2 className="h-3.5 w-3.5" /></button>
                                                 </div>
                                             )}
                                         </div>
@@ -408,20 +611,15 @@ export default function FinanceContent() {
                     </div>
                 </div>
 
-                {notReady && (
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">Exécutez les migrations finance dans Supabase pour activer les comptes.</div>
-                )}
-
-                {/* Row A — Créances (30%, far left) + Prévision mensuelle (70%) */}
-                <div className="grid grid-cols-1 lg:grid-cols-[3fr_7fr] gap-4 items-start">
-                    {/* Créances & dettes */}
+                {/* ── Row 3: Créances & dettes · Mouvements par jour ── */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
                     <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
                         <div className={panelHead}>
                             <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><HandCoins className="h-4 w-4 text-slate-400" /> Créances &amp; dettes</p>
                             {canEdit && (
-                                <div className="flex items-center gap-1">
-                                    <button onClick={() => openNewDebt('receivable')} className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-emerald-700 hover:bg-emerald-50 text-[12px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> On me doit</button>
-                                    <button onClick={() => openNewDebt('payable')} className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-rose-700 hover:bg-rose-50 text-[12px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Je dois</button>
+                                <div className="flex items-center gap-0.5">
+                                    <button onClick={() => openNewDebt('receivable')} className="inline-flex items-center gap-1 h-7 px-2 rounded-lg text-emerald-700 hover:bg-emerald-50 text-[11px] font-medium transition-colors"><Plus className="h-3 w-3" /> On me doit</button>
+                                    <button onClick={() => openNewDebt('payable')} className="inline-flex items-center gap-1 h-7 px-2 rounded-lg text-rose-700 hover:bg-rose-50 text-[11px] font-medium transition-colors"><Plus className="h-3 w-3" /> Je dois</button>
                                 </div>
                             )}
                         </div>
@@ -430,22 +628,22 @@ export default function FinanceContent() {
                         ) : (
                             <div className="divide-y divide-slate-100">
                                 {debts.map((d) => (
-                                    <div key={d.id} className={`group flex items-center gap-3 px-3.5 py-2.5 ${d.settled ? 'opacity-50' : ''}`}>
-                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${d.direction === 'receivable' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{d.direction === 'receivable' ? <ArrowDownRight className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}</div>
+                                    <div key={d.id} className={`flex items-center gap-2.5 px-3.5 py-2 ${d.settled ? 'opacity-50' : ''}`}>
+                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${d.direction === 'receivable' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{d.direction === 'receivable' ? <ArrowDownRight className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}</div>
                                         <div className="min-w-0 flex-1">
                                             <p className={`text-[13px] font-medium text-slate-900 truncate ${d.settled ? 'line-through' : ''}`}>{d.person}</p>
-                                            <p className="text-[11px] text-slate-400 truncate">{d.direction === 'receivable' ? 'On me doit' : 'Je dois'}{d.note ? ` · ${d.note}` : ''}{d.settled ? ' · réglé' : ''}</p>
+                                            <p className="text-[10px] text-slate-400 truncate">{d.direction === 'receivable' ? 'On me doit' : 'Je dois'}{d.note ? ` · ${d.note}` : ''}{d.settled ? ' · réglé' : ''}</p>
                                         </div>
-                                        <p className={`text-[13px] font-semibold tabular-nums shrink-0 ${d.direction === 'receivable' ? 'text-emerald-600' : 'text-rose-600'}`}>{fmt(d.amount)} DT</p>
+                                        <p className={`text-[12px] font-semibold tabular-nums shrink-0 ${d.direction === 'receivable' ? 'text-emerald-600' : 'text-rose-600'}`}>{fmtc(d.amount)} DT</p>
                                         {canEdit && (d.settled
-                                            ? <button onClick={() => toggleDebtSettled(d)} title="Rouvrir (marquer non réglé)" className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-lg bg-white border border-slate-200 text-slate-600 text-[12px] font-medium hover:bg-slate-50 transition-colors">Rouvrir</button>
-                                            : <button onClick={() => settleDebt(d)} title="Régler (crée le mouvement)" className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-lg bg-slate-900 text-white text-[12px] font-medium hover:bg-slate-800 transition-colors">Régler</button>
+                                            ? <button onClick={() => toggleDebtSettled(d)} title="Rouvrir" className="shrink-0 inline-flex items-center justify-center h-7 px-2 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-medium hover:bg-slate-50 transition-colors">Rouvrir</button>
+                                            : <button onClick={() => settleDebt(d)} title="Régler (crée le mouvement)" className="shrink-0 inline-flex items-center justify-center h-7 px-2 rounded-lg bg-slate-900 text-white text-[11px] font-medium hover:bg-slate-800 transition-colors">Régler</button>
                                         )}
                                         {canEdit && (
-                                            <div className="flex items-center gap-0.5 shrink-0 transition-opacity">
-                                                {!d.settled && <button onClick={() => toggleDebtSettled(d)} title="Marquer réglé (sans mouvement)" className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Check className="h-3.5 w-3.5" /></button>}
-                                                <button onClick={() => openEditDebt(d)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                                                <button onClick={() => deleteDebt(d)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                                            <div className="flex items-center shrink-0">
+                                                {!d.settled && <button onClick={() => toggleDebtSettled(d)} title="Marquer réglé (sans mouvement)" className={iconBtn}><Check className="h-3.5 w-3.5" /></button>}
+                                                <button onClick={() => openEditDebt(d)} className={iconBtn}><Pencil className="h-3.5 w-3.5" /></button>
+                                                <button onClick={() => deleteDebt(d)} className={`${iconBtn} hover:bg-rose-50 hover:text-rose-600`}><Trash2 className="h-3.5 w-3.5" /></button>
                                             </div>
                                         )}
                                     </div>
@@ -453,52 +651,50 @@ export default function FinanceContent() {
                             </div>
                         )}
                     </div>
-                    {/* Revenus récurrents */}
-                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+
+                    {/* Mouvements — groupés par jour, filtre par compte */}
+                    <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white overflow-hidden">
                         <div className={panelHead}>
-                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Repeat className="h-4 w-4 text-slate-400" /> Prévision mensuelle</p>
-                            {canEdit && <button onClick={openNewRecur} className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-slate-600 hover:bg-slate-100 text-[13px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
+                            <p className="text-sm font-semibold text-slate-900">Mouvements <span className="text-[11px] font-normal text-slate-400">· {periodLabel.toLowerCase()} · {shownMovs.length}</span></p>
+                            {accounts.length > 1 && (
+                                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+                                    <button onClick={() => setAccFilter('')} className={`h-7 px-2.5 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors ${accFilter === '' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>Tous</button>
+                                    {accounts.map((a) => (
+                                        <button key={a.id} onClick={() => setAccFilter(accFilter === a.id ? '' : a.id)} className={`h-7 px-2.5 rounded-lg text-[11px] font-medium whitespace-nowrap flex items-center gap-1.5 transition-colors ${accFilter === a.id ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}><span className={`w-1.5 h-1.5 rounded-full ${tone(a.id)}`} />{a.name}</button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                        {recurring.length > 0 && (
-                            <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
-                                <div className="px-3 py-2.5 text-center min-w-0">
-                                    <p className="text-[10px] text-slate-500">Encaissé / mois</p>
-                                    <p className="text-[13px] font-semibold text-emerald-600 tabular-nums mt-0.5 truncate">+{fmtc(totals.monthlyIn)}</p>
-                                </div>
-                                <div className="px-3 py-2.5 text-center min-w-0">
-                                    <p className="text-[10px] text-slate-500">Dépensé / mois</p>
-                                    <p className="text-[13px] font-semibold text-rose-600 tabular-nums mt-0.5 truncate">−{fmtc(totals.monthlyOut)}</p>
-                                </div>
-                                <div className="px-3 py-2.5 text-center min-w-0">
-                                    <p className="text-[10px] text-slate-500">Net / mois</p>
-                                    <p className={`text-[13px] font-semibold tabular-nums mt-0.5 truncate ${(totals.monthlyIn - totals.monthlyOut) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(totals.monthlyIn - totals.monthlyOut) >= 0 ? '+' : ''}{fmtc(totals.monthlyIn - totals.monthlyOut)}</p>
-                                </div>
-                            </div>
-                        )}
-                        {recurring.length === 0 ? (
-                            <p className="px-4 py-8 text-center text-sm text-slate-400">Ajoutez vos revenus (salaire…) et charges mensuelles récurrents</p>
+                        {movsByDay.length === 0 ? (
+                            <p className="px-4 py-10 text-center text-sm text-slate-400">Aucun mouvement sur cette période{accFilter ? ' pour ce compte' : ''}.</p>
                         ) : (
-                            <div className="divide-y divide-slate-100">
-                                {recurring.map((r) => {
-                                    const doneThisMonth = (r.last_applied || '').slice(0, 7) === thisMonthKey();
+                            <div className="max-h-[560px] overflow-y-auto">
+                                {movsByDay.map((g) => {
+                                    const dayNet = g.items.reduce((acc, m) => acc + (m.direction === 'in' ? 1 : -1) * toTND(m.amount, accCurrency_(m.account_id)), 0);
                                     return (
-                                        <div key={r.id} className="group flex items-center gap-3 px-3.5 py-2.5">
-                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${r.direction === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Repeat className="h-4 w-4" /></div>
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-[13px] font-medium text-slate-900 truncate">{r.label}</p>
-                                                <p className="text-[11px] text-slate-400 truncate">{accountName(r.account_id || '')} · le {r.day_of_month || 1}</p>
+                                        <div key={g.date}>
+                                            <div className="flex items-center justify-between px-4 py-1.5 bg-slate-50 border-y border-slate-100 first:border-t-0">
+                                                <p className="text-[11px] font-medium text-slate-500 capitalize">{dayLabel(g.date)}</p>
+                                                <p className={`text-[11px] font-semibold tabular-nums ${dayNet < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{dayNet >= 0 ? '+' : ''}{fmtc(dayNet)} DT</p>
                                             </div>
-                                            <p className={`text-[13px] font-semibold tabular-nums shrink-0 ${r.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.direction === 'in' ? '+' : '−'}{fmt(r.amount)} {CUR_SYMBOL[r.currency]}</p>
-                                            {canEdit && (doneThisMonth
-                                                ? <button onClick={() => undoRecur(r)} title="Annuler l'encaissement de ce mois" className="shrink-0 inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-emerald-50 text-emerald-700 text-[12px] font-medium hover:bg-emerald-100 transition-colors"><CheckCircle2 className="h-3.5 w-3.5" /> Encaissé</button>
-                                                : <button onClick={() => applyRecur(r)} className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-lg bg-slate-900 text-white text-[12px] font-medium hover:bg-slate-800 transition-colors">Encaisser</button>
-                                            )}
-                                            {canEdit && (
-                                                <div className="flex items-center gap-0.5 shrink-0 transition-opacity">
-                                                    <button onClick={() => openEditRecur(r)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                                                    <button onClick={() => deleteRecur(r)} className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
-                                                </div>
-                                            )}
+                                            {g.items.map((m) => {
+                                                const sn = supplierName(m.supplier_id);
+                                                const cur = accCurrency_(m.account_id);
+                                                return (
+                                                    <div key={m.id} className="flex items-center gap-2.5 px-3.5 py-2 border-b border-slate-50 last:border-b-0">
+                                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${m.direction === 'out' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>{m.direction === 'out' ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}</div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="text-[13px] font-medium text-slate-900 truncate">{m.label || (m.direction === 'out' ? 'Paiement' : 'Entrée')}{sn && <span className="text-slate-400 font-normal"> · {sn}</span>}</p>
+                                                            <p className="text-[10px] text-slate-400 truncate flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${tone(m.account_id)}`} />{accountName(m.account_id)}</p>
+                                                        </div>
+                                                        <div className="text-right shrink-0">
+                                                            <p className={`text-[13px] font-semibold tabular-nums ${m.direction === 'out' ? 'text-rose-600' : 'text-emerald-600'}`}>{m.direction === 'out' ? '−' : '+'}{fmt(m.amount)} {CUR_SYMBOL[cur]}</p>
+                                                            {cur !== 'TND' && <p className="text-[10px] text-slate-400 tabular-nums">≈ {m.direction === 'out' ? '−' : '+'}{fmtc(toTND(m.amount, cur))} DT</p>}
+                                                        </div>
+                                                        {canEdit && <button onClick={() => deleteMovement(m)} className={`${iconBtn} hover:bg-rose-50 hover:text-rose-600`}><Trash2 className="h-3.5 w-3.5" /></button>}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     );
                                 })}
@@ -506,77 +702,6 @@ export default function FinanceContent() {
                         )}
                     </div>
                 </div>
-
-                {/* Row B — Charges & encaissements + Mouvements */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                    {/* Charges & encaissements */}
-                    {monthlyCompare.length > 0 && (
-                        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-                            <div className={panelHead}>
-                                <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-slate-400" /> Charges &amp; encaissements</p>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm min-w-[420px]">
-                                    <thead>
-                                        <tr className="text-[11px] text-slate-400 border-b border-slate-100">
-                                            <th className="text-left font-medium px-3.5 py-2.5">Mois</th>
-                                            <th className="text-right font-medium px-3 py-2.5">Encaissé</th>
-                                            <th className="text-right font-medium px-3 py-2.5">Charges</th>
-                                            <th className="text-right font-medium px-3.5 py-2.5">Net</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {monthlyCompare.map((row) => (
-                                            <tr key={row.key} className="hover:bg-slate-50/60 transition-colors">
-                                                <td className="px-3.5 py-2.5 text-slate-700 capitalize whitespace-nowrap">{row.label}</td>
-                                                <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600 font-medium">{fmtc(row.in)}</td>
-                                                <td className="px-3 py-2.5 text-right tabular-nums text-rose-600 font-medium">{fmtc(row.out)}</td>
-                                                <td className={`px-3.5 py-2.5 text-right tabular-nums font-semibold ${row.net < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{row.net >= 0 ? '+' : ''}{fmtc(row.net)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                    <tfoot>
-                                        <tr className="border-t border-slate-200 bg-slate-50 text-[13px]">
-                                            <td className="px-3.5 py-2.5 font-semibold text-slate-900">Total</td>
-                                            <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-600">{fmtc(totals.inSum)}</td>
-                                            <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-rose-600">{fmtc(totals.out)}</td>
-                                            <td className={`px-3.5 py-2.5 text-right tabular-nums font-bold ${(totals.inSum - totals.out) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(totals.inSum - totals.out) >= 0 ? '+' : ''}{fmtc(totals.inSum - totals.out)}</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        </div>
-                    )}
-                    {/* Mouvements */}
-                    {movements.length > 0 && (
-                        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-                            <div className={panelHead}>
-                                <p className="text-sm font-semibold text-slate-900">Derniers mouvements</p>
-                            </div>
-                            <div className="divide-y divide-slate-100 max-h-[520px] overflow-y-auto">
-                                {movements.slice(0, 60).map((m) => {
-                                    const sn = supplierName(m.supplier_id);
-                                    const cur = accCurrency_(m.account_id);
-                                    return (
-                                        <div key={m.id} className="group flex items-center gap-3 px-3.5 py-2.5">
-                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${m.direction === 'out' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>{m.direction === 'out' ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}</div>
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-[13px] font-medium text-slate-900 truncate">{m.label || (m.direction === 'out' ? 'Paiement' : 'Entrée')}{sn && <span className="text-slate-400 font-normal"> · {sn}</span>}</p>
-                                                <p className="text-[11px] text-slate-400 truncate">{accountName(m.account_id)} · {new Date(m.date).toLocaleDateString('fr-FR')}</p>
-                                            </div>
-                                            <div className="text-right shrink-0">
-                                                <p className={`text-[13px] font-semibold tabular-nums ${m.direction === 'out' ? 'text-rose-600' : 'text-emerald-600'}`}>{m.direction === 'out' ? '−' : '+'}{fmt(m.amount)} {CUR_SYMBOL[cur]}</p>
-                                                {cur !== 'TND' && <p className="text-[10px] text-slate-400 tabular-nums">≈ {m.direction === 'out' ? '−' : '+'}{fmt(toTND(m.amount, cur))} DT</p>}
-                                            </div>
-                                            {canEdit && <button onClick={() => deleteMovement(m)} className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-                </div>
-
             </div>
 
             <Modal open={showAccountModal} onClose={() => setShowAccountModal(false)} title={editingAccount ? 'Modifier le compte' : 'Nouveau compte'} description="Banque, caisse, ou toute source d'argent" size="sm" icon={<div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center"><Landmark className="h-5 w-5" /></div>}

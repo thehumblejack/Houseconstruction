@@ -27,7 +27,7 @@ import {
 
 type Currency = 'TND' | 'USD' | 'EUR';
 interface Account { id: string; name: string; initial_balance: number; sort_order: number; currency: Currency; }
-interface Movement { id: string; account_id: string; direction: 'in' | 'out'; amount: number; label: string | null; supplier_id: string | null; date: string; }
+interface Movement { id: string; account_id: string; direction: 'in' | 'out'; amount: number; label: string | null; supplier_id: string | null; date: string; debt_id?: string | null; }
 interface Debt { id: string; person: string; amount: number; direction: 'receivable' | 'payable'; note: string | null; settled: boolean; }
 interface Recurring { id: string; label: string; account_id: string | null; amount: number; currency: Currency; direction: 'in' | 'out'; day_of_month: number | null; last_applied: string | null; active: boolean; }
 
@@ -59,6 +59,10 @@ export default function FinanceContent() {
     const [recurring, setRecurring] = useState<Recurring[]>([]);
     const [rates, setRates] = useState<Record<Currency, number>>(DEFAULT_RATES);
     const [privacy, setPrivacy] = useState(false);
+    // Disponible projeté : inclure créances (à recevoir) et dettes (à payer) dans le héro.
+    const [includeDebts, setIncludeDebts] = useState(false);
+    useEffect(() => { try { setIncludeDebts(localStorage.getItem('he_fin_include_debts') === '1'); } catch { /* */ } }, []);
+    const toggleIncludeDebts = () => setIncludeDebts((v) => { try { localStorage.setItem('he_fin_include_debts', v ? '0' : '1'); } catch { /* */ } return !v; });
     // Période active (pilote les stats, les comptes et la liste) — défaut : ce mois.
     const [period, setPeriod] = useState<Period>('month');
     const [customFrom, setCustomFrom] = useState('');
@@ -162,6 +166,20 @@ export default function FinanceContent() {
         return map;
     }, [accounts, movements]);
 
+    // Versements reliés à chaque dette (paiements partiels), convertis en TND.
+    const debtPaid = useMemo(() => {
+        const map = new Map<string, { paid: number; count: number }>();
+        for (const m of movements) {
+            if (!m.debt_id) continue;
+            const e = map.get(m.debt_id) || { paid: 0, count: 0 };
+            e.paid += toTND(m.amount, accCurrency_(m.account_id)); e.count += 1;
+            map.set(m.debt_id, e);
+        }
+        return map;
+    }, [movements, toTND, accCurrency_]);
+    const debtRemaining = useCallback((d: Debt) => Math.max(0, d.amount - (debtPaid.get(d.id)?.paid || 0)), [debtPaid]);
+    const isSettled = useCallback((d: Debt) => d.settled || debtRemaining(d) <= 0.0005, [debtRemaining]);
+
     const totals = useMemo(() => {
         let available = 0, out = 0, inSum = 0;
         for (const a of accounts) { const b = perAccount.get(a.id); if (b) available += toTND(b.balance, a.currency); }
@@ -169,12 +187,12 @@ export default function FinanceContent() {
             const c = accCurrency_(m.account_id);
             if (m.direction === 'out') out += toTND(m.amount, c); else inSum += toTND(m.amount, c);
         }
-        const receivable = debts.filter((d) => d.direction === 'receivable' && !d.settled).reduce((s, d) => s + d.amount, 0);
-        const payable = debts.filter((d) => d.direction === 'payable' && !d.settled).reduce((s, d) => s + d.amount, 0);
+        const receivable = debts.filter((d) => d.direction === 'receivable' && !isSettled(d)).reduce((s, d) => s + debtRemaining(d), 0);
+        const payable = debts.filter((d) => d.direction === 'payable' && !isSettled(d)).reduce((s, d) => s + debtRemaining(d), 0);
         const monthlyIn = recurring.filter((r) => r.active && r.direction === 'in').reduce((s, r) => s + toTND(r.amount, r.currency), 0);
         const monthlyOut = recurring.filter((r) => r.active && r.direction === 'out').reduce((s, r) => s + toTND(r.amount, r.currency), 0);
         return { available, out, inSum, receivable, payable, monthlyIn, monthlyOut };
-    }, [accounts, perAccount, movements, debts, recurring, toTND, accCurrency_]);
+    }, [accounts, perAccount, movements, debts, recurring, toTND, accCurrency_, isSettled, debtRemaining]);
 
     // Charges (sorties) vs encaissements (entrées) par mois, en TND — pour comparer.
     const monthlyCompare = useMemo(() => {
@@ -281,12 +299,21 @@ export default function FinanceContent() {
         if (isNaN(amount) || amount <= 0) { alert('Montant invalide.'); return; }
         setSaving(true);
         try {
-            const { error } = await supabase.from('finance_movements').insert({
-                project_id: currentProject.id, account_id: moveAccount, direction: moveDir,
-                amount, label: moveLabel.trim() || null, supplier_id: moveSupplier || null, date: moveDate,
-            });
+            const base = { project_id: currentProject.id, account_id: moveAccount, direction: moveDir, amount, label: moveLabel.trim() || null, supplier_id: moveSupplier || null, date: moveDate };
+            let { error } = await supabase.from('finance_movements').insert(settlingDebt ? { ...base, debt_id: settlingDebt.id } : base);
+            if (error && settlingDebt && /debt_id/i.test(error.message)) {
+                // Colonne absente (migration non appliquée) : on enregistre sans le lien et on règle intégralement.
+                ({ error } = await supabase.from('finance_movements').insert(base));
+                if (!error) {
+                    await supabase.from('finance_debts').update({ settled: true }).eq('id', settlingDebt.id);
+                    alert('Migration « finance_partial_payments » non appliquée : le suivi des versements partiels est désactivé, la dette a été marquée réglée en totalité.');
+                }
+            } else if (!error && settlingDebt) {
+                // Versement partiel : la dette passe « réglée » quand le total des versements couvre le montant.
+                const paidTND = (debtPaid.get(settlingDebt.id)?.paid || 0) + toTND(amount, accCurrency_(moveAccount));
+                if (paidTND >= settlingDebt.amount - 0.0005) await supabase.from('finance_debts').update({ settled: true }).eq('id', settlingDebt.id);
+            }
             if (error) throw error;
-            if (settlingDebt) await supabase.from('finance_debts').update({ settled: true }).eq('id', settlingDebt.id);
             setShowMoveModal(false); setSettlingDebt(null); fetchAll();
         } catch (e: any) { alert('Erreur : ' + (e?.message || e)); } finally { setSaving(false); }
     };
@@ -315,7 +342,7 @@ export default function FinanceContent() {
     };
     const settleDebt = (d: Debt) => {
         if (accounts.length === 0) { alert("Ajoutez d'abord un compte pour régler."); return; }
-        openMovement(d.direction === 'receivable' ? 'in' : 'out', { amount: d.amount, label: d.person, debt: d });
+        openMovement(d.direction === 'receivable' ? 'in' : 'out', { amount: debtRemaining(d), label: d.person, debt: d });
     };
     const toggleDebtSettled = async (d: Debt) => {
         if (!canEdit) return;
@@ -392,6 +419,7 @@ export default function FinanceContent() {
     const convResult = (parseFloat(convAmount) || 0) * (rates[convFrom] || 1);
     const panelHead = "flex items-center justify-between gap-2 px-4 py-2.5 border-b border-slate-100";
     const iconBtn = "inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors";
+    const projected = totals.available + totals.receivable - totals.payable;
 
     return (
         <div className="min-h-screen font-jakarta">
@@ -437,12 +465,18 @@ export default function FinanceContent() {
                     <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 flex flex-col">
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Disponible en banque</p>
-                                <p className={`text-[28px] sm:text-4xl font-semibold tabular-nums mt-1 leading-none ${totals.available < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(totals.available)} <span className="text-base font-medium text-slate-400">DT</span></p>
+                                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{includeDebts ? 'Disponible projeté' : 'Disponible en banque'}</p>
+                                <p className={`text-[28px] sm:text-4xl font-semibold tabular-nums mt-1 leading-none ${(includeDebts ? projected : totals.available) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(includeDebts ? projected : totals.available)} <span className="text-base font-medium text-slate-400">DT</span></p>
+                                {includeDebts && (
+                                    <p className="text-[11px] text-slate-500 mt-1.5 tabular-nums">en banque <span className="font-medium text-slate-900">{fmtc(totals.available)}</span> <span className="text-emerald-600">+{fmtc(totals.receivable)}</span> à recevoir <span className="text-rose-600">−{fmtc(totals.payable)}</span> à payer</p>
+                                )}
                             </div>
-                            <div className={`shrink-0 rounded-xl px-3 py-2 text-right ${periodTotals.net < 0 ? 'bg-rose-50' : 'bg-emerald-50'}`}>
-                                <p className="text-[10px] text-slate-500">Net · {periodLabel.toLowerCase()}</p>
-                                <p className={`text-base font-semibold tabular-nums ${periodTotals.net < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{periodTotals.net >= 0 ? '+' : ''}{fmtc(periodTotals.net)} DT</p>
+                            <div className="shrink-0 flex flex-col items-end gap-1.5">
+                                <div className={`rounded-xl px-3 py-2 text-right ${periodTotals.net < 0 ? 'bg-rose-50' : 'bg-emerald-50'}`}>
+                                    <p className="text-[10px] text-slate-500">Net · {periodLabel.toLowerCase()}</p>
+                                    <p className={`text-base font-semibold tabular-nums ${periodTotals.net < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{periodTotals.net >= 0 ? '+' : ''}{fmtc(periodTotals.net)} DT</p>
+                                </div>
+                                <button onClick={toggleIncludeDebts} className={`inline-flex items-center gap-1 h-7 px-2 rounded-lg text-[11px] font-medium border transition-colors ${includeDebts ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}><HandCoins className="h-3 w-3" /> {includeDebts ? 'Créances & dettes incluses' : 'Inclure créances & dettes'}</button>
                             </div>
                         </div>
 
@@ -627,27 +661,51 @@ export default function FinanceContent() {
                             <p className="px-4 py-8 text-center text-sm text-slate-400">Aucune créance ni dette</p>
                         ) : (
                             <div className="divide-y divide-slate-100">
-                                {debts.map((d) => (
-                                    <div key={d.id} className={`flex items-center gap-2.5 px-3.5 py-2 ${d.settled ? 'opacity-50' : ''}`}>
-                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${d.direction === 'receivable' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{d.direction === 'receivable' ? <ArrowDownRight className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}</div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className={`text-[13px] font-medium text-slate-900 truncate ${d.settled ? 'line-through' : ''}`}>{d.person}</p>
-                                            <p className="text-[10px] text-slate-400 truncate">{d.direction === 'receivable' ? 'On me doit' : 'Je dois'}{d.note ? ` · ${d.note}` : ''}{d.settled ? ' · réglé' : ''}</p>
-                                        </div>
-                                        <p className={`text-[12px] font-semibold tabular-nums shrink-0 ${d.direction === 'receivable' ? 'text-emerald-600' : 'text-rose-600'}`}>{fmtc(d.amount)} DT</p>
-                                        {canEdit && (d.settled
-                                            ? <button onClick={() => toggleDebtSettled(d)} title="Rouvrir" className="shrink-0 inline-flex items-center justify-center h-7 px-2 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-medium hover:bg-slate-50 transition-colors">Rouvrir</button>
-                                            : <button onClick={() => settleDebt(d)} title="Régler (crée le mouvement)" className="shrink-0 inline-flex items-center justify-center h-7 px-2 rounded-lg bg-slate-900 text-white text-[11px] font-medium hover:bg-slate-800 transition-colors">Régler</button>
-                                        )}
-                                        {canEdit && (
-                                            <div className="flex items-center shrink-0">
-                                                {!d.settled && <button onClick={() => toggleDebtSettled(d)} title="Marquer réglé (sans mouvement)" className={iconBtn}><Check className="h-3.5 w-3.5" /></button>}
-                                                <button onClick={() => openEditDebt(d)} className={iconBtn}><Pencil className="h-3.5 w-3.5" /></button>
-                                                <button onClick={() => deleteDebt(d)} className={`${iconBtn} hover:bg-rose-50 hover:text-rose-600`}><Trash2 className="h-3.5 w-3.5" /></button>
+                                {debts.map((d) => {
+                                    const pd = debtPaid.get(d.id);
+                                    const rem = debtRemaining(d);
+                                    const done = isSettled(d);
+                                    const partial = !!pd && pd.paid > 0 && !done;
+                                    const pct = d.amount > 0 ? Math.min(100, ((d.amount - rem) / d.amount) * 100) : 100;
+                                    const recv = d.direction === 'receivable';
+                                    return (
+                                        <div key={d.id} className={`px-3.5 py-2 ${done ? 'opacity-50' : ''}`}>
+                                            <div className="flex items-center gap-2.5">
+                                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${recv ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{recv ? <ArrowDownRight className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}</div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className={`text-[13px] font-medium text-slate-900 truncate ${done ? 'line-through' : ''}`}>{d.person}</p>
+                                                    <p className="text-[10px] text-slate-400 truncate">
+                                                        {recv ? 'On me doit' : 'Je dois'}{d.note ? ` · ${d.note}` : ''}
+                                                        {pd && pd.paid > 0 ? ` · ${pd.count} versement${pd.count > 1 ? 's' : ''} · ${fmtc(Math.min(pd.paid, d.amount))} / ${fmtc(d.amount)}` : ''}
+                                                        {done ? ' · réglé' : ''}
+                                                    </p>
+                                                </div>
+                                                <div className="text-right shrink-0">
+                                                    <p className={`text-[12px] font-semibold tabular-nums ${recv ? 'text-emerald-600' : 'text-rose-600'}`}>{partial ? `reste ${fmtc(rem)}` : fmtc(d.amount)} DT</p>
+                                                    {partial && <p className="text-[10px] text-slate-400 tabular-nums">sur {fmtc(d.amount)}</p>}
+                                                </div>
+                                                {canEdit && (done
+                                                    ? (d.settled
+                                                        ? <button onClick={() => toggleDebtSettled(d)} title="Rouvrir" className="shrink-0 inline-flex items-center justify-center h-7 px-2 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-medium hover:bg-slate-50 transition-colors">Rouvrir</button>
+                                                        : <span className="shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded-lg bg-emerald-50 text-emerald-700 text-[11px] font-medium"><CheckCircle2 className="h-3 w-3" /> Payé</span>)
+                                                    : <button onClick={() => settleDebt(d)} title="Régler tout ou une partie (crée le mouvement)" className="shrink-0 inline-flex items-center justify-center h-7 px-2 rounded-lg bg-slate-900 text-white text-[11px] font-medium hover:bg-slate-800 transition-colors">Régler</button>
+                                                )}
+                                                {canEdit && (
+                                                    <div className="flex items-center shrink-0">
+                                                        {!done && <button onClick={() => toggleDebtSettled(d)} title="Marquer réglé (sans mouvement)" className={iconBtn}><Check className="h-3.5 w-3.5" /></button>}
+                                                        <button onClick={() => openEditDebt(d)} className={iconBtn}><Pencil className="h-3.5 w-3.5" /></button>
+                                                        <button onClick={() => deleteDebt(d)} className={`${iconBtn} hover:bg-rose-50 hover:text-rose-600`}><Trash2 className="h-3.5 w-3.5" /></button>
+                                                    </div>
+                                                )}
                                             </div>
-                                        )}
-                                    </div>
-                                ))}
+                                            {pd && pd.paid > 0 && (
+                                                <div className="mt-1.5 ml-[38px] h-1 rounded-full bg-slate-100 overflow-hidden">
+                                                    <div className={`h-full ${recv ? 'bg-emerald-500' : 'bg-rose-500'}`} style={{ width: `${pct}%` }} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
@@ -684,7 +742,7 @@ export default function FinanceContent() {
                                                     <div key={m.id} className="flex items-center gap-2.5 px-3.5 py-2 border-b border-slate-50 last:border-b-0">
                                                         <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${m.direction === 'out' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>{m.direction === 'out' ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}</div>
                                                         <div className="min-w-0 flex-1">
-                                                            <p className="text-[13px] font-medium text-slate-900 truncate">{m.label || (m.direction === 'out' ? 'Paiement' : 'Entrée')}{sn && <span className="text-slate-400 font-normal"> · {sn}</span>}</p>
+                                                            <p className="text-[13px] font-medium text-slate-900 truncate">{m.label || (m.direction === 'out' ? 'Paiement' : 'Entrée')}{sn && <span className="text-slate-400 font-normal"> · {sn}</span>}{m.debt_id && <span className="ml-1.5 inline-flex items-center rounded px-1 py-px text-[9px] font-medium bg-slate-100 text-slate-500 align-middle">versement</span>}</p>
                                                             <p className="text-[10px] text-slate-400 truncate flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${tone(m.account_id)}`} />{accountName(m.account_id)}</p>
                                                         </div>
                                                         <div className="text-right shrink-0">
@@ -716,9 +774,14 @@ export default function FinanceContent() {
                 </div>
             </Modal>
 
-            <Modal open={showMoveModal} onClose={() => { setShowMoveModal(false); setSettlingDebt(null); }} title={settlingDebt ? 'Régler' : (moveDir === 'out' ? 'Nouvelle sortie' : 'Nouvelle entrée')} description={moveDir === 'out' ? "Un paiement qui sort d'un compte" : "De l'argent ajouté à un compte"} size="sm" icon={<div className={`w-10 h-10 rounded-xl flex items-center justify-center ${moveDir === 'out' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>{moveDir === 'out' ? <TrendingDown className="h-5 w-5" /> : <TrendingUp className="h-5 w-5" />}</div>}
+            <Modal open={showMoveModal} onClose={() => { setShowMoveModal(false); setSettlingDebt(null); }} title={settlingDebt ? `Régler · ${settlingDebt.person}` : (moveDir === 'out' ? 'Nouvelle sortie' : 'Nouvelle entrée')} description={moveDir === 'out' ? "Un paiement qui sort d'un compte" : "De l'argent ajouté à un compte"} size="sm" icon={<div className={`w-10 h-10 rounded-xl flex items-center justify-center ${moveDir === 'out' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>{moveDir === 'out' ? <TrendingDown className="h-5 w-5" /> : <TrendingUp className="h-5 w-5" />}</div>}
                 footer={<><button onClick={() => { setShowMoveModal(false); setSettlingDebt(null); }} className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Annuler</button><button onClick={saveMovement} disabled={saving || !moveAccount || !moveAmount} className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"><CheckCircle2 className="h-4 w-4" /> Enregistrer</button></>}>
                 <div className="space-y-4">
+                    {settlingDebt && (
+                        <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[12px] text-slate-600">
+                            Reste à régler : <span className="font-semibold text-slate-900 tabular-nums">{fmtc(debtRemaining(settlingDebt))} DT</span> sur {fmtc(settlingDebt.amount)} — vous pouvez régler une partie seulement, le reste se recalcule.
+                        </div>
+                    )}
                     {!settlingDebt && (
                         <div className="flex bg-slate-100 p-1 rounded-xl">
                             <button onClick={() => setMoveDir('out')} className={`flex-1 h-9 rounded-lg text-sm font-medium transition-colors ${moveDir === 'out' ? 'bg-white text-rose-700 shadow-sm' : 'text-slate-500'}`}>Sortie</button>

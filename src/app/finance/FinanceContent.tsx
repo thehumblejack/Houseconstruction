@@ -353,8 +353,9 @@ export default function FinanceContent() {
                     </div>
                 </div>
 
-                {/* KPI strip */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
+                {/* Top zone: KPIs (left) + compact converter (top-right) */}
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr,300px] gap-3 items-start">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
                     {kpis.map((k) => (
                         <div key={k.label} className="rounded-2xl border border-slate-200 bg-white px-3.5 py-3 min-w-0">
                             <div className="flex items-center justify-between gap-2">
@@ -364,6 +365,25 @@ export default function FinanceContent() {
                             <p className={`text-base sm:text-lg font-semibold tabular-nums mt-1 truncate ${kpiText(k.tone)}`}>{fmtc(k.value)} <span className="text-[10px] font-normal text-slate-400">DT</span></p>
                         </div>
                     ))}
+                </div>
+
+                    {/* Compact converter — top right */}
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                        <div className="flex items-center justify-between mb-2">
+                            <p className="text-[12px] font-semibold text-slate-900 flex items-center gap-1.5"><ArrowRightLeft className="h-3.5 w-3.5 text-slate-400" /> Convertir</p>
+                            <button onClick={openRates} className="text-[11px] font-medium text-slate-500 hover:text-slate-900 transition-colors tabular-nums">1$={rates.USD} · 1€={rates.EUR}</button>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <select value={convFrom} onChange={(e) => setConvFrom(e.target.value as Currency)} className="h-9 px-2 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition shrink-0">
+                                <option value="USD">$</option><option value="EUR">€</option><option value="TND">DT</option>
+                            </select>
+                            <input type="number" inputMode="decimal" value={convAmount} onChange={(e) => setConvAmount(e.target.value)} placeholder="Montant" className="w-full min-w-0 h-9 px-2.5 rounded-lg border border-slate-200 bg-white text-[13px] text-slate-900 tabular-nums placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition" />
+                            <span className="text-slate-300 shrink-0 text-xs">=</span>
+                            <div className="h-9 px-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center shrink-0 min-w-[92px] justify-end">
+                                <span className="text-[13px] font-semibold text-slate-900 tabular-nums">{convResult.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">DT</span></span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {notReady && (
@@ -410,45 +430,6 @@ export default function FinanceContent() {
                         )}
                     </div>
 
-                    {/* Charges & encaissements */}
-                    {monthlyCompare.length > 0 && (
-                        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-                            <div className={panelHead}>
-                                <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-slate-400" /> Charges &amp; encaissements</p>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm min-w-[420px]">
-                                    <thead>
-                                        <tr className="text-[11px] text-slate-400 border-b border-slate-100">
-                                            <th className="text-left font-medium px-3.5 py-2.5">Mois</th>
-                                            <th className="text-right font-medium px-3 py-2.5">Encaissé</th>
-                                            <th className="text-right font-medium px-3 py-2.5">Charges</th>
-                                            <th className="text-right font-medium px-3.5 py-2.5">Net</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {monthlyCompare.map((row) => (
-                                            <tr key={row.key} className="hover:bg-slate-50/60 transition-colors">
-                                                <td className="px-3.5 py-2.5 text-slate-700 capitalize whitespace-nowrap">{row.label}</td>
-                                                <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600 font-medium">{fmtc(row.in)}</td>
-                                                <td className="px-3 py-2.5 text-right tabular-nums text-rose-600 font-medium">{fmtc(row.out)}</td>
-                                                <td className={`px-3.5 py-2.5 text-right tabular-nums font-semibold ${row.net < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{row.net >= 0 ? '+' : ''}{fmtc(row.net)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                    <tfoot>
-                                        <tr className="border-t border-slate-200 bg-slate-50 text-[13px]">
-                                            <td className="px-3.5 py-2.5 font-semibold text-slate-900">Total</td>
-                                            <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-600">{fmtc(totals.inSum)}</td>
-                                            <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-rose-600">{fmtc(totals.out)}</td>
-                                            <td className={`px-3.5 py-2.5 text-right tabular-nums font-bold ${(totals.inSum - totals.out) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(totals.inSum - totals.out) >= 0 ? '+' : ''}{fmtc(totals.inSum - totals.out)}</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        </div>
-                    )}
-
                     {/* Créances & dettes */}
                     <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
                         <div className={panelHead}>
@@ -489,6 +470,45 @@ export default function FinanceContent() {
                         )}
                     </div>
 
+                    {/* Charges & encaissements */}
+                    {monthlyCompare.length > 0 && (
+                        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                            <div className={panelHead}>
+                                <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-slate-400" /> Charges &amp; encaissements</p>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm min-w-[420px]">
+                                    <thead>
+                                        <tr className="text-[11px] text-slate-400 border-b border-slate-100">
+                                            <th className="text-left font-medium px-3.5 py-2.5">Mois</th>
+                                            <th className="text-right font-medium px-3 py-2.5">Encaissé</th>
+                                            <th className="text-right font-medium px-3 py-2.5">Charges</th>
+                                            <th className="text-right font-medium px-3.5 py-2.5">Net</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {monthlyCompare.map((row) => (
+                                            <tr key={row.key} className="hover:bg-slate-50/60 transition-colors">
+                                                <td className="px-3.5 py-2.5 text-slate-700 capitalize whitespace-nowrap">{row.label}</td>
+                                                <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600 font-medium">{fmtc(row.in)}</td>
+                                                <td className="px-3 py-2.5 text-right tabular-nums text-rose-600 font-medium">{fmtc(row.out)}</td>
+                                                <td className={`px-3.5 py-2.5 text-right tabular-nums font-semibold ${row.net < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{row.net >= 0 ? '+' : ''}{fmtc(row.net)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr className="border-t border-slate-200 bg-slate-50 text-[13px]">
+                                            <td className="px-3.5 py-2.5 font-semibold text-slate-900">Total</td>
+                                            <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-600">{fmtc(totals.inSum)}</td>
+                                            <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-rose-600">{fmtc(totals.out)}</td>
+                                            <td className={`px-3.5 py-2.5 text-right tabular-nums font-bold ${(totals.inSum - totals.out) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(totals.inSum - totals.out) >= 0 ? '+' : ''}{fmtc(totals.inSum - totals.out)}</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Revenus récurrents */}
                     <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
                         <div className={panelHead}>
@@ -524,24 +544,6 @@ export default function FinanceContent() {
                                 })}
                             </div>
                         )}
-                    </div>
-
-                    {/* Convertisseur */}
-                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-                        <div className={panelHead}>
-                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><ArrowRightLeft className="h-4 w-4 text-slate-400" /> Convertisseur</p>
-                            <button onClick={openRates} className="text-[12px] font-medium text-slate-500 hover:text-slate-900 transition-colors">1$={rates.USD} · 1€={rates.EUR}</button>
-                        </div>
-                        <div className="p-4 flex items-center gap-2">
-                            <select value={convFrom} onChange={(e) => setConvFrom(e.target.value as Currency)} className="h-11 px-2.5 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition shrink-0">
-                                <option value="USD">USD $</option><option value="EUR">EUR €</option><option value="TND">TND</option>
-                            </select>
-                            <input type="number" inputMode="decimal" value={convAmount} onChange={(e) => setConvAmount(e.target.value)} placeholder="Montant" className="w-full min-w-0 h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 tabular-nums placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition" />
-                            <span className="text-slate-400 shrink-0">=</span>
-                            <div className="h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center min-w-[104px] justify-end shrink-0">
-                                <span className="text-sm font-semibold text-slate-900 tabular-nums">{convResult.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs text-slate-400">DT</span></span>
-                            </div>
-                        </div>
                     </div>
 
                     {/* Mouvements */}

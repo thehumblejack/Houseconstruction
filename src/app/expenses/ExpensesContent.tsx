@@ -9,7 +9,7 @@ import {
     Plus, Receipt, FileText, Trash2, TrendingUp, DollarSign,
     Upload, X, CheckCircle2, Clock, Eye, EyeOff, AlertCircle, FileDown, ChevronDown,
     ArrowRight, ArrowUp, ArrowDown, ArrowUpDown, Search, Pencil, Image as ImageIcon, Package, GripVertical,
-    Store, FilePlus, Sparkles, Keyboard, ImagePlus, ClipboardList, FolderOpen, FolderInput, Layers, Inbox
+    Store, FilePlus, Sparkles, Keyboard, ImagePlus, ClipboardList, FolderOpen, FolderInput, Layers, Inbox, CornerDownRight
 } from 'lucide-react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
 import { Modal, AnchoredDropdown } from '@/components/ui';
@@ -272,6 +272,8 @@ function ExpensesContentMain() {
 
     // ... (rest of the state definitions)
     const [loading, setLoading] = useState(true);
+    // True once the first successful data load completed for the current project.
+    const hasLoadedRef = useRef(false);
     const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
     const [newSupplierName, setNewSupplierName] = useState('');
     const [newSupplierColor, setNewSupplierColor] = useState('bg-slate-500');
@@ -688,6 +690,7 @@ function ExpensesContentMain() {
     // Clear session-linked list when project changes
     useEffect(() => {
         setSessionLinkedSuppliers(new Set());
+        hasLoadedRef.current = false; // a project switch may show the skeleton once
     }, [currentProject?.id]);
 
     useEffect(() => {
@@ -701,7 +704,10 @@ function ExpensesContentMain() {
             return;
         }
 
-        setLoading(true);
+        // Full-page skeleton ONLY on the first load (or after a project switch).
+        // Later refetches (realtime events, saves) update the data silently so the
+        // page never "reloads" under the user.
+        if (!hasLoadedRef.current) setLoading(true);
         try {
             const [allSuppliersRes, expensesRes, depositsRes, settingsRes, uploadedDocsRes] = await Promise.all([
                 supabase.from('suppliers').select('*').is('deleted_at', null).order('name'),
@@ -927,6 +933,7 @@ function ExpensesContentMain() {
             console.error('Expenses: Critical error in fetchData:', error);
         } finally {
             console.log('Expenses: Fetching data complete.');
+            hasLoadedRef.current = true;
             setLoading(false);
         }
     }, [supabase, currentProject, activeTab, sessionLinkedSuppliers, projectLoading]);
@@ -2830,7 +2837,7 @@ function ExpensesContentMain() {
                     <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">Dépenses</h1>
                     <p className="text-sm text-slate-500 mt-0.5">Factures, bons et acomptes par fournisseur</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <button
                         onClick={() => setPrivacyMode(!privacyMode)}
                         className={`inline-flex items-center justify-center gap-2 h-10 px-3 rounded-xl text-sm font-medium transition-colors ${privacyMode ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
@@ -4269,17 +4276,17 @@ function ExpensesContentMain() {
 
                                     <div className="flex items-stretch gap-2 w-full lg:w-auto">
                                         <div className="grid grid-cols-3 gap-2 flex-1 lg:flex-initial">
-                                            <div className="bg-white rounded-2xl border border-slate-200 p-3 text-center min-w-[92px] lg:min-w-[110px]">
+                                            <div className="bg-white rounded-2xl border border-slate-200 p-2.5 lg:p-3 text-center min-w-0 lg:min-w-[110px]">
                                                 <p className="text-xs text-slate-500">Total</p>
-                                                <p className="text-base font-semibold text-slate-900 tabular-nums mt-0.5">{formatValue(activeStat.totalCost)}</p>
+                                                <p className="text-sm lg:text-base font-semibold text-slate-900 tabular-nums mt-0.5 truncate">{formatValue(activeStat.totalCost)}</p>
                                             </div>
-                                            <div className="bg-white rounded-2xl border border-slate-200 p-3 text-center min-w-[92px] lg:min-w-[110px]">
+                                            <div className="bg-white rounded-2xl border border-slate-200 p-2.5 lg:p-3 text-center min-w-0 lg:min-w-[110px]">
                                                 <p className="text-xs text-slate-500">Payé</p>
-                                                <p className="text-base font-semibold text-emerald-600 tabular-nums mt-0.5">{formatValue(activeStat.totalPaid)}</p>
+                                                <p className="text-sm lg:text-base font-semibold text-emerald-600 tabular-nums mt-0.5 truncate">{formatValue(activeStat.totalPaid)}</p>
                                             </div>
-                                            <div className="bg-white rounded-2xl border border-slate-200 p-3 text-center min-w-[92px] lg:min-w-[110px]">
+                                            <div className="bg-white rounded-2xl border border-slate-200 p-2.5 lg:p-3 text-center min-w-0 lg:min-w-[110px]">
                                                 <p className="text-xs text-slate-500">Solde</p>
-                                                <p className={`text-base font-semibold tabular-nums mt-0.5 ${activeStat.remaining < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatValue(activeStat.remaining)}</p>
+                                                <p className={`text-sm lg:text-base font-semibold tabular-nums mt-0.5 truncate ${activeStat.remaining < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatValue(activeStat.remaining)}</p>
                                             </div>
                                         </div>
                                         <button
@@ -4625,7 +4632,7 @@ function ExpensesContentMain() {
                                         </div>
 
                                         {/* Desktop table */}
-                                        <div className="hidden md:block rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                                        <div className="hidden md:block rounded-2xl border border-slate-200 overflow-x-auto bg-white">
                                             <table className="w-full text-left border-collapse">
                                                 <thead className="bg-slate-50 text-xs font-medium text-slate-500">
                                                     <tr>
@@ -4666,7 +4673,7 @@ function ExpensesContentMain() {
                                                             const memberIds = (currentSupplier?.expenses || []).filter(x => (x.groupName || '').trim() === entry.name).map(x => x.id);
                                                             const groupSelected = memberIds.length > 0 && memberIds.every(id => selectedExpenseIds.has(id));
                                                             return (
-                                                                <tr key={`group-${entry.name}`} className="border-t border-slate-100 bg-slate-50/80">
+                                                                <tr key={`group-${entry.name}`} className="border-t border-slate-100 bg-amber-50/70 border-l-4 border-l-amber-400">
                                                                     <td className="px-3 py-2.5 text-center">
                                                                         <input
                                                                             type="checkbox"
@@ -4713,7 +4720,7 @@ function ExpensesContentMain() {
                                                         return (
                                                             <React.Fragment key={e.id}>
                                                                 <tr
-                                                                    className={`group border-t border-slate-100 cursor-pointer transition-colors ${isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50'} ${inGroup ? 'border-l-2 border-l-amber-200' : ''} ${rowExcluded ? 'opacity-60' : ''}`}
+                                                                    className={`group border-t cursor-pointer transition-colors ${inGroup ? `border-slate-100/60 border-l-4 border-l-amber-300 ${isExpanded ? 'bg-amber-50/60' : 'bg-amber-50/30 hover:bg-amber-50/60'}` : `border-slate-100 ${isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50'}`} ${rowExcluded ? 'opacity-60' : ''}`}
                                                                     onClick={() => toggleRow(e.id)}
                                                                 >
                                                                     <td className="px-3 py-3 text-center" onClick={(ev) => ev.stopPropagation()}>
@@ -4732,6 +4739,7 @@ function ExpensesContentMain() {
                                                                     <td className="px-4 py-3">
                                                                         <div className="flex flex-col gap-0.5">
                                                                             <span className="text-sm font-medium text-slate-900 inline-flex items-center gap-2">
+                                                                                {inGroup && <CornerDownRight className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
                                                                                 {e.item}
                                                                                 {e.items && e.items.length > 0 && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-medium">{e.items.length} art.</span>}
                                                                                 {e.phaseId && phaseNameById[e.phaseId] && <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${phaseBadgeTone(e.phaseId)}`}>{phaseNameById[e.phaseId]}</span>}
@@ -4952,7 +4960,7 @@ function ExpensesContentMain() {
                                                     const memberIds = (currentSupplier?.expenses || []).filter(x => (x.groupName || '').trim() === entry.name).map(x => x.id);
                                                     const groupSelected = memberIds.length > 0 && memberIds.every(id => selectedExpenseIds.has(id));
                                                     return (
-                                                        <div key={`group-${entry.name}`} className={`rounded-2xl border px-4 py-3 flex items-center gap-2 ${excluded ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50/60'}`}>
+                                                        <div key={`group-${entry.name}`} className={`rounded-2xl border px-4 py-3 flex items-center gap-2 border-l-4 ${excluded ? 'border-slate-200 border-l-slate-300 bg-slate-50' : 'border-amber-200 border-l-amber-400 bg-amber-50/60'}`}>
                                                             <input
                                                                 type="checkbox"
                                                                 className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20 shrink-0"
@@ -4989,7 +4997,7 @@ function ExpensesContentMain() {
                                                 const rowExcluded = inGroup && isGroupExcluded((e.groupName || '').trim());
                                                 const isExpanded = expandedRows[e.id];
                                                 return (
-                                                    <div key={e.id} className={`rounded-2xl border border-slate-200 bg-white p-4 ${inGroup ? 'ml-3 border-l-2 border-l-amber-200' : ''} ${rowExcluded ? 'opacity-60' : ''}`}>
+                                                    <div key={e.id} className={`rounded-2xl border border-slate-200 bg-white p-4 ${inGroup ? 'ml-4 border-l-4 border-l-amber-300 bg-amber-50/30' : ''} ${rowExcluded ? 'opacity-60' : ''}`}>
                                                         <div className="flex items-start gap-3">
                                                             <input
                                                                 type="checkbox"
@@ -5001,6 +5009,7 @@ function ExpensesContentMain() {
                                                                 <div className="flex items-start justify-between gap-2">
                                                                     <div className="min-w-0">
                                                                         <p className="text-sm font-medium text-slate-900 truncate flex items-center gap-2">
+                                                                            {inGroup && <CornerDownRight className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
                                                                             {e.item}
                                                                             {e.items && e.items.length > 0 && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-medium shrink-0">{e.items.length} art.</span>}
                                                                                 {e.phaseId && phaseNameById[e.phaseId] && <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${phaseBadgeTone(e.phaseId)}`}>{phaseNameById[e.phaseId]}</span>}
@@ -5123,7 +5132,7 @@ function ExpensesContentMain() {
                                 {showDepositsSection && (
                                     <>
                                         {/* Desktop table */}
-                                        <div className="hidden md:block rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                                        <div className="hidden md:block rounded-2xl border border-slate-200 overflow-x-auto bg-white">
                                             <table className="w-full text-left border-collapse">
                                                 <thead className="bg-slate-50 text-xs font-medium text-slate-500">
                                                     <tr>
@@ -6213,7 +6222,7 @@ function ExpensesContentMain() {
             {/* Selection Summary Floating Bar */}
             {selectedExpenseIds.size > 0 && (
                 <div className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 z-[100] w-[95%] max-w-2xl bg-slate-900 text-white p-3 rounded-2xl shadow-xl animate-in slide-in-from-bottom-8 duration-300 border border-white/10">
-                    <div className="flex items-center justify-between gap-3 px-2">
+                    <div className="flex flex-wrap items-center justify-between gap-3 gap-y-2 px-2">
                         <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
                                 <ClipboardList className="h-4 w-4" />

@@ -569,52 +569,54 @@ export default function ArticlesContent() {
                 </div>
 
                 {/* Controls: view switch + search + colonnes */}
-                <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="inline-flex p-1 rounded-xl border border-slate-200 bg-white self-start">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                    <div className="grid grid-cols-3 sm:inline-flex p-1 rounded-xl border border-slate-200 bg-white sm:self-start shrink-0">
                         <button
                             onClick={() => setViewMode('best')}
-                            className={`inline-flex items-center justify-center gap-2 h-8 px-3 rounded-lg text-sm font-medium transition-colors ${viewMode === 'best' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                            className={`inline-flex items-center justify-center gap-1.5 h-9 sm:h-8 px-2 sm:px-3 rounded-lg text-sm font-medium transition-colors ${viewMode === 'best' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
                         >
-                            <Trophy className="w-4 h-4" />
-                            Comparatif
+                            <Trophy className="w-4 h-4 shrink-0" />
+                            <span className="truncate">Comparatif</span>
                         </button>
                         <button
                             onClick={() => setViewMode('matrix')}
-                            className={`inline-flex items-center justify-center gap-2 h-8 px-3 rounded-lg text-sm font-medium transition-colors ${viewMode === 'matrix' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                            className={`inline-flex items-center justify-center gap-1.5 h-9 sm:h-8 px-2 sm:px-3 rounded-lg text-sm font-medium transition-colors ${viewMode === 'matrix' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
                         >
-                            <Table2 className="w-4 h-4" />
-                            Matrice
+                            <Table2 className="w-4 h-4 shrink-0" />
+                            <span className="truncate">Matrice</span>
                         </button>
                         <button
                             onClick={() => setViewMode('inventory')}
-                            className={`inline-flex items-center justify-center gap-2 h-8 px-3 rounded-lg text-sm font-medium transition-colors ${viewMode === 'inventory' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                            className={`inline-flex items-center justify-center gap-1.5 h-9 sm:h-8 px-2 sm:px-3 rounded-lg text-sm font-medium transition-colors ${viewMode === 'inventory' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
                         >
-                            <List className="w-4 h-4" />
-                            Inventaire
+                            <List className="w-4 h-4 shrink-0" />
+                            <span className="truncate">Inventaire</span>
                         </button>
                     </div>
 
-                    <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                            type="text"
-                            placeholder="Rechercher un article..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full h-10 pl-9 pr-9 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300"
-                        />
-                        {searchTerm && (
-                            <button
-                                onClick={() => setSearchTerm('')}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-6 h-6 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-                            >
-                                <X className="w-3.5 h-3.5" />
-                            </button>
-                        )}
-                    </div>
+                    <div className="flex flex-1 min-w-0 gap-2 sm:gap-3">
+                        <div className="relative flex-1 min-w-0">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <input
+                                type="text"
+                                placeholder="Rechercher un article..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full h-10 pl-9 pr-9 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300"
+                            />
+                            {searchTerm && (
+                                <button
+                                    onClick={() => setSearchTerm('')}
+                                    aria-label="Effacer la recherche"
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-6 h-6 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                                >
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            )}
+                        </div>
 
-                    {viewMode !== 'inventory' && (
-                        <div className="relative column-settings-container self-start">
+                        {viewMode !== 'inventory' && (
+                        <div className="relative column-settings-container shrink-0">
                             <button
                                 onClick={() => setShowColumnSettings(!showColumnSettings)}
                                 className={`inline-flex items-center justify-center gap-2 h-10 px-3 rounded-xl border text-sm font-medium transition-colors ${showColumnSettings ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
@@ -629,7 +631,7 @@ export default function ArticlesContent() {
                             </button>
 
                             {showColumnSettings && (
-                                <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-2xl shadow-lg border border-slate-200 p-3 z-[120] animate-in fade-in zoom-in-95 duration-150">
+                                <div className="absolute top-full right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-lg border border-slate-200 p-3 z-[120] animate-in fade-in zoom-in-95 duration-150">
                                     <p className="text-xs font-medium text-slate-500 px-1 pb-2">Fournisseurs comparés</p>
                                     <div className="space-y-0.5 max-h-[360px] overflow-y-auto">
                                         {matrixData.suppliers.map((s) => {
@@ -655,7 +657,8 @@ export default function ArticlesContent() {
                                 </div>
                             )}
                         </div>
-                    )}
+                        )}
+                    </div>
                 </div>
 
                 {/* Content Area */}
@@ -681,6 +684,8 @@ export default function ArticlesContent() {
 
                             {/* Fournisseur filter + sort + comparables + reset */}
                             <div className="flex flex-wrap items-center gap-2">
+                                {viewMode === 'best' && (
+                                <>
                                 <div className="relative supplier-filter-container">
                                     <button
                                         onClick={() => setShowSupplierFilter(!showSupplierFilter)}
@@ -696,7 +701,7 @@ export default function ArticlesContent() {
                                     </button>
 
                                     {showSupplierFilter && (
-                                        <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-2xl shadow-lg border border-slate-200 p-3 z-[120] animate-in fade-in zoom-in-95 duration-150">
+                                        <div className="absolute top-full left-0 mt-2 w-64 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-lg border border-slate-200 p-3 z-[120] animate-in fade-in zoom-in-95 duration-150">
                                             <p className="text-xs font-medium text-slate-500 px-1 pb-2">Articles où participent :</p>
                                             <div className="space-y-0.5 max-h-[300px] overflow-y-auto">
                                                 {matrixData.suppliers.map((s) => {
@@ -750,8 +755,10 @@ export default function ArticlesContent() {
                                     className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-xs font-medium transition-colors ${comparableOnly ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
                                 >
                                     <Check className="h-3.5 w-3.5" />
-                                    Comparables uniquement
+                                    Comparables
                                 </button>
+                                </>
+                                )}
 
                                 {activeFilterCount > 0 && (
                                     <button
@@ -759,11 +766,11 @@ export default function ArticlesContent() {
                                         className="inline-flex items-center gap-1 h-9 px-3 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                                     >
                                         <X className="h-3.5 w-3.5" />
-                                        {activeFilterCount} filtre{activeFilterCount > 1 ? 's' : ''} · Réinitialiser
+                                        Réinitialiser ({activeFilterCount})
                                     </button>
                                 )}
 
-                                <span className="ml-auto text-xs text-slate-400 tabular-nums">
+                                <span className="ml-auto text-xs text-slate-400 tabular-nums whitespace-nowrap">
                                     {viewMode === 'best' ? comparatorRows.length : matrixRows.length} article{(viewMode === 'best' ? comparatorRows.length : matrixRows.length) > 1 ? 's' : ''}
                                 </span>
                             </div>
@@ -790,7 +797,7 @@ export default function ArticlesContent() {
                                                 className="p-3.5 cursor-pointer hover:bg-slate-50 transition-colors"
                                             >
                                                 <div className="flex items-start justify-between gap-2">
-                                                    <p className="text-sm font-semibold text-slate-900 leading-snug min-w-0 flex-1" title={row.name}>{row.name}</p>
+                                                    <p className="text-sm font-semibold text-slate-900 leading-snug min-w-0 flex-1 break-words" title={row.name}>{row.name}</p>
                                                     <ChevronDown className={`h-4 w-4 text-slate-400 shrink-0 mt-0.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                                 </div>
 
@@ -898,7 +905,7 @@ export default function ArticlesContent() {
                                 <table className="w-full text-left border-collapse">
                                     <thead>
                                         <tr className="bg-slate-50">
-                                            <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500 min-w-[200px]">Article</th>
+                                            <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500 min-w-[180px] max-w-[240px] shadow-[inset_-1px_0_0_theme(colors.slate.200)]">Article</th>
                                             <th className="px-4 py-3 text-xs font-medium text-slate-500 min-w-[220px]">Meilleur prix</th>
                                             {activeMatrixCols.map((s) => (
                                                 <th
@@ -931,8 +938,10 @@ export default function ArticlesContent() {
                                                 .map(([, v]) => v.price);
                                             const best = bestPriceFor(row.prices, visibleColumns);
                                             return (
-                                                <tr key={row.name} className="border-t border-slate-100 hover:bg-slate-50">
-                                                    <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-slate-900">{row.name}</td>
+                                                <tr key={row.name} className="group border-t border-slate-100 hover:bg-slate-50">
+                                                    <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 px-4 py-3 shadow-[inset_-1px_0_0_theme(colors.slate.100)] transition-colors">
+                                                        <p className="text-sm font-medium text-slate-900 max-w-[220px] truncate" title={row.name}>{row.name}</p>
+                                                    </td>
                                                     <td className="px-4 py-3">
                                                         {best ? (
                                                             <div className="flex items-center justify-between gap-2">
@@ -997,7 +1006,7 @@ export default function ArticlesContent() {
                                 const best = bestPriceFor(row.prices, visibleColumns);
                                 return (
                                     <div key={row.name} className="rounded-2xl border border-slate-200 bg-white p-4">
-                                        <p className="text-sm font-semibold text-slate-900 mb-3">{row.name}</p>
+                                        <p className="text-sm font-semibold text-slate-900 mb-3 break-words" title={row.name}>{row.name}</p>
                                         {best && (
                                             <div className="flex items-center justify-between gap-3 mb-3 rounded-xl bg-amber-50 px-3 py-2">
                                                 <div className="min-w-0">
@@ -1010,7 +1019,7 @@ export default function ArticlesContent() {
                                                 </div>
                                                 <Link
                                                     href={`/orders?article=${encodeURIComponent(row.name)}&price=${best.price}&supplier=${encodeURIComponent(best.supplier)}`}
-                                                    className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-slate-900 text-white text-xs font-medium shrink-0"
+                                                    className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-slate-900 text-white text-xs font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors shrink-0"
                                                 >
                                                     <ShoppingCart className="h-3.5 w-3.5" /> Commander
                                                 </Link>
@@ -1024,7 +1033,7 @@ export default function ArticlesContent() {
                                                 const isBest = price === Math.min(...visiblePrices);
                                                 return (
                                                     <div key={sup} className="flex items-center justify-between gap-3">
-                                                        <span className="text-xs text-slate-500 truncate">{sup}</span>
+                                                        <span className="text-xs text-slate-500 truncate min-w-0" title={sup}>{sup}</span>
                                                         <span className="flex items-center gap-2 shrink-0">
                                                             <span className={`text-sm font-semibold tabular-nums ${isBest ? 'text-emerald-600' : 'text-slate-700'}`}>
                                                                 {price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] font-normal text-slate-400">DT</span>
@@ -1131,7 +1140,7 @@ export default function ArticlesContent() {
                                                     <div key={row.id} className="p-4">
                                                         <div className="flex items-start justify-between gap-3">
                                                             <div className="min-w-0 flex-1">
-                                                                <p className="text-sm font-medium text-slate-900">{normalizeArticleName(row.designation)}</p>
+                                                                <p className="text-sm font-medium text-slate-900 break-words">{normalizeArticleName(row.designation)}</p>
                                                                 <p className="text-xs text-slate-400 mt-0.5 tabular-nums">{row.date}</p>
                                                             </div>
                                                             {isAdmin && (
@@ -1169,6 +1178,19 @@ export default function ArticlesContent() {
                                 <Package className="h-10 w-10 text-slate-300 mb-3" />
                                 <p className="text-sm font-medium text-slate-900">Aucun article enregistré</p>
                                 <p className="text-sm text-slate-500 mt-1">Commencez par ajouter votre premier achat.</p>
+                            </div>
+                        )}
+
+                        {articles.length > 0 && supplierGroups.length === 0 && (
+                            <div className="flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-slate-200 bg-white py-16">
+                                <Search className="h-10 w-10 text-slate-300 mb-3" />
+                                <p className="text-sm text-slate-500">Aucun résultat pour cette recherche.</p>
+                                <button
+                                    onClick={() => setSearchTerm('')}
+                                    className="mt-3 inline-flex items-center gap-1 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-50 transition-colors"
+                                >
+                                    <X className="h-3.5 w-3.5" /> Effacer la recherche
+                                </button>
                             </div>
                         )}
                     </div>

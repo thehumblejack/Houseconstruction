@@ -267,14 +267,14 @@ export default function SuppliersContent() {
                         { label: 'Dette restante', value: Math.abs(stats.reduce((sum, s) => sum + (s.remaining < 0 ? s.remaining : 0), 0)), unit: 'DT', tone: 'bg-rose-50 text-rose-600', icon: AlertCircle },
                         { label: 'Partenaires actifs', value: stats.filter(s => s.isSelected).length, total: stats.length, tone: 'bg-blue-50 text-blue-600', icon: User }
                     ].map((stat, idx) => (
-                        <div key={idx} className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
-                            <div className="flex items-start justify-between">
-                                <p className="text-xs text-slate-500">{stat.label}</p>
-                                <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg ${stat.tone}`}>
+                        <div key={idx} className="min-w-0 bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                            <div className="flex items-start justify-between gap-2">
+                                <p className="text-xs text-slate-500 min-w-0">{stat.label}</p>
+                                <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg shrink-0 ${stat.tone}`}>
                                     <stat.icon className="h-4 w-4" />
                                 </span>
                             </div>
-                            <p className="text-xl sm:text-2xl font-semibold text-slate-900 tabular-nums mt-1">
+                            <p className="text-xl sm:text-2xl font-semibold text-slate-900 tabular-nums mt-1 break-words leading-tight">
                                 {stat.value.toLocaleString(undefined, { minimumFractionDigits: stat.unit ? 3 : 0 })}
                                 {stat.unit && <span className="text-xs font-medium text-slate-400 ml-1.5">{stat.unit}</span>}
                                 {stat.total !== undefined && <span className="text-xs font-medium text-slate-400 ml-1.5">/ {stat.total}</span>}
@@ -425,16 +425,16 @@ export default function SuppliersContent() {
                                 </div>
 
                                 <div className="mt-3 grid grid-cols-2 gap-3">
-                                    <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                    <div className="min-w-0 rounded-xl bg-slate-50 px-3 py-2">
                                         <p className="text-xs text-slate-500">Dépenses TTC</p>
-                                        <p className="text-sm font-medium text-slate-900 tabular-nums">
+                                        <p className="text-sm font-medium text-slate-900 tabular-nums break-words">
                                             {s.totalCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}
                                         </p>
                                         <p className="text-xs text-slate-400">{s.articleCount} articles</p>
                                     </div>
-                                    <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                    <div className="min-w-0 rounded-xl bg-slate-50 px-3 py-2">
                                         <p className="text-xs text-slate-500">Solde</p>
-                                        <p className={`text-sm font-medium tabular-nums ${s.remaining < 0 ? 'text-rose-700' : s.remaining > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                        <p className={`text-sm font-medium tabular-nums break-words ${s.remaining < 0 ? 'text-rose-700' : s.remaining > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
                                             {s.remaining.toLocaleString(undefined, { minimumFractionDigits: 3 })}
                                         </p>
                                     </div>

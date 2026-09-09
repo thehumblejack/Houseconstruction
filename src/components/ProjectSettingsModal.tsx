@@ -194,14 +194,14 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
             <div className="flex gap-1 bg-slate-100 p-1 rounded-xl mb-4">
                 <button
                     onClick={() => { setActiveTab('members'); resetInviteObj(); }}
-                    className={`flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'members' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`flex-1 inline-flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeTab === 'members' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                     <Users className="h-4 w-4" />
                     Membres
                 </button>
                 <button
                     onClick={() => { setActiveTab('invites'); resetInviteObj(); }}
-                    className={`flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'invites' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`flex-1 inline-flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeTab === 'invites' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                     <Send className="h-4 w-4" />
                     Invitations
@@ -319,7 +319,7 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
                                     <button
                                         onClick={copyToClipboard}
                                         className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 active:scale-[0.99] transition-colors"
@@ -425,7 +425,7 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
                                             </span>
                                             <div className="min-w-0">
                                                 <p className="text-sm font-medium text-slate-900 truncate">{inv.email}</p>
-                                                <div className="flex items-center gap-2 mt-0.5">
+                                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
                                                     {roleChip(inv.role)}
                                                     <span className="text-xs text-slate-400">Expire le {new Date(new Date(inv.created_at).getTime() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}</span>
                                                 </div>

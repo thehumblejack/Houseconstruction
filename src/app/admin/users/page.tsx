@@ -215,7 +215,7 @@ export default function AdminUsersPage() {
         );
     };
 
-    const roleSelectClass = 'h-9 px-2.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition cursor-pointer disabled:opacity-50';
+    const roleSelectClass = 'h-10 max-w-full px-2.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition cursor-pointer disabled:opacity-50';
 
     const renderActions = (user: UserProfile) => (
         <div className="flex items-center justify-end gap-1">
@@ -423,7 +423,7 @@ export default function AdminUsersPage() {
                                     value={user.role}
                                     onChange={(e) => updateUserRole(user.id, e.target.value as any)}
                                     disabled={actionLoading === user.id}
-                                    className={roleSelectClass}
+                                    className={`${roleSelectClass} min-w-0`}
                                 >
                                     <option value="viewer">Observateur</option>
                                     <option value="user">Utilisateur</option>

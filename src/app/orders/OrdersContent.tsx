@@ -558,8 +558,8 @@ export default function OrdersContent() {
 
                 {/* Stat cards */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
-                        <div className="flex items-start justify-between">
+                    <div className="min-w-0 bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                        <div className="flex items-start justify-between gap-2">
                             <p className="text-xs text-slate-500">En cours</p>
                             <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-amber-50 text-amber-600">
                                 <Truck className="h-4 w-4" />
@@ -567,8 +567,8 @@ export default function OrdersContent() {
                         </div>
                         <p className="text-xl sm:text-2xl font-semibold text-slate-900 tabular-nums mt-1">{pendingOrders.length}</p>
                     </div>
-                    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
-                        <div className="flex items-start justify-between">
+                    <div className="min-w-0 bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                        <div className="flex items-start justify-between gap-2">
                             <p className="text-xs text-slate-500">Livrées</p>
                             <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600">
                                 <CheckCircle2 className="h-4 w-4" />
@@ -576,8 +576,8 @@ export default function OrdersContent() {
                         </div>
                         <p className="text-xl sm:text-2xl font-semibold text-slate-900 tabular-nums mt-1">{deliveredOrders.length}</p>
                     </div>
-                    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
-                        <div className="flex items-start justify-between">
+                    <div className="min-w-0 bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                        <div className="flex items-start justify-between gap-2">
                             <p className="text-xs text-slate-500">Total commandes</p>
                             <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 text-slate-600">
                                 <Package className="h-4 w-4" />
@@ -585,14 +585,14 @@ export default function OrdersContent() {
                         </div>
                         <p className="text-xl sm:text-2xl font-semibold text-slate-900 tabular-nums mt-1">{filteredOrders.length}</p>
                     </div>
-                    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
-                        <div className="flex items-start justify-between">
+                    <div className="min-w-0 bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                        <div className="flex items-start justify-between gap-2">
                             <p className="text-xs text-slate-500">Valeur en cours</p>
                             <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-blue-50 text-blue-600">
                                 <Clock className="h-4 w-4" />
                             </span>
                         </div>
-                        <p className="text-xl sm:text-2xl font-semibold text-slate-900 tabular-nums mt-1">
+                        <p className="text-xl sm:text-2xl font-semibold text-slate-900 tabular-nums mt-1 break-words leading-tight">
                             {pendingOrders.reduce((s, o) => s + orderTotal(o), 0).toLocaleString(undefined, { minimumFractionDigits: 3 })}
                             <span className="text-xs text-slate-400 ml-1">DT</span>
                         </p>
@@ -813,7 +813,7 @@ export default function OrdersContent() {
                 size="xl"
                 footer={
                     <>
-                        <div className="mr-auto text-left">
+                        <div className="w-full sm:w-auto sm:mr-auto text-left">
                             <p className="text-xs text-slate-500">Valeur estimée</p>
                             <p className="text-lg font-semibold text-slate-900 tabular-nums">
                                 {totalEstimate.toLocaleString(undefined, { minimumFractionDigits: 3 })}
@@ -859,7 +859,7 @@ export default function OrdersContent() {
                     <div>
                         <div className="flex justify-between items-center mb-1.5">
                             <label className={labelClass + ' mb-0'}>Articles à commander</label>
-                            <button onClick={handleAddItemRow} className="text-xs font-medium text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors">
+                            <button onClick={handleAddItemRow} className="inline-flex items-center h-10 px-3 rounded-lg text-xs font-medium text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-colors">
                                 + Ajouter une ligne
                             </button>
                         </div>
@@ -965,7 +965,7 @@ export default function OrdersContent() {
                         {(viewingOrder.items || []).map((item, idx) => (
                             <div key={idx} className="flex justify-between items-start gap-3 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
                                 <div className="min-w-0">
-                                    <p className="text-sm font-medium text-slate-900">{item.article_name}</p>
+                                    <p className="text-sm font-medium text-slate-900 break-words">{item.article_name}</p>
                                     <p className="text-xs text-slate-400 mt-0.5 tabular-nums">
                                         {item.quantity} {item.unit} × {item.unitPrice?.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT
                                     </p>

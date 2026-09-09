@@ -152,7 +152,7 @@ function ModalShell({
                 ref={sheetRef}
                 role="dialog"
                 aria-modal="true"
-                className={`relative flex w-full ${sizes[size]} max-h-[92dvh] flex-col rounded-t-3xl border border-slate-200 bg-white shadow-xl animate-in slide-in-from-bottom-4 duration-200 sm:max-h-[88vh] sm:rounded-2xl sm:zoom-in-95`}
+                className={`relative flex w-full max-w-full ${sizes[size]} max-h-[92dvh] flex-col overflow-x-hidden rounded-t-3xl border border-slate-200 bg-white shadow-xl animate-in slide-in-from-bottom-4 duration-200 sm:max-h-[88vh] sm:rounded-2xl sm:zoom-in-95`}
             >
                 {/* Mobile grab zone — swipe down to close */}
                 <div
@@ -166,7 +166,9 @@ function ModalShell({
 
                 {header}
 
-                <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">{children}</div>
+                {/* min-w-0 on form controls: iOS date/select inputs refuse to shrink
+                    inside grids and would otherwise push the sheet past the viewport. */}
+                <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-4 sm:px-5 [&_input]:min-w-0 [&_select]:min-w-0 [&_.grid>*]:min-w-0">{children}</div>
 
                 {footer && (
                     <div className="border-t border-slate-100 px-4 py-3 sm:px-5 sm:py-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4">

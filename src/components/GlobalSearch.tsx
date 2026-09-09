@@ -186,7 +186,7 @@ export default function GlobalSearch() {
                 <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[12vh] px-4 font-jakarta" onKeyDown={onModalKeyDown}>
                     <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150" onClick={close} />
 
-                    <div className="relative w-full max-w-xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[72vh] animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-150">
+                    <div className="relative w-full max-w-xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[72dvh] animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-150">
                         {/* Search input */}
                         <div className="flex items-center gap-3 px-4 h-14 border-b border-slate-100 shrink-0">
                             {loading
@@ -304,7 +304,7 @@ export default function GlobalSearch() {
                         </div>
 
                         {/* Footer hints */}
-                        <div className="flex items-center justify-between gap-4 px-4 h-10 border-t border-slate-100 text-[11px] text-slate-400 shrink-0">
+                        <div className="hidden sm:flex items-center justify-between gap-4 px-4 h-10 border-t border-slate-100 text-[11px] text-slate-400 shrink-0">
                             <div className="flex items-center gap-3">
                                 <span className="flex items-center gap-1"><kbd className="inline-flex items-center justify-center w-5 h-5 rounded border border-slate-200 bg-slate-50"><ArrowUp className="h-3 w-3" /></kbd><kbd className="inline-flex items-center justify-center w-5 h-5 rounded border border-slate-200 bg-slate-50"><ArrowDown className="h-3 w-3" /></kbd> Naviguer</span>
                                 <span className="flex items-center gap-1"><kbd className="inline-flex items-center justify-center w-5 h-5 rounded border border-slate-200 bg-slate-50"><CornerDownLeft className="h-3 w-3" /></kbd> Ouvrir</span>

@@ -318,7 +318,7 @@ export default function InboxContent() {
                                         />
                                     </div>
                                     {showSupplierList && (
-                                        <div className="absolute z-20 mt-1.5 w-full rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
+                                        <div className="absolute z-20 mt-1.5 w-full rounded-xl border border-slate-200 bg-white shadow-lg max-h-60 overflow-y-auto overscroll-contain">
                                             {filteredSuppliers.length === 0 ? (
                                                 <p className="px-3 py-3 text-sm text-slate-400">Aucun fournisseur trouvé.</p>
                                             ) : (

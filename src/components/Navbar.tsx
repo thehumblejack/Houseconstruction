@@ -362,7 +362,7 @@ export default function Navbar() {
                             onClick={() => setIsMoreOpen(false)}
                             className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150"
                         />
-                        <div className="absolute bottom-[calc(100%+12px)] inset-x-0 bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-200">
+                        <div className="absolute bottom-[calc(100%+12px)] inset-x-0 bg-white border border-slate-200 rounded-3xl shadow-2xl max-h-[calc(100dvh-7.5rem)] overflow-y-auto overflow-x-hidden overscroll-contain animate-in fade-in slide-in-from-bottom-3 duration-200">
                             <div className="mx-auto mt-2.5 h-1 w-9 rounded-full bg-slate-200" />
 
                             {/* Invitations — non-blocking notifications */}

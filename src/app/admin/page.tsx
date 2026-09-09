@@ -149,7 +149,7 @@ export default function AdminDashboard() {
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
                         <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">Tableau de bord</h1>
-                        <p className="text-sm text-slate-500 mt-0.5">
+                        <p className="text-sm text-slate-500 mt-0.5 break-words">
                             Bienvenue, <span className="text-slate-700 font-medium">{user?.email?.split('@')[0]}</span>.
                         </p>
                     </div>

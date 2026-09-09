@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect, useMemo, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
@@ -525,10 +525,8 @@ function ExpensesContentMain() {
     const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
     const [showMemosModal, setShowMemosModal] = useState(false);
     // Budget — manual funding sources (e.g. bank accounts), stored per project.
-    const [budgetSources, setBudgetSources] = useState<Array<{ id: string; name: string; amount: number }>>([]);
-    const [showBudgetModal, setShowBudgetModal] = useState(false);
-    const [tempBudgetSources, setTempBudgetSources] = useState<Array<{ id: string; name: string; amount: string }>>([]);
-    const [budgetSaving, setBudgetSaving] = useState(false);
+    // Argent réellement disponible en banque (module Finance, fail-soft).
+    const [financeAvailable, setFinanceAvailable] = useState<number | null>(null);
     const [expandedMemos, setExpandedMemos] = useState<Set<string>>(new Set());
 
     // Phases (Phase 1, Phase 2, …) — factures carry a phase badge; totals per phase.
@@ -583,6 +581,7 @@ function ExpensesContentMain() {
     const [pickerTarget, setPickerTarget] = useState<{ type: 'expense' | 'deposit', id: string } | null>(null);
 
     const searchParams = useSearchParams();
+    const router = useRouter();
     const supabase = useMemo(() => createClient(), []);
 
     const availableArticles = useMemo(() => {
@@ -810,16 +809,23 @@ function ExpensesContentMain() {
                     setExcludedGroups(new Set());
                 }
 
-                // Budget sources (JSON array of {id, name, amount})
-                const bRaw = settingsData.find((s: any) => s.key === 'budget_sources')?.value || '';
-                try {
-                    const arr = bRaw ? JSON.parse(bRaw) : [];
-                    setBudgetSources(Array.isArray(arr)
-                        ? arr.filter((x: any) => x && x.name).map((x: any) => ({ id: String(x.id || x.name), name: String(x.name), amount: Number(x.amount) || 0 }))
-                        : []);
-                } catch {
-                    setBudgetSources([]);
+            }
+
+            // Finance: money actually available in bank (fail-soft if tables absent)
+            try {
+                const [accRes, movRes] = await Promise.all([
+                    supabase.from('finance_accounts').select('initial_balance').eq('project_id', currentProject.id),
+                    supabase.from('finance_movements').select('direction, amount').eq('project_id', currentProject.id),
+                ]);
+                if (accRes.error || !accRes.data) {
+                    setFinanceAvailable(null);
+                } else {
+                    let avail = accRes.data.reduce((s: number, a: any) => s + (Number(a.initial_balance) || 0), 0);
+                    (movRes.data || []).forEach((m: any) => { avail += (m.direction === 'in' ? 1 : -1) * (Number(m.amount) || 0); });
+                    setFinanceAvailable(avail);
                 }
+            } catch {
+                setFinanceAvailable(null);
             }
 
             // Load uploaded documents
@@ -2462,37 +2468,6 @@ function ExpensesContentMain() {
         }
     };
 
-    const budgetTotal = useMemo(() => budgetSources.reduce((sum, b) => sum + (b.amount || 0), 0), [budgetSources]);
-
-    const openBudgetModal = () => {
-        setTempBudgetSources(budgetSources.length
-            ? budgetSources.map(b => ({ id: b.id, name: b.name, amount: String(b.amount) }))
-            : [{ id: `b_${Date.now()}`, name: '', amount: '' }]);
-        setShowBudgetModal(true);
-    };
-
-    const saveBudget = async () => {
-        if (!isAdmin || !currentProject) return;
-        const rows = tempBudgetSources
-            .map(r => ({ id: r.id, name: r.name.trim(), amount: parseFloat(r.amount) || 0 }))
-            .filter(r => r.name);
-        setBudgetSaving(true);
-        try {
-            const { error } = await supabase.from('project_settings').upsert(
-                { project_id: currentProject.id, key: 'budget_sources', value: JSON.stringify(rows) },
-                { onConflict: 'project_id,key' }
-            );
-            if (error) throw error;
-            setBudgetSources(rows);
-            setShowBudgetModal(false);
-        } catch (e: any) {
-            console.error('Error saving budget:', e);
-            alert('Erreur lors de la sauvegarde du budget' + (e?.message ? `: ${e.message}` : ''));
-        } finally {
-            setBudgetSaving(false);
-        }
-    };
-
     const closeExpenseModal = () => {
         setShowAddExpenseModal(false);
         setEditingExpenseId(null);
@@ -3456,9 +3431,9 @@ function ExpensesContentMain() {
                             { key: 'total', label: 'Total chantier', value: grandTotal as number | null, sub: null as string | null, onClick: () => setShowAllExpenses(true), color: 'slate', icon: Receipt, action: null as string | null },
                             { key: 'paid', label: 'Total payé', value: totalPaidGlobal, sub: null, onClick: () => setShowAllPaid(true), color: 'emerald', icon: CheckCircle2, action: null },
                             { key: 'solde', label: 'Solde restant', value: totalRemainingGlobal, sub: null, onClick: () => setShowAllPending(true), color: totalRemainingGlobal < 0 ? 'rose' : 'emerald', icon: TrendingUp, action: null },
-                            budgetTotal > 0
-                                ? { key: 'budget', label: 'Budget restant', value: budgetTotal - grandTotal, sub: `sur ${formatValue(budgetTotal)} DT · ${budgetSources.length} source${budgetSources.length > 1 ? 's' : ''}`, onClick: openBudgetModal, color: (budgetTotal - grandTotal) < 0 ? 'rose' : 'violet', icon: Wallet, action: null }
-                                : { key: 'budget', label: 'Budget', value: null, sub: null, onClick: openBudgetModal, color: 'violet', icon: Wallet, action: 'Définir un budget' },
+                            financeAvailable !== null
+                                ? { key: 'finance', label: 'Disponible en banque', value: financeAvailable, sub: 'Voir ma trésorerie →', onClick: () => router.push('/finance'), color: financeAvailable < 0 ? 'rose' : 'violet', icon: Wallet, action: null }
+                                : { key: 'finance', label: 'Trésorerie', value: null, sub: null, onClick: () => router.push('/finance'), color: 'violet', icon: Wallet, action: 'Gérer mes comptes' },
                         ]).map((stat) => (
                             <button
                                 key={stat.key}
@@ -5735,100 +5710,6 @@ function ExpensesContentMain() {
                         })}
                     </div>
                 )}
-            </Modal>
-
-            {/* Budget Modal */}
-            <Modal
-                open={showBudgetModal}
-                onClose={() => setShowBudgetModal(false)}
-                title="Budget du chantier"
-                description="Vos sources de financement (comptes bancaires, apports…) comparées au total dépensé"
-                size="lg"
-                icon={<div className="w-10 h-10 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center"><Wallet className="h-5 w-5" /></div>}
-                footer={<>
-                    <button
-                        onClick={() => setShowBudgetModal(false)}
-                        className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
-                    >
-                        {isAdmin ? 'Annuler' : 'Fermer'}
-                    </button>
-                    {isAdmin && (
-                        <button
-                            onClick={saveBudget}
-                            disabled={budgetSaving}
-                            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"
-                        >
-                            <CheckCircle2 className="h-4 w-4" /> {budgetSaving ? 'Enregistrement…' : 'Enregistrer'}
-                        </button>
-                    )}
-                </>}
-            >
-                <div className="space-y-3">
-                    <div className="space-y-2">
-                        {tempBudgetSources.map((row, idx) => (
-                            <div key={row.id} className="flex items-center gap-2">
-                                <input
-                                    type="text"
-                                    value={row.name}
-                                    disabled={!isAdmin}
-                                    onChange={(ev) => setTempBudgetSources(prev => prev.map((r, i) => i === idx ? { ...r, name: ev.target.value } : r))}
-                                    placeholder="Ex: Compte BIAT"
-                                    className="flex-1 min-w-0 h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition disabled:bg-slate-50"
-                                />
-                                <input
-                                    type="number"
-                                    step="0.001"
-                                    inputMode="decimal"
-                                    value={row.amount}
-                                    disabled={!isAdmin}
-                                    onChange={(ev) => setTempBudgetSources(prev => prev.map((r, i) => i === idx ? { ...r, amount: ev.target.value } : r))}
-                                    placeholder="Montant (DT)"
-                                    className="w-32 sm:w-40 h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm tabular-nums text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition disabled:bg-slate-50"
-                                />
-                                {isAdmin && (
-                                    <button
-                                        onClick={() => setTempBudgetSources(prev => prev.filter((_, i) => i !== idx))}
-                                        className="shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
-                                        title="Retirer cette source"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </button>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                    {isAdmin && (
-                        <button
-                            onClick={() => setTempBudgetSources(prev => [...prev, { id: `b_${Date.now()}`, name: '', amount: '' }])}
-                            className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl border border-dashed border-slate-300 text-slate-600 text-sm font-medium hover:bg-slate-50 hover:border-slate-400 transition-colors"
-                        >
-                            <Plus className="h-4 w-4" /> Ajouter une source
-                        </button>
-                    )}
-                    {(() => {
-                        const tmpTotal = tempBudgetSources.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
-                        const remaining = tmpTotal - grandTotal;
-                        return tmpTotal > 0 ? (
-                            <div className="rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 space-y-1.5">
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="text-slate-500">Budget total</span>
-                                    <span className="font-semibold text-slate-900 tabular-nums">{formatValue(tmpTotal)} DT</span>
-                                </div>
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="text-slate-500">Dépensé (total chantier)</span>
-                                    <span className="font-semibold text-slate-900 tabular-nums">{formatValue(grandTotal)} DT</span>
-                                </div>
-                                <div className="flex items-center justify-between text-sm border-t border-slate-200 pt-1.5">
-                                    <span className="text-slate-500">Restant</span>
-                                    <span className={`font-semibold tabular-nums ${remaining < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{formatValue(remaining)} DT</span>
-                                </div>
-                                <div className="h-2 rounded-full bg-slate-200 overflow-hidden mt-1">
-                                    <div className={`h-full rounded-full ${remaining < 0 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, tmpTotal > 0 ? (grandTotal / tmpTotal) * 100 : 0)}%` }} />
-                                </div>
-                            </div>
-                        ) : null;
-                    })()}
-                </div>
             </Modal>
 
             {/* Memos Modal */}

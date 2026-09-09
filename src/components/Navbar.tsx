@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
 
-import { Package, LogOut, ReceiptText, HardHat, ShoppingCart, User, Shield, ChevronDown, Plus, Trash2, Users, Check, Menu, Camera, Bell, X } from 'lucide-react';
+import { Package, LogOut, ReceiptText, HardHat, ShoppingCart, User, Shield, ChevronDown, Plus, Trash2, Users, Check, Menu, Camera, Bell, X, Landmark } from 'lucide-react';
 import GlobalSearch from './GlobalSearch';
 import ProjectSettingsModal from './ProjectSettingsModal';
 import { useEffect, useState, useMemo, useRef } from 'react';
@@ -142,6 +142,7 @@ export default function Navbar() {
         { name: 'Dépenses', path: '/expenses', icon: ReceiptText },
         { name: 'Fournisseurs', path: '/suppliers', icon: User },
         { name: 'Articles', path: '/articles', icon: Package },
+        { name: 'Finance', path: '/finance', icon: Landmark },
         { name: 'Commandes', path: '/orders', icon: ShoppingCart },
     ];
     const userInitials = user?.email?.substring(0, 2).toUpperCase() || '··';
@@ -433,6 +434,13 @@ export default function Navbar() {
                                     className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors ${pathname === '/inbox' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
                                 >
                                     <Camera className="h-4 w-4" /> Ajout rapide facture
+                                </Link>
+                                <Link
+                                    href="/finance"
+                                    onClick={() => setIsMoreOpen(false)}
+                                    className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors ${pathname === '/finance' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                                >
+                                    <Landmark className="h-4 w-4" /> Finance
                                 </Link>
                                 <Link
                                     href="/orders"

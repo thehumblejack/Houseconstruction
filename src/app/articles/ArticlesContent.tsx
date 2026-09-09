@@ -6,8 +6,7 @@ import { createClient } from '@/lib/supabase';
 import { useProject } from '@/context/ProjectContext';
 import {
     Plus, Search, Pencil, Save, Loader2, Package,
-    LayoutGrid, List, ChevronDown, Trash2, SlidersHorizontal, Trophy, ShoppingCart,
-    Check, X, ArrowUpDown, Table2
+    ChevronDown, Trash2, Trophy, ShoppingCart, X
 } from 'lucide-react';
 import { Modal } from '@/components/ui';
 
@@ -58,6 +57,8 @@ interface ArticleRow {
     totalPrice: number;
 }
 
+const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 3 });
+
 export default function ArticlesContent() {
     const { currentProject, userRole } = useProject();
     // Write permission = project role; viewers ("Observateur") are read-only.
@@ -66,18 +67,12 @@ export default function ArticlesContent() {
     const [articles, setArticles] = useState<ArticleRow[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [suppliersList, setSuppliersList] = useState<{ id: string, name: string }[]>([]);
-    const [viewMode, setViewMode] = useState<'best' | 'matrix' | 'inventory'>('best');
-    const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
-    const [columnOrder, setColumnOrder] = useState<string[]>([]);
-    const [showColumnSettings, setShowColumnSettings] = useState(false);
 
-    // Comparator filters (presentation-only, derived from matrixData)
+    // Two tabs only: price book (default) + purchase history
+    const [activeTab, setActiveTab] = useState<'prix' | 'historique'>('prix');
     const [activeCategory, setActiveCategory] = useState('');
-    const [supplierFilter, setSupplierFilter] = useState<string[]>([]);
     const [sortBy, setSortBy] = useState<'name' | 'savings' | 'price'>('name');
-    const [comparableOnly, setComparableOnly] = useState(false);
-    const [showSupplierFilter, setShowSupplierFilter] = useState(false);
-    const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+    const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
     // Edit/Add States
     const [editingItem, setEditingItem] = useState<ArticleRow | null>(null);
@@ -100,42 +95,6 @@ export default function ArticlesContent() {
     };
 
     const supabase = useMemo(() => createClient(), []);
-
-    // Close column settings when clicking outside
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            const target = event.target as HTMLElement;
-            if (showColumnSettings && !target.closest('.column-settings-container')) {
-                setShowColumnSettings(false);
-            }
-        };
-
-        if (showColumnSettings) {
-            document.addEventListener('mousedown', handleClickOutside);
-        }
-
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [showColumnSettings]);
-
-    // Close supplier filter when clicking outside
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            const target = event.target as HTMLElement;
-            if (showSupplierFilter && !target.closest('.supplier-filter-container')) {
-                setShowSupplierFilter(false);
-            }
-        };
-
-        if (showSupplierFilter) {
-            document.addEventListener('mousedown', handleClickOutside);
-        }
-
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [showSupplierFilter]);
 
     const fetchArticles = async () => {
         if (!currentProject) {
@@ -214,15 +173,6 @@ export default function ArticlesContent() {
             });
 
             rows.sort((a, b) => parseDate(b.date) - parseDate(a.date));
-
-            // Initial column setup if not yet set
-            const initialSuppliers = Array.from(new Set(rows.map(r => r.supplierName)));
-            if (!initialSuppliers.includes('STE Mostakbel')) initialSuppliers.push('STE Mostakbel');
-            if (!initialSuppliers.includes('Ahmed Ben Hdya')) initialSuppliers.push('Ahmed Ben Hdya');
-            initialSuppliers.sort();
-
-            setVisibleColumns(initialSuppliers);
-            setColumnOrder(initialSuppliers);
 
             // 3. Inject Virtual Mostakbel Order Prices as baseline articles
             Object.entries(MOSTAKBEL_PRICES).forEach(([designation, price], idx) => {
@@ -497,25 +447,18 @@ export default function ArticlesContent() {
         { label: 'Sable', value: 'SABLE' }
     ];
 
-    const activeMatrixCols = columnOrder.filter(s => visibleColumns.includes(s) && matrixData.suppliers.includes(s));
-    const matrixRows = matrixData.rows.filter(r =>
-        r.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-        (!activeCategory || r.name.toUpperCase().includes(activeCategory.toUpperCase()))
-    );
-
-    // Comparator rows: matrix rows enriched with best price, filtered + sorted (derived only — no change to matrixData/bestPriceFor semantics)
-    const comparatorRows = useMemo(() => {
+    // Price book rows: every supplier that has a price is compared (no column filtering).
+    const priceRows = useMemo(() => {
+        const allSuppliers = matrixData.suppliers;
         const enriched = matrixData.rows.map(row => {
-            const best = bestPriceFor(row.prices, visibleColumns);
-            const priceCount = Object.entries(row.prices).filter(([s, v]) => visibleColumns.includes(s) && v.price > 0).length;
+            const best = bestPriceFor(row.prices, allSuppliers);
+            const priceCount = Object.entries(row.prices).filter(([s, v]) => allSuppliers.includes(s) && v.price > 0).length;
             return { ...row, best, priceCount };
         });
 
         const filtered = enriched.filter(r =>
             r.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-            (!activeCategory || r.name.toUpperCase().includes(activeCategory.toUpperCase())) &&
-            (supplierFilter.length === 0 || supplierFilter.every(s => (r.prices[s]?.price ?? 0) > 0)) &&
-            (!comparableOnly || r.priceCount >= 2)
+            (!activeCategory || r.name.toUpperCase().includes(activeCategory.toUpperCase()))
         );
 
         if (sortBy === 'savings') {
@@ -525,19 +468,15 @@ export default function ArticlesContent() {
             return [...filtered].sort((a, b) => (a.best?.price ?? Infinity) - (b.best?.price ?? Infinity));
         }
         return filtered; // 'name' keeps matrixData order (Fer d'abord, puis A–Z)
-    }, [matrixData, visibleColumns, searchTerm, activeCategory, supplierFilter, comparableOnly, sortBy]);
-
-    const activeFilterCount = (searchTerm ? 1 : 0) + (activeCategory ? 1 : 0) + supplierFilter.length + (comparableOnly ? 1 : 0);
+    }, [matrixData, searchTerm, activeCategory, sortBy]);
 
     const resetFilters = () => {
         setSearchTerm('');
         setActiveCategory('');
-        setSupplierFilter([]);
-        setComparableOnly(false);
         setSortBy('name');
     };
 
-    const toggleRow = (name: string) => setExpandedRows(prev => ({ ...prev, [name]: !prev[name] }));
+    const toggleRow = (name: string) => setExpandedRow(prev => (prev === name ? null : name));
 
     if (loading) {
         return (
@@ -552,629 +491,355 @@ export default function ArticlesContent() {
             <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-5 pb-28 md:pb-12 space-y-5">
 
                 {/* Page header */}
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div>
+                <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
                         <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">Articles</h1>
-                        <p className="text-sm text-slate-500 mt-0.5">Catalogue des matériaux et comparatif des prix</p>
+                        <p className="text-sm text-slate-500 mt-0.5">Carnet de prix des matériaux</p>
                     </div>
                     {isAdmin && (
                         <button
                             onClick={openAdd}
-                            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                            className="shrink-0 inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none transition-colors"
                         >
                             <Plus className="h-4 w-4" />
-                            Nouvel article
+                            <span className="hidden sm:inline">Ajouter</span>
                         </button>
                     )}
                 </div>
 
-                {/* Controls: view switch + search + colonnes */}
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                    <div className="grid grid-cols-3 sm:inline-flex p-1 rounded-xl border border-slate-200 bg-white sm:self-start shrink-0">
+                {/* Toolbar — one row: tabs + search + sort */}
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex p-1 rounded-xl border border-slate-200 bg-white shrink-0">
                         <button
-                            onClick={() => setViewMode('best')}
-                            className={`inline-flex items-center justify-center gap-1.5 h-9 sm:h-8 px-2 sm:px-3 rounded-lg text-sm font-medium transition-colors ${viewMode === 'best' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                            onClick={() => setActiveTab('prix')}
+                            className={`inline-flex items-center justify-center h-8 px-4 rounded-lg text-sm font-medium transition-colors ${activeTab === 'prix' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
                         >
-                            <Trophy className="w-4 h-4 shrink-0" />
-                            <span className="truncate">Comparatif</span>
+                            Prix
                         </button>
                         <button
-                            onClick={() => setViewMode('matrix')}
-                            className={`inline-flex items-center justify-center gap-1.5 h-9 sm:h-8 px-2 sm:px-3 rounded-lg text-sm font-medium transition-colors ${viewMode === 'matrix' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                            onClick={() => setActiveTab('historique')}
+                            className={`inline-flex items-center justify-center h-8 px-4 rounded-lg text-sm font-medium transition-colors ${activeTab === 'historique' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
                         >
-                            <Table2 className="w-4 h-4 shrink-0" />
-                            <span className="truncate">Matrice</span>
-                        </button>
-                        <button
-                            onClick={() => setViewMode('inventory')}
-                            className={`inline-flex items-center justify-center gap-1.5 h-9 sm:h-8 px-2 sm:px-3 rounded-lg text-sm font-medium transition-colors ${viewMode === 'inventory' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
-                        >
-                            <List className="w-4 h-4 shrink-0" />
-                            <span className="truncate">Inventaire</span>
+                            Historique
                         </button>
                     </div>
 
-                    <div className="flex flex-1 min-w-0 gap-2 sm:gap-3">
-                        <div className="relative flex-1 min-w-0">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <input
-                                type="text"
-                                placeholder="Rechercher un article..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full h-10 pl-9 pr-9 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300"
-                            />
-                            {searchTerm && (
-                                <button
-                                    onClick={() => setSearchTerm('')}
-                                    aria-label="Effacer la recherche"
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-6 h-6 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-                                >
-                                    <X className="w-3.5 h-3.5" />
-                                </button>
-                            )}
-                        </div>
-
-                        {viewMode !== 'inventory' && (
-                        <div className="relative column-settings-container shrink-0">
+                    <div className="relative flex-1 min-w-[180px]">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Rechercher un article..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full h-10 pl-9 pr-9 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300"
+                        />
+                        {searchTerm && (
                             <button
-                                onClick={() => setShowColumnSettings(!showColumnSettings)}
-                                className={`inline-flex items-center justify-center gap-2 h-10 px-3 rounded-xl border text-sm font-medium transition-colors ${showColumnSettings ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                                onClick={() => setSearchTerm('')}
+                                aria-label="Effacer la recherche"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-6 h-6 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
                             >
-                                <SlidersHorizontal className="w-4 h-4" />
-                                Colonnes
-                                {visibleColumns.length < matrixData.suppliers.length && (
-                                    <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold tabular-nums">
-                                        {matrixData.suppliers.filter(s => visibleColumns.includes(s)).length}
-                                    </span>
-                                )}
+                                <X className="w-3.5 h-3.5" />
                             </button>
-
-                            {showColumnSettings && (
-                                <div className="absolute top-full right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-lg border border-slate-200 p-3 z-[120] animate-in fade-in zoom-in-95 duration-150">
-                                    <p className="text-xs font-medium text-slate-500 px-1 pb-2">Fournisseurs comparés</p>
-                                    <div className="space-y-0.5 max-h-[360px] overflow-y-auto">
-                                        {matrixData.suppliers.map((s) => {
-                                            const checked = visibleColumns.includes(s);
-                                            return (
-                                                <label key={s} className="flex items-center gap-3 px-2 py-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors">
-                                                    <span className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${checked ? 'bg-slate-900 border-slate-900' : 'border-slate-300'}`}>
-                                                        {checked && <span className="w-1.5 h-1.5 bg-white rounded-sm" />}
-                                                    </span>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={checked}
-                                                        onChange={() => {
-                                                            setVisibleColumns(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
-                                                        }}
-                                                        className="hidden"
-                                                    />
-                                                    <span className={`text-sm ${checked ? 'text-slate-900 font-medium' : 'text-slate-500'}`}>{s}</span>
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
                         )}
                     </div>
+
+                    {activeTab === 'prix' && (
+                        <div className="relative shrink-0">
+                            <select
+                                value={sortBy}
+                                onChange={(e) => setSortBy(e.target.value as 'name' | 'savings' | 'price')}
+                                aria-label="Trier"
+                                className="h-10 pl-3 pr-8 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 appearance-none focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
+                            >
+                                <option value="name">Nom A–Z</option>
+                                <option value="savings">Économie</option>
+                                <option value="price">Prix</option>
+                            </select>
+                            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                        </div>
+                    )}
                 </div>
 
-                {/* Content Area */}
-                {viewMode !== 'inventory' ? (
-                    <div className="space-y-4 animate-in fade-in duration-300">
-                        {/* Filters toolbar */}
-                        <div className="space-y-2">
-                            {/* Category chips — horizontal scroll on mobile */}
-                            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap">
-                                {filterChips.map((chip) => {
-                                    const isActive = activeCategory === chip.value;
-                                    return (
-                                        <button
-                                            key={chip.label}
-                                            onClick={() => setActiveCategory(chip.value)}
-                                            className={`shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${isActive ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:text-slate-900'}`}
-                                        >
-                                            {chip.label}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Fournisseur filter + sort + comparables + reset */}
-                            <div className="flex flex-wrap items-center gap-2">
-                                {viewMode === 'best' && (
-                                <>
-                                <div className="relative supplier-filter-container">
-                                    <button
-                                        onClick={() => setShowSupplierFilter(!showSupplierFilter)}
-                                        className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-xs font-medium transition-colors ${supplierFilter.length > 0 || showSupplierFilter ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
-                                    >
-                                        Fournisseurs
-                                        {supplierFilter.length > 0 && (
-                                            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-white/20 text-white text-[10px] font-semibold tabular-nums">
-                                                {supplierFilter.length}
-                                            </span>
-                                        )}
-                                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showSupplierFilter ? 'rotate-180' : ''}`} />
-                                    </button>
-
-                                    {showSupplierFilter && (
-                                        <div className="absolute top-full left-0 mt-2 w-64 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-lg border border-slate-200 p-3 z-[120] animate-in fade-in zoom-in-95 duration-150">
-                                            <p className="text-xs font-medium text-slate-500 px-1 pb-2">Articles où participent :</p>
-                                            <div className="space-y-0.5 max-h-[300px] overflow-y-auto">
-                                                {matrixData.suppliers.map((s) => {
-                                                    const checked = supplierFilter.includes(s);
-                                                    return (
-                                                        <label key={s} className="flex items-center gap-3 px-2 py-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors">
-                                                            <span className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${checked ? 'bg-slate-900 border-slate-900' : 'border-slate-300'}`}>
-                                                                {checked && <Check className="w-3 h-3 text-white" />}
-                                                            </span>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={checked}
-                                                                onChange={() => {
-                                                                    setSupplierFilter(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
-                                                                }}
-                                                                className="hidden"
-                                                            />
-                                                            <span className={`text-sm ${checked ? 'text-slate-900 font-medium' : 'text-slate-500'}`}>{s}</span>
-                                                        </label>
-                                                    );
-                                                })}
-                                            </div>
-                                            {supplierFilter.length > 0 && (
-                                                <button
-                                                    onClick={() => setSupplierFilter([])}
-                                                    className="w-full mt-2 inline-flex items-center justify-center gap-1 h-8 rounded-lg text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-                                                >
-                                                    <X className="h-3.5 w-3.5" /> Effacer la sélection
-                                                </button>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="relative">
-                                    <ArrowUpDown className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-                                    <select
-                                        value={sortBy}
-                                        onChange={(e) => setSortBy(e.target.value as 'name' | 'savings' | 'price')}
-                                        className="h-9 pl-8 pr-8 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-700 appearance-none focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition"
-                                    >
-                                        <option value="name">Nom (A–Z)</option>
-                                        <option value="savings">Plus grosse économie</option>
-                                        <option value="price">Prix croissant</option>
-                                    </select>
-                                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-                                </div>
-
+                {/* Category chips */}
+                {activeTab === 'prix' && (
+                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+                        {filterChips.map((chip) => {
+                            const isActive = activeCategory === chip.value;
+                            return (
                                 <button
-                                    onClick={() => setComparableOnly(!comparableOnly)}
-                                    className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-xs font-medium transition-colors ${comparableOnly ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                                    key={chip.label}
+                                    onClick={() => setActiveCategory(chip.value)}
+                                    className={`shrink-0 inline-flex items-center h-10 sm:h-9 px-4 rounded-full text-xs font-medium transition-colors ${isActive ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:text-slate-900'}`}
                                 >
-                                    <Check className="h-3.5 w-3.5" />
-                                    Comparables
+                                    {chip.label}
                                 </button>
-                                </>
-                                )}
+                            );
+                        })}
+                        <span className="ml-auto shrink-0 text-xs text-slate-400 tabular-nums whitespace-nowrap pl-2">
+                            {priceRows.length} article{priceRows.length > 1 ? 's' : ''}
+                        </span>
+                    </div>
+                )}
 
-                                {activeFilterCount > 0 && (
-                                    <button
-                                        onClick={resetFilters}
-                                        className="inline-flex items-center gap-1 h-9 px-3 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-                                    >
-                                        <X className="h-3.5 w-3.5" />
-                                        Réinitialiser ({activeFilterCount})
-                                    </button>
-                                )}
+                {/* Tab «Prix» — one calm price-book list */}
+                {activeTab === 'prix' && (
+                    priceRows.length > 0 ? (
+                        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden divide-y divide-slate-100">
+                            {priceRows.map((row) => {
+                                const best = row.best;
+                                const isExpanded = expandedRow === row.name;
+                                const nextBest = best && best.savings > 0 ? best.price + best.savings : null;
+                                const pct = best && nextBest ? (best.savings / nextBest) * 100 : 0;
+                                const supplierEntries = matrixData.suppliers
+                                    .filter(s => (row.prices[s]?.price ?? 0) > 0)
+                                    .map(s => ({ sup: s, entry: row.prices[s]! }))
+                                    .sort((a, b) => a.entry.price - b.entry.price);
+                                const maxPrice = supplierEntries.length ? Math.max(...supplierEntries.map(e => e.entry.price)) : 0;
 
-                                <span className="ml-auto text-xs text-slate-400 tabular-nums whitespace-nowrap">
-                                    {viewMode === 'best' ? comparatorRows.length : matrixRows.length} article{(viewMode === 'best' ? comparatorRows.length : matrixRows.length) > 1 ? 's' : ''}
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Comparatif — best-price-first list (default view) */}
-                        {viewMode === 'best' && (
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 items-start">
-                                {comparatorRows.map((row) => {
-                                    const best = row.best;
-                                    const isExpanded = !!expandedRows[row.name];
-                                    const nextBest = best && best.savings > 0 ? best.price + best.savings : null;
-                                    const pct = best && nextBest ? (best.savings / nextBest) * 100 : 0;
-                                    const supplierEntries = activeMatrixCols
-                                        .filter(s => (row.prices[s]?.price ?? 0) > 0)
-                                        .map(s => ({ sup: s, entry: row.prices[s]! }))
-                                        .sort((a, b) => a.entry.price - b.entry.price);
-                                    const maxPrice = supplierEntries.length ? Math.max(...supplierEntries.map(e => e.entry.price)) : 0;
-
-                                    return (
-                                        <div key={row.name} className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col">
-                                            <div
-                                                onClick={() => toggleRow(row.name)}
-                                                className="p-3.5 cursor-pointer hover:bg-slate-50 transition-colors"
-                                            >
-                                                <div className="flex items-start justify-between gap-2">
-                                                    <p className="text-sm font-semibold text-slate-900 leading-snug min-w-0 flex-1 break-words" title={row.name}>{row.name}</p>
-                                                    <ChevronDown className={`h-4 w-4 text-slate-400 shrink-0 mt-0.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                                </div>
-
+                                return (
+                                    <div key={row.name}>
+                                        <button
+                                            onClick={() => toggleRow(row.name)}
+                                            className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors"
+                                        >
+                                            {/* Desktop row */}
+                                            <div className="hidden md:flex items-center gap-3 min-w-0">
+                                                <p className="text-sm font-medium text-slate-900 truncate" title={row.name}>{row.name}</p>
+                                                <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 tabular-nums">
+                                                    {row.priceCount} prix
+                                                </span>
+                                                <span className="flex-1" />
+                                                {best && best.savings > 0 && (
+                                                    <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 tabular-nums">
+                                                        −{fmt(best.savings)} DT · −{pct.toFixed(pct < 10 ? 1 : 0)}%
+                                                    </span>
+                                                )}
                                                 {best ? (
                                                     <>
-                                                        <div className="flex items-center justify-between gap-2 mt-2.5">
-                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 min-w-0">
-                                                                <Trophy className="h-3 w-3 shrink-0" />
-                                                                <span className="truncate">{best.supplier}</span>
-                                                            </span>
-                                                            <p className="text-base font-semibold text-emerald-600 tabular-nums leading-none shrink-0">
-                                                                {best.price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] font-normal text-slate-400">DT</span>
-                                                            </p>
-                                                        </div>
-                                                        <div className="flex items-center gap-2 mt-1.5 text-xs">
-                                                            {row.prices[best.supplier]?.isRef && (
-                                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700">CMD</span>
-                                                            )}
-                                                            {best.savings > 0 ? (
-                                                                <span className="font-medium text-emerald-600 tabular-nums truncate">
-                                                                    −{best.savings.toLocaleString(undefined, { minimumFractionDigits: 3 })} DT · −{pct.toFixed(pct < 10 ? 1 : 0)}%
-                                                                </span>
-                                                            ) : (
-                                                                <span className="text-slate-300">—</span>
-                                                            )}
-                                                            <span className="ml-auto text-slate-400 tabular-nums shrink-0">
-                                                                {row.priceCount > 1 ? `${row.priceCount} prix` : 'Seul prix'}
-                                                            </span>
-                                                        </div>
-                                                        <Link
-                                                            href={`/orders?article=${encodeURIComponent(row.name)}&price=${best.price}&supplier=${encodeURIComponent(best.supplier)}`}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="mt-2.5 w-full inline-flex items-center justify-center gap-1.5 h-8 rounded-lg bg-slate-900 text-white text-xs font-medium hover:bg-slate-800 transition-colors"
-                                                        >
-                                                            <ShoppingCart className="h-3.5 w-3.5" /> Commander
-                                                        </Link>
+                                                        <span className="shrink-0 text-sm text-slate-500 truncate max-w-[160px]">{best.supplier}</span>
+                                                        <span className="shrink-0 text-sm font-semibold tabular-nums text-emerald-600">
+                                                            {fmt(best.price)} <span className="text-xs font-normal text-slate-400">DT</span>
+                                                        </span>
                                                     </>
                                                 ) : (
-                                                    <p className="text-xs text-slate-400 mt-2">Aucun prix parmi les fournisseurs visibles</p>
+                                                    <span className="shrink-0 text-sm text-slate-300">—</span>
+                                                )}
+                                                <ChevronDown className={`h-4 w-4 text-slate-400 shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                            </div>
+
+                                            {/* Mobile row — two lines */}
+                                            <div className="md:hidden min-w-0">
+                                                <div className="flex items-center justify-between gap-3 min-w-0">
+                                                    <p className="text-sm font-medium text-slate-900 truncate min-w-0" title={row.name}>{row.name}</p>
+                                                    {best ? (
+                                                        <span className="shrink-0 text-sm font-semibold tabular-nums text-emerald-600">
+                                                            {fmt(best.price)} <span className="text-xs font-normal text-slate-400">DT</span>
+                                                        </span>
+                                                    ) : (
+                                                        <span className="shrink-0 text-sm text-slate-300">—</span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 mt-1 min-w-0">
+                                                    <span className="text-xs text-slate-500 truncate min-w-0">
+                                                        {best ? `${best.supplier} · ` : ''}{row.priceCount} prix
+                                                    </span>
+                                                    {best && best.savings > 0 && (
+                                                        <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 tabular-nums">
+                                                            −{fmt(best.savings)} DT · −{pct.toFixed(pct < 10 ? 1 : 0)}%
+                                                        </span>
+                                                    )}
+                                                    <ChevronDown className={`h-3.5 w-3.5 text-slate-400 shrink-0 ml-auto transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                                </div>
+                                            </div>
+                                        </button>
+
+                                        {/* Expanded panel — one sub-row per supplier, cheapest first */}
+                                        {isExpanded && (
+                                            <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3 space-y-2.5 animate-in fade-in duration-150">
+                                                {supplierEntries.length === 0 && (
+                                                    <p className="text-xs text-slate-400">Aucun prix enregistré pour cet article.</p>
+                                                )}
+                                                {supplierEntries.map(({ sup, entry }) => {
+                                                    const isBest = !!best && sup === best.supplier;
+                                                    const width = maxPrice > 0 ? (entry.price / maxPrice) * 100 : 0;
+                                                    const delta = best ? entry.price - best.price : 0;
+                                                    return (
+                                                        <div key={sup}>
+                                                            <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
+                                                                <span className={`inline-flex items-center gap-1.5 text-xs truncate min-w-0 ${isBest ? 'font-semibold text-emerald-700' : 'text-slate-600'}`}>
+                                                                    {isBest && <Trophy className="h-3 w-3 shrink-0" />}
+                                                                    <span className="truncate">{sup}</span>
+                                                                    {entry.isRef && (
+                                                                        <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700">CMD</span>
+                                                                    )}
+                                                                </span>
+                                                                <span className="flex items-baseline gap-1.5 shrink-0">
+                                                                    <span className={`text-xs font-semibold tabular-nums ${isBest ? 'text-emerald-600' : 'text-slate-700'}`}>
+                                                                        {fmt(entry.price)} <span className="text-[10px] font-normal text-slate-400">DT</span>
+                                                                    </span>
+                                                                    {!isBest && delta > 0 && (
+                                                                        <span className="text-[10px] font-medium text-slate-400 tabular-nums">+{fmt(delta)}</span>
+                                                                    )}
+                                                                </span>
+                                                            </div>
+                                                            <div className="h-1.5 rounded-full bg-slate-200/60 overflow-hidden">
+                                                                <div
+                                                                    className={`h-full rounded-full ${isBest ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                                                                    style={{ width: `${Math.max(width, 4)}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                                {best && (
+                                                    <div className="flex justify-end pt-1">
+                                                        <Link
+                                                            href={`/orders?article=${encodeURIComponent(row.name)}&price=${best.price}&supplier=${encodeURIComponent(best.supplier)}`}
+                                                            className="inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-xl bg-slate-900 text-white text-xs font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors"
+                                                        >
+                                                            <ShoppingCart className="h-3.5 w-3.5" /> Commander au meilleur prix
+                                                        </Link>
+                                                    </div>
                                                 )}
                                             </div>
-
-                                            {isExpanded && (
-                                                <div className="border-t border-slate-100 bg-slate-50/60 px-3.5 py-3 space-y-2 animate-in fade-in duration-150">
-                                                    {supplierEntries.length === 0 && (
-                                                        <p className="text-xs text-slate-400">Aucun prix parmi les fournisseurs visibles.</p>
-                                                    )}
-                                                    {supplierEntries.map(({ sup, entry }) => {
-                                                        const isBest = !!best && sup === best.supplier;
-                                                        const width = maxPrice > 0 ? (entry.price / maxPrice) * 100 : 0;
-                                                        const delta = best ? entry.price - best.price : 0;
-                                                        return (
-                                                            <div key={sup}>
-                                                                <div className="flex items-center justify-between gap-2 mb-1">
-                                                                    <span className={`text-xs truncate min-w-0 ${isBest ? 'font-semibold text-emerald-700' : 'text-slate-600'}`}>
-                                                                        {sup}
-                                                                        {entry.isRef && <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700">CMD</span>}
-                                                                    </span>
-                                                                    <span className="flex items-baseline gap-1.5 shrink-0">
-                                                                        <span className={`text-xs font-semibold tabular-nums ${isBest ? 'text-emerald-600' : 'text-slate-700'}`}>
-                                                                            {entry.price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] font-normal text-slate-400">DT</span>
-                                                                        </span>
-                                                                        {!isBest && delta > 0 && (
-                                                                            <span className="text-[10px] font-medium text-rose-600 tabular-nums">+{delta.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
-                                                                        )}
-                                                                    </span>
-                                                                </div>
-                                                                <div className="h-1.5 rounded-full bg-slate-200/70 overflow-hidden">
-                                                                    <div
-                                                                        className={`h-full rounded-full ${isBest ? 'bg-emerald-500' : 'bg-slate-400/60'}`}
-                                                                        style={{ width: `${Math.max(width, 4)}%` }}
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-
-                                {comparatorRows.length === 0 && (
-                                    <div className="col-span-full flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-slate-200 bg-white py-16">
-                                        <Trophy className="h-10 w-10 text-slate-300 mb-3" />
-                                        <p className="text-sm text-slate-500">Aucun article ne correspond aux filtres.</p>
-                                        {activeFilterCount > 0 && (
-                                            <button
-                                                onClick={resetFilters}
-                                                className="mt-3 inline-flex items-center gap-1 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-50 transition-colors"
-                                            >
-                                                <X className="h-3.5 w-3.5" /> Réinitialiser les filtres
-                                            </button>
                                         )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {viewMode === 'matrix' && (
-                        <>
-                        {/* Matrix — desktop table */}
-                        <div className="hidden md:block rounded-2xl border border-slate-200 overflow-hidden bg-white">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse">
-                                    <thead>
-                                        <tr className="bg-slate-50">
-                                            <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500 min-w-[180px] max-w-[240px] shadow-[inset_-1px_0_0_theme(colors.slate.200)]">Article</th>
-                                            <th className="px-4 py-3 text-xs font-medium text-slate-500 min-w-[220px]">Meilleur prix</th>
-                                            {activeMatrixCols.map((s) => (
-                                                <th
-                                                    key={s}
-                                                    draggable
-                                                    onDragStart={(e) => e.dataTransfer.setData('text/plain', s)}
-                                                    onDragOver={(e) => e.preventDefault()}
-                                                    onDrop={(e) => {
-                                                        e.preventDefault();
-                                                        const draggedSup = e.dataTransfer.getData('text/plain');
-                                                        if (draggedSup === s) return;
-                                                        const newOrder = [...columnOrder];
-                                                        const draggedIdx = newOrder.indexOf(draggedSup);
-                                                        const targetIdx = newOrder.indexOf(s);
-                                                        newOrder.splice(draggedIdx, 1);
-                                                        newOrder.splice(targetIdx, 0, draggedSup);
-                                                        setColumnOrder(newOrder);
-                                                    }}
-                                                    className="px-4 py-3 text-xs font-medium text-slate-500 text-center min-w-[130px] cursor-move hover:bg-slate-100 transition-colors"
-                                                >
-                                                    {s}
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {matrixRows.map((row) => {
-                                            const visiblePrices = Object.entries(row.prices)
-                                                .filter(([s]) => visibleColumns.includes(s))
-                                                .map(([, v]) => v.price);
-                                            const best = bestPriceFor(row.prices, visibleColumns);
-                                            return (
-                                                <tr key={row.name} className="group border-t border-slate-100 hover:bg-slate-50">
-                                                    <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 px-4 py-3 shadow-[inset_-1px_0_0_theme(colors.slate.100)] transition-colors">
-                                                        <p className="text-sm font-medium text-slate-900 max-w-[220px] truncate" title={row.name}>{row.name}</p>
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        {best ? (
-                                                            <div className="flex items-center justify-between gap-2">
-                                                                <div className="min-w-0">
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        <Trophy className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                                                                        <span className="text-sm font-semibold text-slate-900 tabular-nums">{best.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
-                                                                        <span className="text-[10px] text-slate-400">DT</span>
-                                                                    </div>
-                                                                    <p className="text-xs text-slate-500 truncate mt-0.5">
-                                                                        {best.supplier}
-                                                                        {best.savings > 0 && <span className="text-emerald-600 font-medium"> · −{best.savings.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>}
-                                                                    </p>
-                                                                </div>
-                                                                <Link
-                                                                    href={`/orders?article=${encodeURIComponent(row.name)}&price=${best.price}&supplier=${encodeURIComponent(best.supplier)}`}
-                                                                    className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-slate-900 text-white text-xs font-medium hover:bg-slate-800 transition-colors shrink-0"
-                                                                >
-                                                                    <ShoppingCart className="h-3.5 w-3.5" /> Commander
-                                                                </Link>
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-slate-300">—</span>
-                                                        )}
-                                                    </td>
-                                                    {activeMatrixCols.map(sup => {
-                                                        const entry = row.prices[sup];
-                                                        const price = entry?.price;
-                                                        const isBest = price && price === Math.min(...visiblePrices);
-
-                                                        return (
-                                                            <td key={sup} className="px-4 py-3 text-center">
-                                                                {price ? (
-                                                                    <div className="inline-flex flex-col items-center gap-1">
-                                                                        <span className={`text-sm font-semibold tabular-nums ${isBest ? 'text-emerald-600' : 'text-slate-700'}`}>
-                                                                            {price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] font-normal text-slate-400">DT</span>
-                                                                        </span>
-                                                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${isBest ? 'bg-emerald-50 text-emerald-700' : entry?.isRef ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
-                                                                            {entry?.isRef ? 'CMD' : isBest ? 'Meilleur' : 'Actuel'}
-                                                                        </span>
-                                                                    </div>
-                                                                ) : (
-                                                                    <span className="text-slate-300">—</span>
-                                                                )}
-                                                            </td>
-                                                        );
-                                                    })}
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* Matrix — mobile stacked cards */}
-                        <div className="md:hidden space-y-3">
-                            {matrixRows.map((row) => {
-                                const visiblePrices = Object.entries(row.prices)
-                                    .filter(([s]) => visibleColumns.includes(s))
-                                    .map(([, v]) => v.price);
-                                const best = bestPriceFor(row.prices, visibleColumns);
-                                return (
-                                    <div key={row.name} className="rounded-2xl border border-slate-200 bg-white p-4">
-                                        <p className="text-sm font-semibold text-slate-900 mb-3 break-words" title={row.name}>{row.name}</p>
-                                        {best && (
-                                            <div className="flex items-center justify-between gap-3 mb-3 rounded-xl bg-amber-50 px-3 py-2">
-                                                <div className="min-w-0">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <Trophy className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                                                        <span className="text-sm font-semibold text-slate-900 tabular-nums">{best.price.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
-                                                        <span className="text-[10px] text-slate-400">DT</span>
-                                                    </div>
-                                                    <p className="text-xs text-amber-800/80 truncate mt-0.5">{best.supplier}</p>
-                                                </div>
-                                                <Link
-                                                    href={`/orders?article=${encodeURIComponent(row.name)}&price=${best.price}&supplier=${encodeURIComponent(best.supplier)}`}
-                                                    className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-slate-900 text-white text-xs font-medium hover:bg-slate-800 active:scale-[0.99] transition-colors shrink-0"
-                                                >
-                                                    <ShoppingCart className="h-3.5 w-3.5" /> Commander
-                                                </Link>
-                                            </div>
-                                        )}
-                                        <div className="space-y-1.5">
-                                            {activeMatrixCols.map(sup => {
-                                                const entry = row.prices[sup];
-                                                const price = entry?.price;
-                                                if (!price) return null;
-                                                const isBest = price === Math.min(...visiblePrices);
-                                                return (
-                                                    <div key={sup} className="flex items-center justify-between gap-3">
-                                                        <span className="text-xs text-slate-500 truncate min-w-0" title={sup}>{sup}</span>
-                                                        <span className="flex items-center gap-2 shrink-0">
-                                                            <span className={`text-sm font-semibold tabular-nums ${isBest ? 'text-emerald-600' : 'text-slate-700'}`}>
-                                                                {price.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-[10px] font-normal text-slate-400">DT</span>
-                                                            </span>
-                                                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${isBest ? 'bg-emerald-50 text-emerald-700' : entry?.isRef ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
-                                                                {entry?.isRef ? 'CMD' : isBest ? 'Meilleur' : 'Actuel'}
-                                                            </span>
-                                                        </span>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
                                     </div>
                                 );
                             })}
                         </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-slate-200 bg-white py-16 px-4">
+                            <Package className="h-10 w-10 text-slate-300 mb-3" />
+                            {articles.length === 0 ? (
+                                <>
+                                    <p className="text-sm font-medium text-slate-900">Aucun article enregistré</p>
+                                    <p className="text-sm text-slate-500 mt-1">Commencez par ajouter votre premier achat.</p>
+                                </>
+                            ) : (
+                                <>
+                                    <p className="text-sm text-slate-500">Aucun article ne correspond à la recherche.</p>
+                                    <button
+                                        onClick={resetFilters}
+                                        className="mt-3 inline-flex items-center gap-1 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-50 transition-colors"
+                                    >
+                                        <X className="h-3.5 w-3.5" /> Réinitialiser les filtres
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    )
+                )}
 
-                        {matrixRows.length === 0 && (
-                            <div className="flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-slate-200 bg-white py-16">
-                                <LayoutGrid className="h-10 w-10 text-slate-300 mb-3" />
-                                <p className="text-sm text-slate-500">Aucun article à comparer.</p>
+                {/* Tab «Historique» — per-supplier accordion in the same list language */}
+                {activeTab === 'historique' && (
+                    <div className="space-y-5">
+                        {supplierGroups.length > 0 && (
+                            <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden divide-y divide-slate-100">
+                                {supplierGroups.map((group) => {
+                                    const isExpanded = expandedSuppliers[group.name];
+                                    return (
+                                        <div key={group.name}>
+                                            <button
+                                                onClick={() => toggleSupplier(group.name)}
+                                                className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+                                            >
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <span className={`w-9 h-9 shrink-0 rounded-full ${group.color} flex items-center justify-center text-white text-sm font-semibold`}>
+                                                        {group.name.charAt(0).toUpperCase()}
+                                                    </span>
+                                                    <div className="min-w-0">
+                                                        <p className="text-sm font-medium text-slate-900 truncate">{group.name}</p>
+                                                        <p className="text-xs text-slate-500 mt-0.5 tabular-nums">{group.rows.length} article{group.rows.length > 1 ? 's' : ''}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-3 shrink-0">
+                                                    <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                                                        {fmt(group.total)} <span className="text-xs font-normal text-slate-400">DT</span>
+                                                    </span>
+                                                    <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                                </div>
+                                            </button>
+
+                                            {isExpanded && (
+                                                <div className="border-t border-slate-100 bg-slate-50/40">
+                                                    {/* Desktop table */}
+                                                    <div className="hidden md:block overflow-x-auto">
+                                                        <table className="w-full text-left border-collapse">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th className="px-4 py-2.5 text-xs font-medium text-slate-500 w-28">Date</th>
+                                                                    <th className="px-4 py-2.5 text-xs font-medium text-slate-500">Désignation</th>
+                                                                    <th className="px-4 py-2.5 text-xs font-medium text-slate-500 w-20 text-center">Qté</th>
+                                                                    <th className="px-4 py-2.5 text-xs font-medium text-slate-500 w-32 text-right">Unit. TTC</th>
+                                                                    <th className="px-4 py-2.5 text-xs font-medium text-slate-500 w-32 text-right">Total TTC</th>
+                                                                    {isAdmin && <th className="px-4 py-2.5 w-24"></th>}
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {group.rows.map((row) => (
+                                                                    <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50 group">
+                                                                        <td className="px-4 py-3 text-sm text-slate-500 tabular-nums whitespace-nowrap">{row.date}</td>
+                                                                        <td className="px-4 py-3">
+                                                                            <p className="text-sm font-medium text-slate-900">{normalizeArticleName(row.designation)}</p>
+                                                                            {row.reference && row.reference !== '-' && (
+                                                                                <p className="text-xs text-slate-400 truncate max-w-[220px] mt-0.5">{row.reference}</p>
+                                                                            )}
+                                                                        </td>
+                                                                        <td className="px-4 py-3 text-center">
+                                                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 tabular-nums">{row.quantity}</span>
+                                                                        </td>
+                                                                        <td className="px-4 py-3 text-right text-sm text-slate-500 tabular-nums">{fmt(row.unitPrice)}</td>
+                                                                        <td className="px-4 py-3 text-right text-sm font-semibold text-slate-900 tabular-nums">{fmt(row.totalPrice)}</td>
+                                                                        {isAdmin && (
+                                                                            <td className="px-4 py-3">
+                                                                                <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                    <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} aria-label="Modifier" className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-4 w-4" /></button>
+                                                                                    <button onClick={(e) => { e.stopPropagation(); handleDelete(row); }} aria-label="Supprimer" className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
+                                                                                </div>
+                                                                            </td>
+                                                                        )}
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+
+                                                    {/* Mobile stacked rows */}
+                                                    <div className="md:hidden divide-y divide-slate-100">
+                                                        {group.rows.map((row) => (
+                                                            <div key={row.id} className="px-4 py-3">
+                                                                <div className="flex items-start justify-between gap-3 min-w-0">
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <p className="text-sm font-medium text-slate-900 truncate">{normalizeArticleName(row.designation)}</p>
+                                                                        <p className="text-xs text-slate-400 mt-0.5 tabular-nums">{row.date} · Qté {row.quantity}</p>
+                                                                    </div>
+                                                                    <div className="shrink-0 text-right">
+                                                                        <p className="text-sm font-semibold text-slate-900 tabular-nums">
+                                                                            {fmt(row.totalPrice)} <span className="text-xs font-normal text-slate-400">DT</span>
+                                                                        </p>
+                                                                        <p className="text-xs text-slate-400 tabular-nums mt-0.5">{fmt(row.unitPrice)} / u.</p>
+                                                                    </div>
+                                                                </div>
+                                                                {isAdmin && (
+                                                                    <div className="flex justify-end gap-1 mt-1.5">
+                                                                        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} aria-label="Modifier" className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-4 w-4" /></button>
+                                                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(row); }} aria-label="Supprimer" className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
-                        </>
-                        )}
-                    </div>
-                ) : (
-                    <div className="space-y-3 animate-in fade-in duration-300">
-                        {supplierGroups.map((group) => {
-                            const isExpanded = expandedSuppliers[group.name];
-                            return (
-                                <div key={group.name} className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-                                    <button
-                                        onClick={() => toggleSupplier(group.name)}
-                                        className="w-full flex items-center justify-between gap-4 p-4 text-left hover:bg-slate-50 transition-colors"
-                                    >
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <span className={`w-10 h-10 shrink-0 rounded-full ${group.color} flex items-center justify-center text-white text-sm font-semibold`}>
-                                                {group.name.charAt(0).toUpperCase()}
-                                            </span>
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-semibold text-slate-900 truncate">{group.name}</p>
-                                                <p className="text-xs text-slate-500 mt-0.5">{group.rows.length} articles</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3 shrink-0">
-                                            <div className="text-right">
-                                                <p className="text-xs text-slate-500">Total TTC</p>
-                                                <p className="text-sm font-semibold text-slate-900 tabular-nums">
-                                                    {group.total.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs text-slate-400">DT</span>
-                                                </p>
-                                            </div>
-                                            <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                        </div>
-                                    </button>
-
-                                    {isExpanded && (
-                                        <div className="border-t border-slate-100">
-                                            {/* Desktop table */}
-                                            <div className="hidden md:block overflow-x-auto">
-                                                <table className="w-full text-left border-collapse">
-                                                    <thead>
-                                                        <tr className="bg-slate-50">
-                                                            <th className="px-4 py-3 text-xs font-medium text-slate-500 w-28">Date</th>
-                                                            <th className="px-4 py-3 text-xs font-medium text-slate-500">Désignation</th>
-                                                            <th className="px-4 py-3 text-xs font-medium text-slate-500 w-20 text-center">Qté</th>
-                                                            <th className="px-4 py-3 text-xs font-medium text-slate-500 w-32 text-right">Unit. TTC</th>
-                                                            <th className="px-4 py-3 text-xs font-medium text-slate-500 w-32 text-right">Total TTC</th>
-                                                            {isAdmin && <th className="px-4 py-3 w-24"></th>}
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {group.rows.map((row) => (
-                                                            <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50 group">
-                                                                <td className="px-4 py-3 text-sm text-slate-500 tabular-nums">{row.date}</td>
-                                                                <td className="px-4 py-3">
-                                                                    <p className="text-sm font-medium text-slate-900">{normalizeArticleName(row.designation)}</p>
-                                                                    {row.reference && row.reference !== '-' && (
-                                                                        <p className="text-xs text-slate-400 truncate max-w-[220px] mt-0.5">{row.reference}</p>
-                                                                    )}
-                                                                </td>
-                                                                <td className="px-4 py-3 text-center">
-                                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 tabular-nums">{row.quantity}</span>
-                                                                </td>
-                                                                <td className="px-4 py-3 text-right text-sm text-slate-500 tabular-nums">{row.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                                                                <td className="px-4 py-3 text-right text-sm font-semibold text-slate-900 tabular-nums">{row.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                                                                {isAdmin && (
-                                                                    <td className="px-4 py-3">
-                                                                        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                            <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-4 w-4" /></button>
-                                                                            <button onClick={(e) => { e.stopPropagation(); handleDelete(row); }} className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
-                                                                        </div>
-                                                                    </td>
-                                                                )}
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-
-                                            {/* Mobile stacked cards */}
-                                            <div className="md:hidden divide-y divide-slate-100">
-                                                {group.rows.map((row) => (
-                                                    <div key={row.id} className="p-4">
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div className="min-w-0 flex-1">
-                                                                <p className="text-sm font-medium text-slate-900 break-words">{normalizeArticleName(row.designation)}</p>
-                                                                <p className="text-xs text-slate-400 mt-0.5 tabular-nums">{row.date}</p>
-                                                            </div>
-                                                            {isAdmin && (
-                                                                <div className="flex gap-1 shrink-0">
-                                                                    <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"><Pencil className="h-4 w-4" /></button>
-                                                                    <button onClick={(e) => { e.stopPropagation(); handleDelete(row); }} className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                        <div className="grid grid-cols-3 gap-2 mt-3">
-                                                            <div>
-                                                                <p className="text-xs text-slate-400">Qté</p>
-                                                                <p className="text-sm text-slate-700 tabular-nums">{row.quantity}</p>
-                                                            </div>
-                                                            <div>
-                                                                <p className="text-xs text-slate-400">Unit. TTC</p>
-                                                                <p className="text-sm text-slate-700 tabular-nums">{row.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
-                                                            </div>
-                                                            <div>
-                                                                <p className="text-xs text-slate-400">Total TTC</p>
-                                                                <p className="text-sm font-semibold text-slate-900 tabular-nums">{row.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
 
                         {articles.length === 0 && (
-                            <div className="flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-slate-200 bg-white py-16">
+                            <div className="flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-slate-200 bg-white py-16 px-4">
                                 <Package className="h-10 w-10 text-slate-300 mb-3" />
                                 <p className="text-sm font-medium text-slate-900">Aucun article enregistré</p>
                                 <p className="text-sm text-slate-500 mt-1">Commencez par ajouter votre premier achat.</p>
@@ -1182,7 +847,7 @@ export default function ArticlesContent() {
                         )}
 
                         {articles.length > 0 && supplierGroups.length === 0 && (
-                            <div className="flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-slate-200 bg-white py-16">
+                            <div className="flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-slate-200 bg-white py-16 px-4">
                                 <Search className="h-10 w-10 text-slate-300 mb-3" />
                                 <p className="text-sm text-slate-500">Aucun résultat pour cette recherche.</p>
                                 <button

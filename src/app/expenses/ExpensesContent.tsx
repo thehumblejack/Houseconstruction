@@ -9,7 +9,7 @@ import {
     Plus, Receipt, FileText, Trash2, TrendingUp, DollarSign,
     Upload, X, CheckCircle2, Clock, Eye, EyeOff, AlertCircle, FileDown, ChevronDown,
     ArrowRight, ArrowUp, ArrowDown, ArrowUpDown, Search, Pencil, Image as ImageIcon, Package, GripVertical,
-    Store, FilePlus, Sparkles, Keyboard, ImagePlus, ClipboardList, FolderOpen, FolderInput, Layers, Inbox, CornerDownRight
+    Store, FilePlus, Sparkles, Keyboard, ImagePlus, ClipboardList, FolderOpen, FolderInput, Layers, Inbox, CornerDownRight, Wallet
 } from 'lucide-react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
 import { Modal, AnchoredDropdown } from '@/components/ui';
@@ -524,6 +524,11 @@ function ExpensesContentMain() {
     const [memos, setMemos] = useState<Array<{ id: string; content: string; createdAt: string; updatedAt?: string }>>([]);
     const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
     const [showMemosModal, setShowMemosModal] = useState(false);
+    // Budget — manual funding sources (e.g. bank accounts), stored per project.
+    const [budgetSources, setBudgetSources] = useState<Array<{ id: string; name: string; amount: number }>>([]);
+    const [showBudgetModal, setShowBudgetModal] = useState(false);
+    const [tempBudgetSources, setTempBudgetSources] = useState<Array<{ id: string; name: string; amount: string }>>([]);
+    const [budgetSaving, setBudgetSaving] = useState(false);
     const [expandedMemos, setExpandedMemos] = useState<Set<string>>(new Set());
 
     // Phases (Phase 1, Phase 2, …) — factures carry a phase badge; totals per phase.
@@ -803,6 +808,17 @@ function ExpensesContentMain() {
                     setExcludedGroups(new Set(Array.isArray(arr) ? arr : []));
                 } catch {
                     setExcludedGroups(new Set());
+                }
+
+                // Budget sources (JSON array of {id, name, amount})
+                const bRaw = settingsData.find((s: any) => s.key === 'budget_sources')?.value || '';
+                try {
+                    const arr = bRaw ? JSON.parse(bRaw) : [];
+                    setBudgetSources(Array.isArray(arr)
+                        ? arr.filter((x: any) => x && x.name).map((x: any) => ({ id: String(x.id || x.name), name: String(x.name), amount: Number(x.amount) || 0 }))
+                        : []);
+                } catch {
+                    setBudgetSources([]);
                 }
             }
 
@@ -1506,7 +1522,11 @@ function ExpensesContentMain() {
     // (with total) followed by their members (unless collapsed); ungrouped
     // factures render as plain rows. Group position = its first member's sort slot.
     const factureRenderList = useMemo(() => {
-        const out: Array<{ kind: 'header'; name: string; total: number; count: number } | { kind: 'row'; e: Expense }> = [];
+        type Entry =
+            | { kind: 'header'; name: string; total: number; count: number; firstDate?: string }
+            | { kind: 'row'; e: Expense }
+            | { kind: 'month'; label: string; total: number };
+        const out: Entry[] = [];
         const seen = new Set<string>();
         for (const e of sortedExpenses) {
             const g = (e.groupName || '').trim();
@@ -1514,15 +1534,41 @@ function ExpensesContentMain() {
                 if (!seen.has(g)) {
                     seen.add(g);
                     const members = sortedExpenses.filter(x => (x.groupName || '').trim() === g);
-                    out.push({ kind: 'header', name: g, total: members.reduce((s, x) => s + x.price, 0), count: members.length });
+                    out.push({ kind: 'header', name: g, total: members.reduce((s, x) => s + x.price, 0), count: members.length, firstDate: members[0]?.date });
                     if (!collapsedGroups.has(g)) members.forEach(x => out.push({ kind: 'row', e: x }));
                 }
             } else {
                 out.push({ kind: 'row', e });
             }
         }
-        return out;
-    }, [sortedExpenses, collapsedGroups]);
+        // Month separators with per-month subtotals (only when sorting by date).
+        // Grouped member rows never trigger a separator: a group stays one block.
+        if (sortConfig.key !== 'date') return out;
+        const MONTHS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+        const monthTotal = new Map<string, number>();
+        for (const e of sortedExpenses) {
+            const [, mm, yy] = e.date.split('/');
+            const k = `${yy}-${mm}`;
+            monthTotal.set(k, (monthTotal.get(k) || 0) + e.price);
+        }
+        const withMonths: Entry[] = [];
+        let cur = '';
+        for (const en of out) {
+            const d = en.kind === 'row'
+                ? ((en.e.groupName || '').trim() ? '' : en.e.date)
+                : en.kind === 'header' ? (en.firstDate || '') : '';
+            if (d) {
+                const [, mm, yy] = d.split('/');
+                const k = `${yy}-${mm}`;
+                if (k !== cur) {
+                    cur = k;
+                    withMonths.push({ kind: 'month', label: `${MONTHS_FR[parseInt(mm, 10) - 1] || mm} ${yy}`, total: monthTotal.get(k) || 0 });
+                }
+            }
+            withMonths.push(en);
+        }
+        return withMonths;
+    }, [sortedExpenses, collapsedGroups, sortConfig]);
 
     const activeStat = useMemo(() => {
         const stat = supplierStats.find(s => s.id === activeTab);
@@ -2413,6 +2459,37 @@ function ExpensesContentMain() {
             const detail = error?.message || error?.error_description || error?.hint || (typeof error === 'string' ? error : JSON.stringify(error));
             alert("Erreur lors de l'enregistrement" + (detail ? `\n\n${detail}` : '') + (error?.code ? `\n(code ${error.code})` : ''));
             return false;
+        }
+    };
+
+    const budgetTotal = useMemo(() => budgetSources.reduce((sum, b) => sum + (b.amount || 0), 0), [budgetSources]);
+
+    const openBudgetModal = () => {
+        setTempBudgetSources(budgetSources.length
+            ? budgetSources.map(b => ({ id: b.id, name: b.name, amount: String(b.amount) }))
+            : [{ id: `b_${Date.now()}`, name: '', amount: '' }]);
+        setShowBudgetModal(true);
+    };
+
+    const saveBudget = async () => {
+        if (!isAdmin || !currentProject) return;
+        const rows = tempBudgetSources
+            .map(r => ({ id: r.id, name: r.name.trim(), amount: parseFloat(r.amount) || 0 }))
+            .filter(r => r.name);
+        setBudgetSaving(true);
+        try {
+            const { error } = await supabase.from('project_settings').upsert(
+                { project_id: currentProject.id, key: 'budget_sources', value: JSON.stringify(rows) },
+                { onConflict: 'project_id,key' }
+            );
+            if (error) throw error;
+            setBudgetSources(rows);
+            setShowBudgetModal(false);
+        } catch (e: any) {
+            console.error('Error saving budget:', e);
+            alert('Erreur lors de la sauvegarde du budget' + (e?.message ? `: ${e.message}` : ''));
+        } finally {
+            setBudgetSaving(false);
         }
     };
 
@@ -3375,60 +3452,40 @@ function ExpensesContentMain() {
                 <>
                     {/* Global Stats */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                        {[
-                            {
-                                label: 'Total chantier',
-                                value: grandTotal,
-                                onClick: () => setShowAllExpenses(true),
-                                color: 'slate',
-                                icon: Receipt
-                            },
-                            {
-                                label: 'Total payé',
-                                value: totalPaidGlobal,
-                                onClick: () => setShowAllPaid(true),
-                                color: 'emerald',
-                                icon: CheckCircle2
-                            },
-                            {
-                                label: 'Solde restant',
-                                value: totalRemainingGlobal,
-                                onClick: () => setShowAllPending(true),
-                                color: totalRemainingGlobal < 0 ? 'rose' : 'emerald',
-                                icon: TrendingUp
-                            },
-                            {
-                                label: 'Export bilan',
-                                value: null,
-                                onClick: handleExportPDF,
-                                color: 'amber',
-                                icon: FileDown,
-                                isAction: true
-                            }
-                        ].map((stat) => (
+                        {([
+                            { key: 'total', label: 'Total chantier', value: grandTotal as number | null, sub: null as string | null, onClick: () => setShowAllExpenses(true), color: 'slate', icon: Receipt, action: null as string | null },
+                            { key: 'paid', label: 'Total payé', value: totalPaidGlobal, sub: null, onClick: () => setShowAllPaid(true), color: 'emerald', icon: CheckCircle2, action: null },
+                            { key: 'solde', label: 'Solde restant', value: totalRemainingGlobal, sub: null, onClick: () => setShowAllPending(true), color: totalRemainingGlobal < 0 ? 'rose' : 'emerald', icon: TrendingUp, action: null },
+                            budgetTotal > 0
+                                ? { key: 'budget', label: 'Budget restant', value: budgetTotal - grandTotal, sub: `sur ${formatValue(budgetTotal)} DT · ${budgetSources.length} source${budgetSources.length > 1 ? 's' : ''}`, onClick: openBudgetModal, color: (budgetTotal - grandTotal) < 0 ? 'rose' : 'violet', icon: Wallet, action: null }
+                                : { key: 'budget', label: 'Budget', value: null, sub: null, onClick: openBudgetModal, color: 'violet', icon: Wallet, action: 'Définir un budget' },
+                        ]).map((stat) => (
                             <button
-                                key={stat.label}
+                                key={stat.key}
                                 onClick={stat.onClick}
-                                className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 text-left hover:bg-slate-50 transition-colors flex flex-col"
+                                className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 text-left hover:bg-slate-50 transition-colors flex flex-col min-w-0"
                             >
                                 <div className="flex items-start justify-between">
                                     <p className="text-xs text-slate-500">{stat.label}</p>
                                     <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${stat.color === 'emerald' ? 'bg-emerald-50 text-emerald-600' :
                                         stat.color === 'rose' ? 'bg-rose-50 text-rose-600' :
-                                            stat.color === 'amber' ? 'bg-amber-50 text-amber-600' :
+                                            stat.color === 'violet' ? 'bg-violet-50 text-violet-600' :
                                                 'bg-slate-100 text-slate-600'
                                         }`}>
                                         <stat.icon className="h-4 w-4" />
                                     </div>
                                 </div>
-                                {stat.isAction ? (
+                                {stat.action ? (
                                     <span className="text-sm font-medium text-slate-900 flex items-center gap-1.5 mt-2">
-                                        Générer PDF <ArrowRight className="h-3.5 w-3.5" />
+                                        {stat.action} <ArrowRight className="h-3.5 w-3.5" />
                                     </span>
                                 ) : (
-                                    <p className={`text-xl sm:text-2xl font-semibold tabular-nums mt-1 ${stat.label === 'Solde restant' && (stat.value || 0) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>
-                                        {formatValue(stat.value ?? 0)} <span className="text-xs font-medium text-slate-400">DT</span>
-                                    </p>
+                                    <>
+                                        <p className={`text-xl sm:text-2xl font-semibold tabular-nums mt-1 truncate ${(stat.key === 'solde' || stat.key === 'budget') && (stat.value || 0) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+                                            {formatValue(stat.value ?? 0)} <span className="text-xs font-medium text-slate-400">DT</span>
+                                        </p>
+                                        {stat.sub && <p className="text-[11px] text-slate-400 mt-0.5 truncate">{stat.sub}</p>}
+                                    </>
                                 )}
                             </button>
                         ))}
@@ -4667,6 +4724,18 @@ function ExpensesContentMain() {
                                                 </thead>
                                                 <tbody>
                                                     {factureRenderList.map((entry, index) => {
+                                                        if (entry.kind === 'month') {
+                                                            return (
+                                                                <tr key={`month-${entry.label}`} className="border-t border-slate-100 bg-white">
+                                                                    <td colSpan={6} className="px-4 pt-4 pb-1.5">
+                                                                        <div className="flex items-baseline justify-between">
+                                                                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 capitalize">{entry.label}</span>
+                                                                            <span className="text-[11px] font-semibold text-slate-500 tabular-nums">{formatValue(entry.total)} DT</span>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        }
                                                         if (entry.kind === 'header') {
                                                             const collapsed = collapsedGroups.has(entry.name);
                                                             const excluded = isGroupExcluded(entry.name);
@@ -4815,7 +4884,7 @@ function ExpensesContentMain() {
                                                                     </td>
                                                                 </tr>
                                                                 {isExpanded && (
-                                                                    <tr className="bg-slate-50">
+                                                                    <tr className={inGroup ? 'bg-amber-50/30 border-l-4 border-l-amber-300' : 'bg-slate-50'}>
                                                                         <td colSpan={6} className="px-4 py-0">
                                                                             <div className="pb-4 pt-1">
                                                                                 <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-5">
@@ -4954,6 +5023,14 @@ function ExpensesContentMain() {
                                                 <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-10 text-center text-sm text-slate-400">Aucune facture</div>
                                             )}
                                             {factureRenderList.map((entry) => {
+                                                if (entry.kind === 'month') {
+                                                    return (
+                                                        <div key={`month-${entry.label}`} className="flex items-baseline justify-between px-1 pt-2">
+                                                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 capitalize">{entry.label}</span>
+                                                            <span className="text-[11px] font-semibold text-slate-500 tabular-nums">{formatValue(entry.total)} DT</span>
+                                                        </div>
+                                                    );
+                                                }
                                                 if (entry.kind === 'header') {
                                                     const collapsed = collapsedGroups.has(entry.name);
                                                     const excluded = isGroupExcluded(entry.name);
@@ -5658,6 +5735,100 @@ function ExpensesContentMain() {
                         })}
                     </div>
                 )}
+            </Modal>
+
+            {/* Budget Modal */}
+            <Modal
+                open={showBudgetModal}
+                onClose={() => setShowBudgetModal(false)}
+                title="Budget du chantier"
+                description="Vos sources de financement (comptes bancaires, apports…) comparées au total dépensé"
+                size="lg"
+                icon={<div className="w-10 h-10 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center"><Wallet className="h-5 w-5" /></div>}
+                footer={<>
+                    <button
+                        onClick={() => setShowBudgetModal(false)}
+                        className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
+                    >
+                        {isAdmin ? 'Annuler' : 'Fermer'}
+                    </button>
+                    {isAdmin && (
+                        <button
+                            onClick={saveBudget}
+                            disabled={budgetSaving}
+                            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                        >
+                            <CheckCircle2 className="h-4 w-4" /> {budgetSaving ? 'Enregistrement…' : 'Enregistrer'}
+                        </button>
+                    )}
+                </>}
+            >
+                <div className="space-y-3">
+                    <div className="space-y-2">
+                        {tempBudgetSources.map((row, idx) => (
+                            <div key={row.id} className="flex items-center gap-2">
+                                <input
+                                    type="text"
+                                    value={row.name}
+                                    disabled={!isAdmin}
+                                    onChange={(ev) => setTempBudgetSources(prev => prev.map((r, i) => i === idx ? { ...r, name: ev.target.value } : r))}
+                                    placeholder="Ex: Compte BIAT"
+                                    className="flex-1 min-w-0 h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition disabled:bg-slate-50"
+                                />
+                                <input
+                                    type="number"
+                                    step="0.001"
+                                    inputMode="decimal"
+                                    value={row.amount}
+                                    disabled={!isAdmin}
+                                    onChange={(ev) => setTempBudgetSources(prev => prev.map((r, i) => i === idx ? { ...r, amount: ev.target.value } : r))}
+                                    placeholder="Montant (DT)"
+                                    className="w-32 sm:w-40 h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm tabular-nums text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition disabled:bg-slate-50"
+                                />
+                                {isAdmin && (
+                                    <button
+                                        onClick={() => setTempBudgetSources(prev => prev.filter((_, i) => i !== idx))}
+                                        className="shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                                        title="Retirer cette source"
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                    {isAdmin && (
+                        <button
+                            onClick={() => setTempBudgetSources(prev => [...prev, { id: `b_${Date.now()}`, name: '', amount: '' }])}
+                            className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl border border-dashed border-slate-300 text-slate-600 text-sm font-medium hover:bg-slate-50 hover:border-slate-400 transition-colors"
+                        >
+                            <Plus className="h-4 w-4" /> Ajouter une source
+                        </button>
+                    )}
+                    {(() => {
+                        const tmpTotal = tempBudgetSources.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+                        const remaining = tmpTotal - grandTotal;
+                        return tmpTotal > 0 ? (
+                            <div className="rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 space-y-1.5">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-slate-500">Budget total</span>
+                                    <span className="font-semibold text-slate-900 tabular-nums">{formatValue(tmpTotal)} DT</span>
+                                </div>
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-slate-500">Dépensé (total chantier)</span>
+                                    <span className="font-semibold text-slate-900 tabular-nums">{formatValue(grandTotal)} DT</span>
+                                </div>
+                                <div className="flex items-center justify-between text-sm border-t border-slate-200 pt-1.5">
+                                    <span className="text-slate-500">Restant</span>
+                                    <span className={`font-semibold tabular-nums ${remaining < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{formatValue(remaining)} DT</span>
+                                </div>
+                                <div className="h-2 rounded-full bg-slate-200 overflow-hidden mt-1">
+                                    <div className={`h-full rounded-full ${remaining < 0 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, tmpTotal > 0 ? (grandTotal / tmpTotal) * 100 : 0)}%` }} />
+                                </div>
+                            </div>
+                        ) : null;
+                    })()}
+                </div>
             </Modal>
 
             {/* Memos Modal */}

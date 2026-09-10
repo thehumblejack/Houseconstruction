@@ -541,10 +541,20 @@ export default function FinanceContent() {
 
                 {/* ── Dashboard : glisser-déposer & redimensionner (bouton « Disposition ») ── */}
                 <style>{`
-                    .react-grid-item.react-grid-placeholder { background: rgba(148,163,184,0.18); border: 1px dashed rgba(100,116,139,0.5); border-radius: 16px; }
-                    .fin-editing .react-grid-item { cursor: grab; }
+                    .react-grid-item.react-grid-placeholder { background: rgba(15,23,42,0.06); border: 1.5px dashed rgba(15,23,42,0.45); border-radius: 16px; }
+                    .fin-editing .react-grid-item { cursor: grab; transition: box-shadow .15s ease; }
+                    .fin-editing .react-grid-item:hover { box-shadow: 0 0 0 2px rgba(15,23,42,0.55); }
                     .fin-editing .react-grid-item:active { cursor: grabbing; }
-                    .react-grid-item > .react-resizable-handle { z-index: 4; }
+                    .fin-editing .react-grid-item.react-draggable-dragging { box-shadow: 0 14px 30px rgba(15,23,42,0.20); z-index: 5; cursor: grabbing; }
+                    .react-grid-item > .react-resizable-handle { z-index: 6; }
+                    .fin-editing .react-resizable-handle-se {
+                        width: 22px; height: 22px; right: 5px; bottom: 5px; padding: 0; opacity: 1;
+                        background-image: none;
+                        border-right: 3px solid rgb(51,65,85);
+                        border-bottom: 3px solid rgb(51,65,85);
+                        border-bottom-right-radius: 6px;
+                    }
+                    .fin-editing .react-grid-item:hover .react-resizable-handle-se { border-color: rgb(2,6,23); }
                 `}</style>
                 <div className={editing ? 'fin-editing -mx-2' : '-mx-2'}>
                     {mounted ? (

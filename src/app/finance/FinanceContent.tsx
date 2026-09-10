@@ -22,7 +22,7 @@ import { Modal } from '@/components/ui';
 import {
     Wallet, Plus, Loader2, Lock, Landmark, ArrowDownRight, ArrowUpRight,
     Pencil, Trash2, TrendingDown, TrendingUp, EyeOff, Eye, CheckCircle2,
-    ArrowRightLeft, HandCoins, Repeat, Check, BarChart3, ChevronDown,
+    ArrowRightLeft, HandCoins, Repeat, Check, BarChart3, ChevronDown, Receipt,
 } from 'lucide-react';
 
 type Currency = 'TND' | 'USD' | 'EUR';
@@ -61,9 +61,15 @@ export default function FinanceContent() {
     const [privacy, setPrivacy] = useState(false);
     // Disponible projeté : inclure créances (à recevoir) et dettes (à payer) dans le héro.
     const [includeDebts, setIncludeDebts] = useState(false);
+    // Inclure le solde restant côté Dépenses (ce que je dois encore aux fournisseurs).
+    const [includeExpenses, setIncludeExpenses] = useState(false);
+    const [expRows, setExpRows] = useState<Array<{ supplier_id: string; price: number; status: string; group_name: string | null }>>([]);
+    const [depRows, setDepRows] = useState<Array<{ supplier_id: string; amount: number }>>([]);
+    const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
     const [expandedDebt, setExpandedDebt] = useState<string | null>(null);
-    useEffect(() => { try { setIncludeDebts(localStorage.getItem('he_fin_include_debts') === '1'); } catch { /* */ } }, []);
+    useEffect(() => { try { setIncludeDebts(localStorage.getItem('he_fin_include_debts') === '1'); setIncludeExpenses(localStorage.getItem('he_fin_include_expenses') === '1'); } catch { /* */ } }, []);
     const toggleIncludeDebts = () => setIncludeDebts((v) => { try { localStorage.setItem('he_fin_include_debts', v ? '0' : '1'); } catch { /* */ } return !v; });
+    const toggleIncludeExpenses = () => setIncludeExpenses((v) => { try { localStorage.setItem('he_fin_include_expenses', v ? '0' : '1'); } catch { /* */ } return !v; });
     // Période active (pilote les stats, les comptes et la liste) — défaut : ce mois.
     const [period, setPeriod] = useState<Period>('month');
     const [customFrom, setCustomFrom] = useState('');
@@ -124,20 +130,27 @@ export default function FinanceContent() {
                 if (/relation|does not exist|schema cache/i.test(accRes.error.message)) { setNotReady(true); setLoading(false); return; }
                 throw accRes.error;
             }
-            const [movRes, debtRes, recRes, setRes, linkRes] = await Promise.all([
+            const [movRes, debtRes, recRes, setRes, linkRes, expRes, depRes] = await Promise.all([
                 supabase.from('finance_movements').select('*').eq('project_id', currentProject.id).order('date', { ascending: false }).order('created_at', { ascending: false }),
                 supabase.from('finance_debts').select('*').eq('project_id', currentProject.id).order('created_at', { ascending: false }),
                 supabase.from('finance_recurring').select('*').eq('project_id', currentProject.id).order('created_at', { ascending: false }),
-                supabase.from('project_settings').select('key, value').eq('project_id', currentProject.id).eq('key', 'fx_rates'),
+                supabase.from('project_settings').select('key, value').eq('project_id', currentProject.id).in('key', ['fx_rates', 'excluded_groups']),
                 supabase.from('project_suppliers').select('supplier_id').eq('project_id', currentProject.id),
+                supabase.from('expenses').select('supplier_id, price, status, group_name').eq('project_id', currentProject.id).is('deleted_at', null),
+                supabase.from('deposits').select('supplier_id, amount').eq('project_id', currentProject.id).is('deleted_at', null),
             ]);
             setAccounts(((accRes.data || []) as any[]).map((a) => ({ ...a, currency: (a.currency || 'TND') as Currency })));
             setMovements(((movRes.data || []) as any[]).map((m) => ({ ...m, amount: Number(m.amount) || 0 })));
             setDebts(debtRes.error ? [] : ((debtRes.data || []) as any[]).map((d) => ({ ...d, amount: Number(d.amount) || 0 })));
             setRecurring(recRes.error ? [] : ((recRes.data || []) as any[]).map((r) => ({ ...r, amount: Number(r.amount) || 0, currency: (r.currency || 'TND') as Currency })));
 
-            const fxRaw = (setRes.data || [])[0]?.value;
+            const settingsMap = new Map<string, string>((setRes.data || []).map((r: any) => [String(r.key), String(r.value ?? '')]));
+            const fxRaw = settingsMap.get('fx_rates');
             if (fxRaw) { try { const o = JSON.parse(fxRaw); setRates({ TND: 1, USD: Number(o.USD) || DEFAULT_RATES.USD, EUR: Number(o.EUR) || DEFAULT_RATES.EUR }); } catch { /* */ } }
+            const exRaw = settingsMap.get('excluded_groups');
+            try { const arr = exRaw ? JSON.parse(exRaw) : []; setExcludedGroups(new Set(Array.isArray(arr) ? arr : [])); } catch { setExcludedGroups(new Set()); }
+            setExpRows(expRes && !expRes.error ? ((expRes.data || []) as any[]).map((e) => ({ supplier_id: e.supplier_id, price: Number(e.price) || 0, status: e.status || '', group_name: e.group_name || null })) : []);
+            setDepRows(depRes && !depRes.error ? ((depRes.data || []) as any[]).map((d) => ({ supplier_id: d.supplier_id, amount: Number(d.amount) || 0 })) : []);
 
             const ids = (linkRes.data || []).map((l: any) => l.supplier_id);
             if (ids.length) {
@@ -185,6 +198,20 @@ export default function FinanceContent() {
         return map;
     }, [movements]);
     const debtRemaining = useCallback((d: Debt) => Math.max(0, d.amount - (debtPaid.get(d.id)?.paid || 0)), [debtPaid]);
+    // Solde restant côté Dépenses (réplique du « Solde restant » global de la page Dépenses).
+    const soldeDepenses = useMemo(() => {
+        const bySup = new Map<string, { billed: number; paid: number; dep: number }>();
+        for (const e of expRows) {
+            if (e.group_name && excludedGroups.has(`${e.supplier_id}::${e.group_name}`)) continue;
+            const g = bySup.get(e.supplier_id) || { billed: 0, paid: 0, dep: 0 };
+            g.billed += e.price; if (e.status === 'paid') g.paid += e.price;
+            bySup.set(e.supplier_id, g);
+        }
+        for (const d of depRows) { const g = bySup.get(d.supplier_id) || { billed: 0, paid: 0, dep: 0 }; g.dep += d.amount; bySup.set(d.supplier_id, g); }
+        let total = 0;
+        for (const [, g] of bySup) { const paye = Math.max(g.dep, g.paid); total += g.dep > g.billed ? (g.dep - g.paid) : (paye - g.billed); }
+        return total;
+    }, [expRows, depRows, excludedGroups]);
     const isSettled = useCallback((d: Debt) => d.settled || debtRemaining(d) <= 0.0005, [debtRemaining]);
 
     const totals = useMemo(() => {
@@ -426,7 +453,8 @@ export default function FinanceContent() {
     const convResult = (parseFloat(convAmount) || 0) * (rates[convFrom] || 1);
     const panelHead = "flex items-center justify-between gap-2 px-4 py-2.5 border-b border-slate-100";
     const iconBtn = "inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors";
-    const projected = totals.available + totals.receivable - totals.payable;
+    const projShowsDetail = includeDebts || includeExpenses;
+    const projected = totals.available + (includeDebts ? totals.receivable - totals.payable : 0) - (includeExpenses ? soldeDepenses : 0);
 
     return (
         <div className="min-h-screen font-jakarta">
@@ -472,10 +500,10 @@ export default function FinanceContent() {
                     <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 flex flex-col">
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{includeDebts ? 'Disponible projeté' : 'Disponible en banque'}</p>
-                                <p className={`text-[28px] sm:text-4xl font-semibold tabular-nums mt-1 leading-none ${(includeDebts ? projected : totals.available) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(includeDebts ? projected : totals.available)} <span className="text-base font-medium text-slate-400">DT</span></p>
-                                {includeDebts && (
-                                    <p className="text-[11px] text-slate-500 mt-1.5 tabular-nums">en banque <span className="font-medium text-slate-900">{fmtc(totals.available)}</span> <span className="text-emerald-600">+{fmtc(totals.receivable)}</span> à recevoir <span className="text-rose-600">−{fmtc(totals.payable)}</span> à payer</p>
+                                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{projShowsDetail ? 'Disponible projeté' : 'Disponible en banque'}</p>
+                                <p className={`text-[28px] sm:text-4xl font-semibold tabular-nums mt-1 leading-none ${(projShowsDetail ? projected : totals.available) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(projShowsDetail ? projected : totals.available)} <span className="text-base font-medium text-slate-400">DT</span></p>
+                                {projShowsDetail && (
+                                    <p className="text-[11px] text-slate-500 mt-1.5 tabular-nums">en banque <span className="font-medium text-slate-900">{fmtc(totals.available)}</span>{includeDebts && <> <span className="text-emerald-600">+{fmtc(totals.receivable)}</span> à recevoir <span className="text-rose-600">−{fmtc(totals.payable)}</span> à payer</>}{includeExpenses && <> <span className="text-rose-600">−{fmtc(soldeDepenses)}</span> solde Dépenses</>}</p>
                                 )}
                             </div>
                             <div className="shrink-0 flex flex-col items-end gap-1.5">
@@ -484,6 +512,7 @@ export default function FinanceContent() {
                                     <p className={`text-base font-semibold tabular-nums ${periodTotals.net < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{periodTotals.net >= 0 ? '+' : ''}{fmtc(periodTotals.net)} DT</p>
                                 </div>
                                 <button onClick={toggleIncludeDebts} className={`inline-flex items-center gap-1 h-7 px-2 rounded-lg text-[11px] font-medium border transition-colors ${includeDebts ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}><HandCoins className="h-3 w-3" /> {includeDebts ? 'Créances & dettes incluses' : 'Inclure créances & dettes'}</button>
+                                <button onClick={toggleIncludeExpenses} className={`inline-flex items-center gap-1 h-7 px-2 rounded-lg text-[11px] font-medium border transition-colors ${includeExpenses ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}><Receipt className="h-3 w-3" /> {includeExpenses ? 'Solde Dépenses inclus' : 'Inclure solde Dépenses'}</button>
                             </div>
                         </div>
 

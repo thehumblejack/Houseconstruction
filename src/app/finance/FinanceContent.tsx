@@ -19,10 +19,13 @@ import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
 import { Modal } from '@/components/ui';
+import { Responsive, WidthProvider, type Layouts } from 'react-grid-layout';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
 import {
     Wallet, Plus, Loader2, Lock, Landmark, ArrowDownRight, ArrowUpRight,
     Pencil, Trash2, TrendingDown, TrendingUp, EyeOff, Eye, CheckCircle2,
-    ArrowRightLeft, HandCoins, Repeat, Check, BarChart3, ChevronDown, Receipt,
+    ArrowRightLeft, HandCoins, Repeat, Check, BarChart3, ChevronDown, Receipt, LayoutGrid, RotateCcw,
 } from 'lucide-react';
 
 type Currency = 'TND' | 'USD' | 'EUR';
@@ -44,6 +47,34 @@ type Period = 'month' | '3m' | 'year' | 'all' | 'custom';
 const PERIODS: Array<{ key: Period; label: string }> = [
     { key: 'month', label: 'Ce mois' }, { key: '3m', label: '3 mois' }, { key: 'year', label: 'Année' }, { key: 'all', label: 'Tout' }, { key: 'custom', label: 'Dates' },
 ];
+const ResponsiveGridLayout = WidthProvider(Responsive);
+const DEFAULT_LAYOUTS: Layouts = {
+    lg: [
+        { i: 'hero', x: 0, y: 0, w: 4, h: 9, minW: 3, minH: 6 },
+        { i: 'chart', x: 4, y: 0, w: 4, h: 9, minW: 3, minH: 6 },
+        { i: 'comptes', x: 8, y: 0, w: 4, h: 9, minW: 3, minH: 5 },
+        { i: 'prevision', x: 0, y: 9, w: 6, h: 8, minW: 3, minH: 5 },
+        { i: 'creances', x: 6, y: 9, w: 6, h: 8, minW: 3, minH: 5 },
+        { i: 'mouvements', x: 0, y: 17, w: 12, h: 12, minW: 4, minH: 6 },
+    ],
+    md: [
+        { i: 'hero', x: 0, y: 0, w: 4, h: 9, minW: 3, minH: 6 },
+        { i: 'chart', x: 4, y: 0, w: 4, h: 9, minW: 3, minH: 6 },
+        { i: 'comptes', x: 8, y: 0, w: 4, h: 9, minW: 3, minH: 5 },
+        { i: 'prevision', x: 0, y: 9, w: 6, h: 8, minW: 3, minH: 5 },
+        { i: 'creances', x: 6, y: 9, w: 6, h: 8, minW: 3, minH: 5 },
+        { i: 'mouvements', x: 0, y: 17, w: 12, h: 12, minW: 4, minH: 6 },
+    ],
+    sm: [
+        { i: 'hero', x: 0, y: 0, w: 1, h: 11, minH: 6 },
+        { i: 'chart', x: 0, y: 11, w: 1, h: 9, minH: 6 },
+        { i: 'comptes', x: 0, y: 20, w: 1, h: 8, minH: 5 },
+        { i: 'prevision', x: 0, y: 28, w: 1, h: 9, minH: 5 },
+        { i: 'creances', x: 0, y: 37, w: 1, h: 8, minH: 5 },
+        { i: 'mouvements', x: 0, y: 45, w: 1, h: 12, minH: 6 },
+    ],
+};
+const cloneLayouts = (l: Layouts): Layouts => JSON.parse(JSON.stringify(l));
 
 export default function FinanceContent() {
     const { user, isApproved, loading: authLoading } = useAuth();
@@ -66,6 +97,17 @@ export default function FinanceContent() {
     const [expRows, setExpRows] = useState<Array<{ supplier_id: string; price: number; status: string; group_name: string | null }>>([]);
     const [depRows, setDepRows] = useState<Array<{ supplier_id: string; amount: number }>>([]);
     const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
+    // Mode édition de la disposition (glisser-déposer + redimensionner).
+    const [editing, setEditing] = useState(false);
+    const [mounted, setMounted] = useState(false);
+    const [gridKey, setGridKey] = useState(0);
+    const [layouts, setLayouts] = useState<Layouts>(() => cloneLayouts(DEFAULT_LAYOUTS));
+    useEffect(() => {
+        setMounted(true);
+        try { const raw = localStorage.getItem('he_fin_layouts'); if (raw) { const parsed = JSON.parse(raw); if (parsed && parsed.lg) setLayouts(parsed); } } catch { /* */ }
+    }, []);
+    const persistLayouts = (all: Layouts) => { setLayouts(all); try { localStorage.setItem('he_fin_layouts', JSON.stringify(all)); } catch { /* */ } };
+    const resetLayout = () => { const d = cloneLayouts(DEFAULT_LAYOUTS); setLayouts(d); setGridKey((k) => k + 1); try { localStorage.removeItem('he_fin_layouts'); } catch { /* */ } };
     const [expandedDebt, setExpandedDebt] = useState<string | null>(null);
     useEffect(() => { try { setIncludeDebts(localStorage.getItem('he_fin_include_debts') === '1'); setIncludeExpenses(localStorage.getItem('he_fin_include_expenses') === '1'); } catch { /* */ } }, []);
     const toggleIncludeDebts = () => setIncludeDebts((v) => { try { localStorage.setItem('he_fin_include_debts', v ? '0' : '1'); } catch { /* */ } return !v; });
@@ -454,7 +496,7 @@ export default function FinanceContent() {
     const panelHead = "flex items-center justify-between gap-2 px-4 py-2.5 border-b border-slate-100";
     const iconBtn = "inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors";
     const projShowsDetail = includeDebts || includeExpenses;
-    const projected = totals.available + (includeDebts ? totals.receivable - totals.payable : 0) - (includeExpenses ? soldeDepenses : 0);
+    const projected = totals.available + (includeDebts ? totals.receivable - totals.payable : 0) + (includeExpenses ? soldeDepenses : 0);
 
     return (
         <div className="min-h-screen font-jakarta">
@@ -479,6 +521,8 @@ export default function FinanceContent() {
                                 <button onClick={() => openMovement('in')} disabled={accounts.length === 0} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-[13px] font-medium hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"><TrendingUp className="h-4 w-4 text-emerald-500" /> Entrée</button>
                             </>
                         )}
+                        {editing && <button onClick={resetLayout} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-600 text-[13px] font-medium hover:bg-slate-50 transition-colors"><RotateCcw className="h-4 w-4" /> Réinitialiser</button>}
+                        <button onClick={() => setEditing((e) => !e)} className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-xl text-[13px] font-medium border transition-colors ${editing ? 'bg-slate-900 text-white border-slate-900 hover:bg-slate-800' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}><LayoutGrid className="h-4 w-4" /> {editing ? 'Terminer' : 'Disposition'}</button>
                         <button onClick={() => setPrivacy(!privacy)} className={`inline-flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${privacy ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{privacy ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
                     </div>
                 </div>
@@ -495,15 +539,37 @@ export default function FinanceContent() {
                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">Exécutez les migrations finance dans Supabase pour activer les comptes.</div>
                 )}
 
-                {/* ── Row 1: Disponible · Entrées vs sorties · Mes comptes ── */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 flex flex-col">
+                {/* ── Dashboard : glisser-déposer & redimensionner (bouton « Disposition ») ── */}
+                <style>{`
+                    .react-grid-item.react-grid-placeholder { background: rgba(148,163,184,0.18); border: 1px dashed rgba(100,116,139,0.5); border-radius: 16px; }
+                    .fin-editing .react-grid-item { cursor: grab; }
+                    .fin-editing .react-grid-item:active { cursor: grabbing; }
+                    .react-grid-item > .react-resizable-handle { z-index: 4; }
+                `}</style>
+                <div className={editing ? 'fin-editing -mx-2' : '-mx-2'}>
+                    {mounted ? (
+                        <ResponsiveGridLayout
+                            key={gridKey}
+                            className="layout"
+                            layouts={layouts}
+                            breakpoints={{ lg: 1024, md: 768, sm: 0 }}
+                            cols={{ lg: 12, md: 12, sm: 1 }}
+                            rowHeight={28}
+                            margin={[16, 16]}
+                            containerPadding={[8, 0]}
+                            isDraggable={editing}
+                            isResizable={editing}
+                            draggableCancel="button, input, select, a, .rgl-no-drag"
+                            resizeHandles={['se']}
+                            onLayoutChange={(_cur, all) => { if (editing) persistLayouts(all); }}
+                        >
+                    <div key="hero" className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 flex flex-col h-full">
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                                 <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{projShowsDetail ? 'Disponible projeté' : 'Disponible en banque'}</p>
                                 <p className={`text-[28px] sm:text-4xl font-semibold tabular-nums mt-1 leading-none ${(projShowsDetail ? projected : totals.available) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(projShowsDetail ? projected : totals.available)} <span className="text-base font-medium text-slate-400">DT</span></p>
                                 {projShowsDetail && (
-                                    <p className="text-[11px] text-slate-500 mt-1.5 tabular-nums">en banque <span className="font-medium text-slate-900">{fmtc(totals.available)}</span>{includeDebts && <> <span className="text-emerald-600">+{fmtc(totals.receivable)}</span> à recevoir <span className="text-rose-600">−{fmtc(totals.payable)}</span> à payer</>}{includeExpenses && <> <span className="text-rose-600">−{fmtc(soldeDepenses)}</span> solde Dépenses</>}</p>
+                                    <p className="text-[11px] text-slate-500 mt-1.5 tabular-nums">en banque <span className="font-medium text-slate-900">{fmtc(totals.available)}</span>{includeDebts && <> <span className="text-emerald-600">+{fmtc(totals.receivable)}</span> à recevoir <span className="text-rose-600">−{fmtc(totals.payable)}</span> à payer</>}{includeExpenses && <> <span className={soldeDepenses < 0 ? 'text-rose-600' : 'text-emerald-600'}>{soldeDepenses < 0 ? '−' : '+'}{fmtc(Math.abs(soldeDepenses))}</span> solde Dépenses</>}</p>
                                 )}
                             </div>
                             <div className="shrink-0 flex flex-col items-end gap-1.5">
@@ -546,8 +612,7 @@ export default function FinanceContent() {
                             ))}
                         </div>
                     </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col">
+                    <div key="chart" className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col h-full">
                         <div className={panelHead}>
                             <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-slate-400" /> Entrées vs sorties <span className="hidden sm:inline text-[11px] font-normal text-slate-400">· 6 derniers mois</span></p>
                             <div className="flex items-center gap-3 text-[11px] text-slate-500">
@@ -583,9 +648,7 @@ export default function FinanceContent() {
                             </div>
                         </div>
                     </div>
-
-                    {/* Comptes — solde + entrées/sorties de la période */}
-                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col">
+                    <div key="comptes" className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col h-full">
                         <div className={panelHead}>
                             <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Landmark className="h-4 w-4 text-slate-400" /> Mes comptes <span className="text-[11px] font-normal text-slate-400">· {periodLabel.toLowerCase()}</span></p>
                             {canEdit && <button onClick={openNewAccount} className="inline-flex items-center gap-1 h-7 px-2 rounded-lg text-slate-600 hover:bg-slate-100 text-[12px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
@@ -593,7 +656,7 @@ export default function FinanceContent() {
                         {accounts.length === 0 ? (
                             <p className="px-4 py-8 text-center text-sm text-slate-400">Aucun compte — ajoutez vos comptes bancaires.</p>
                         ) : (
-                            <div className="divide-y divide-slate-100 overflow-y-auto max-h-[360px]">
+                            <div className="divide-y divide-slate-100 overflow-y-auto flex-1 min-h-0">
                                 {accounts.map((a) => {
                                     const b = perAccount.get(a.id) || { in: 0, out: 0, balance: a.initial_balance };
                                     const pp = perAccountPeriod.get(a.id) || { in: 0, out: 0 };
@@ -632,12 +695,7 @@ export default function FinanceContent() {
                             </div>
                         )}
                     </div>
-                </div>
-
-                {/* ── Row 2: Prévision mensuelle · Créances & dettes ── */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                    {/* Prévision mensuelle */}
-                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col">
+                    <div key="prevision" className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col h-full">
                         <div className={panelHead}>
                             <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Repeat className="h-4 w-4 text-slate-400" /> Prévision mensuelle</p>
                             {canEdit && <button onClick={openNewRecur} className="inline-flex items-center gap-1 h-7 px-2 rounded-lg text-slate-600 hover:bg-slate-100 text-[12px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
@@ -652,7 +710,7 @@ export default function FinanceContent() {
                         {recurring.length === 0 ? (
                             <p className="px-4 py-8 text-center text-sm text-slate-400">Ajoutez vos revenus (salaire…) et charges mensuelles récurrents</p>
                         ) : (
-                            <div className="divide-y divide-slate-100 overflow-y-auto max-h-[300px]">
+                            <div className="divide-y divide-slate-100 overflow-y-auto flex-1 min-h-0">
                                 {recurring.map((r) => {
                                     const doneThisMonth = (r.last_applied || '').slice(0, 7) === thisMonthKey();
                                     return (
@@ -679,8 +737,7 @@ export default function FinanceContent() {
                             </div>
                         )}
                     </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                    <div key="creances" className="rounded-2xl border border-slate-200 bg-white overflow-hidden h-full flex flex-col">
                         <div className={panelHead}>
                             <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><HandCoins className="h-4 w-4 text-slate-400" /> Créances &amp; dettes</p>
                             {canEdit && (
@@ -693,7 +750,7 @@ export default function FinanceContent() {
                         {debts.length === 0 ? (
                             <p className="px-4 py-8 text-center text-sm text-slate-400">Aucune créance ni dette</p>
                         ) : (
-                            <div className="divide-y divide-slate-100">
+                            <div className="divide-y divide-slate-100 flex-1 min-h-0 overflow-y-auto">
                                 {debts.map((d) => {
                                     const pd = debtPaid.get(d.id);
                                     const rem = debtRemaining(d);
@@ -782,12 +839,7 @@ export default function FinanceContent() {
                             </div>
                         )}
                     </div>
-                </div>
-
-                {/* ── Row 3: Mouvements ── */}
-                <div className="grid grid-cols-1 gap-4">
-                    {/* Mouvements — groupés par jour, filtre par compte */}
-                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                    <div key="mouvements" className="rounded-2xl border border-slate-200 bg-white overflow-hidden h-full flex flex-col">
                         <div className={panelHead}>
                             <p className="text-sm font-semibold text-slate-900">Mouvements <span className="text-[11px] font-normal text-slate-400">· {periodLabel.toLowerCase()} · {shownMovs.length}</span></p>
                             {accounts.length > 1 && (
@@ -802,7 +854,7 @@ export default function FinanceContent() {
                         {movsByDay.length === 0 ? (
                             <p className="px-4 py-10 text-center text-sm text-slate-400">Aucun mouvement sur cette période{accFilter ? ' pour ce compte' : ''}.</p>
                         ) : (
-                            <div className="max-h-[560px] overflow-y-auto">
+                            <div className="flex-1 min-h-0 overflow-y-auto">
                                 {movsByDay.map((g) => {
                                     const dayNet = g.items.reduce((acc, m) => acc + (m.direction === 'in' ? 1 : -1) * toTND(m.amount, accCurrency_(m.account_id)), 0);
                                     return (
@@ -835,6 +887,10 @@ export default function FinanceContent() {
                             </div>
                         )}
                     </div>
+                        </ResponsiveGridLayout>
+                    ) : (
+                        <div style={{ minHeight: 600 }} />
+                    )}
                 </div>
             </div>
 

@@ -25,7 +25,7 @@ import 'react-resizable/css/styles.css';
 import {
     Wallet, Plus, Loader2, Lock, Landmark, ArrowDownRight, ArrowUpRight,
     Pencil, Trash2, TrendingDown, TrendingUp, EyeOff, Eye, CheckCircle2,
-    ArrowRightLeft, HandCoins, Repeat, Check, BarChart3, ChevronDown, Receipt, LayoutGrid, RotateCcw,
+    ArrowRightLeft, HandCoins, Repeat, Check, BarChart3, ChevronDown, Receipt, LayoutGrid, RotateCcw, ScrollText,
 } from 'lucide-react';
 
 type Currency = 'TND' | 'USD' | 'EUR';
@@ -109,6 +109,8 @@ export default function FinanceContent() {
     const persistLayouts = (all: Layouts) => { setLayouts(all); try { localStorage.setItem('he_fin_layouts', JSON.stringify(all)); } catch { /* */ } };
     const resetLayout = () => { const d = cloneLayouts(DEFAULT_LAYOUTS); setLayouts(d); setGridKey((k) => k + 1); try { localStorage.removeItem('he_fin_layouts'); } catch { /* */ } };
     const [expandedDebt, setExpandedDebt] = useState<string | null>(null);
+    // Relevé d'un compte (historique entrées/sorties + solde après chaque mouvement).
+    const [statementAccount, setStatementAccount] = useState<Account | null>(null);
     useEffect(() => { try { setIncludeDebts(localStorage.getItem('he_fin_include_debts') === '1'); setIncludeExpenses(localStorage.getItem('he_fin_include_expenses') === '1'); } catch { /* */ } }, []);
     const toggleIncludeDebts = () => setIncludeDebts((v) => { try { localStorage.setItem('he_fin_include_debts', v ? '0' : '1'); } catch { /* */ } return !v; });
     const toggleIncludeExpenses = () => setIncludeExpenses((v) => { try { localStorage.setItem('he_fin_include_expenses', v ? '0' : '1'); } catch { /* */ } return !v; });
@@ -340,6 +342,19 @@ export default function FinanceContent() {
         for (const m of shownMovs) { const g = groups[groups.length - 1]; if (g && g.date === m.date) g.items.push(m); else groups.push({ date: m.date, items: [m] }); }
         return groups;
     }, [shownMovs]);
+
+    // Relevé du compte sélectionné : chaque mouvement avec le solde courant après lui.
+    const statementData = useMemo(() => {
+        if (!statementAccount) return { rows: [] as Array<{ m: Movement; balance: number }>, totalIn: 0, totalOut: 0, balance: 0 };
+        const acc = statementAccount;
+        const asc = movements.filter((m) => m.account_id === acc.id).slice().reverse(); // chronologique croissant
+        let bal = acc.initial_balance, tin = 0, tout = 0;
+        const withBal = asc.map((m) => {
+            if (m.direction === 'in') { bal += m.amount; tin += m.amount; } else { bal -= m.amount; tout += m.amount; }
+            return { m, balance: bal };
+        });
+        return { rows: withBal.reverse(), totalIn: tin, totalOut: tout, balance: bal };
+    }, [statementAccount, movements]);
 
     const supplierName = useCallback((id: string | null) => id ? (suppliers.find((s) => s.id === id)?.name || '') : '', [suppliers]);
     const accountName = useCallback((id: string) => accounts.find((a) => a.id === id)?.name || '—', [accounts]);
@@ -673,7 +688,7 @@ export default function FinanceContent() {
                                     const tot = pp.in + pp.out;
                                     const foreign = a.currency !== 'TND';
                                     return (
-                                        <div key={a.id} className="px-3.5 py-2.5">
+                                        <div key={a.id} className="px-3.5 py-2.5 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors rgl-no-drag" onClick={() => setStatementAccount(a)} title="Voir le relevé du compte">
                                             <div className="flex items-center gap-2.5">
                                                 <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${tone(a.id)}`} />
                                                 <p className="text-[13px] font-medium text-slate-900 truncate flex-1 min-w-0">{a.name}{foreign && <span className="text-slate-400 font-normal"> · {a.currency}</span>}</p>
@@ -681,12 +696,13 @@ export default function FinanceContent() {
                                                     <p className={`text-[13px] font-semibold tabular-nums ${b.balance < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(b.balance)} <span className="text-[10px] font-normal text-slate-400">{CUR_SYMBOL[a.currency]}</span></p>
                                                     {foreign && <p className="text-[10px] text-slate-400 tabular-nums">≈ {fmtc(toTND(b.balance, a.currency))} DT</p>}
                                                 </div>
-                                                {canEdit && (
-                                                    <div className="flex items-center gap-0.5 shrink-0">
-                                                        <button onClick={() => openEditAccount(a)} className={iconBtn}><Pencil className="h-3.5 w-3.5" /></button>
-                                                        <button onClick={() => deleteAccount(a)} className={`${iconBtn} hover:bg-rose-50 hover:text-rose-600`}><Trash2 className="h-3.5 w-3.5" /></button>
-                                                    </div>
-                                                )}
+                                                <div className="flex items-center gap-0.5 shrink-0">
+                                                    <button onClick={(e) => { e.stopPropagation(); setStatementAccount(a); }} title="Relevé du compte" className={`${iconBtn} hover:text-slate-900`}><ScrollText className="h-3.5 w-3.5" /></button>
+                                                    {canEdit && <>
+                                                        <button onClick={(e) => { e.stopPropagation(); openEditAccount(a); }} className={iconBtn}><Pencil className="h-3.5 w-3.5" /></button>
+                                                        <button onClick={(e) => { e.stopPropagation(); deleteAccount(a); }} className={`${iconBtn} hover:bg-rose-50 hover:text-rose-600`}><Trash2 className="h-3.5 w-3.5" /></button>
+                                                    </>}
+                                                </div>
                                             </div>
                                             <div className="mt-1.5 pl-5 flex items-center gap-2">
                                                 <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden flex">
@@ -903,6 +919,68 @@ export default function FinanceContent() {
                     )}
                 </div>
             </div>
+
+            {/* Relevé de compte */}
+            <Modal
+                open={!!statementAccount}
+                onClose={() => setStatementAccount(null)}
+                title={statementAccount ? `Relevé — ${statementAccount.name}` : 'Relevé'}
+                description="Ce qui est entré et sorti de ce compte, avec le solde après chaque mouvement"
+                size="lg"
+                icon={<div className={`w-10 h-10 rounded-xl ${statementAccount ? tone(statementAccount.id) : 'bg-slate-900'} text-white flex items-center justify-center`}><Landmark className="h-5 w-5" /></div>}
+            >
+                {statementAccount && (() => {
+                    const cur = statementAccount.currency;
+                    const foreign = cur !== 'TND';
+                    return (
+                        <div className="space-y-3">
+                            <div className="grid grid-cols-3 gap-2">
+                                <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5 min-w-0">
+                                    <p className="text-[10px] text-slate-500">Solde actuel</p>
+                                    <p className={`text-sm font-semibold tabular-nums truncate ${statementData.balance < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(statementData.balance)} {CUR_SYMBOL[cur]}</p>
+                                    {foreign && <p className="text-[10px] text-slate-400 tabular-nums">≈ {fmtc(toTND(statementData.balance, cur))} DT</p>}
+                                </div>
+                                <div className="rounded-xl bg-emerald-50 px-3 py-2.5 min-w-0">
+                                    <p className="text-[10px] text-emerald-700/70">Total entrées</p>
+                                    <p className="text-sm font-semibold text-emerald-700 tabular-nums truncate">+{fmt(statementData.totalIn)} {CUR_SYMBOL[cur]}</p>
+                                </div>
+                                <div className="rounded-xl bg-rose-50 px-3 py-2.5 min-w-0">
+                                    <p className="text-[10px] text-rose-700/70">Total sorties</p>
+                                    <p className="text-sm font-semibold text-rose-700 tabular-nums truncate">−{fmt(statementData.totalOut)} {CUR_SYMBOL[cur]}</p>
+                                </div>
+                            </div>
+                            <p className="text-[11px] text-slate-400 tabular-nums px-0.5">Solde initial : <span className="font-medium text-slate-600">{fmt(statementAccount.initial_balance)} {CUR_SYMBOL[cur]}</span> · {statementData.rows.length} mouvement{statementData.rows.length > 1 ? 's' : ''}</p>
+                            {statementData.rows.length === 0 ? (
+                                <p className="rounded-xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-400">Aucun mouvement sur ce compte pour l'instant.</p>
+                            ) : (
+                                <div className="rounded-xl border border-slate-200 overflow-hidden">
+                                    <div className="flex items-center gap-2 px-3.5 py-2 bg-slate-50 border-b border-slate-200 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                                        <span className="flex-1">Mouvement</span>
+                                        <span className="w-24 text-right">Montant</span>
+                                        <span className="w-28 text-right">Solde après</span>
+                                    </div>
+                                    <div className="divide-y divide-slate-100 max-h-[52vh] overflow-y-auto">
+                                        {statementData.rows.map(({ m, balance }) => {
+                                            const sn = supplierName(m.supplier_id);
+                                            return (
+                                                <div key={m.id} className="flex items-center gap-2 px-3.5 py-2.5">
+                                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${m.direction === 'out' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>{m.direction === 'out' ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}</div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-[13px] font-medium text-slate-900 truncate">{m.label || (m.direction === 'out' ? 'Paiement' : 'Entrée')}{sn && <span className="text-slate-400 font-normal"> · {sn}</span>}{m.debt_id && <span className="ml-1.5 inline-flex items-center rounded px-1 py-px text-[9px] font-medium bg-slate-100 text-slate-500 align-middle">versement</span>}</p>
+                                                        <p className="text-[10px] text-slate-400">{new Date(m.date + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                                                    </div>
+                                                    <p className={`w-24 text-right text-[13px] font-semibold tabular-nums shrink-0 ${m.direction === 'out' ? 'text-rose-600' : 'text-emerald-600'}`}>{m.direction === 'out' ? '−' : '+'}{fmt(m.amount)}</p>
+                                                    <p className={`w-28 text-right text-[13px] font-semibold tabular-nums shrink-0 ${balance < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(balance)} <span className="text-[9px] font-normal text-slate-400">{CUR_SYMBOL[cur]}</span></p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
+            </Modal>
 
             <Modal open={showAccountModal} onClose={() => setShowAccountModal(false)} title={editingAccount ? 'Modifier le compte' : 'Nouveau compte'} description="Banque, caisse, ou toute source d'argent" size="sm" icon={<div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center"><Landmark className="h-5 w-5" /></div>}
                 footer={<><button onClick={() => setShowAccountModal(false)} className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Annuler</button><button onClick={saveAccount} disabled={saving || !accName.trim()} className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"><CheckCircle2 className="h-4 w-4" /> Enregistrer</button></>}>

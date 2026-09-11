@@ -32,6 +32,7 @@ type Currency = 'TND' | 'USD' | 'EUR';
 interface Account { id: string; name: string; initial_balance: number; sort_order: number; currency: Currency; }
 interface Movement { id: string; account_id: string; direction: 'in' | 'out'; amount: number; label: string | null; supplier_id: string | null; date: string; debt_id?: string | null; }
 interface Debt { id: string; person: string; amount: number; direction: 'receivable' | 'payable'; note: string | null; settled: boolean; }
+interface DebtEntry { id: string; debt_id: string; amount: number; date: string; note: string | null; }
 interface Recurring { id: string; label: string; account_id: string | null; amount: number; currency: Currency; direction: 'in' | 'out'; day_of_month: number | null; last_applied: string | null; active: boolean; }
 
 const ACCOUNT_TONES = ['bg-blue-600', 'bg-emerald-600', 'bg-violet-600', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-600', 'bg-slate-700'];
@@ -87,6 +88,12 @@ export default function FinanceContent() {
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [movements, setMovements] = useState<Movement[]>([]);
     const [debts, setDebts] = useState<Debt[]>([]);
+    const [debtEntries, setDebtEntries] = useState<DebtEntry[]>([]);
+    // Ajout daté sur une dette existante
+    const [entryDebt, setEntryDebt] = useState<Debt | null>(null);
+    const [entryAmount, setEntryAmount] = useState('');
+    const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
+    const [entryNote, setEntryNote] = useState('');
     const [recurring, setRecurring] = useState<Recurring[]>([]);
     const [rates, setRates] = useState<Record<Currency, number>>(DEFAULT_RATES);
     const [privacy, setPrivacy] = useState(false);
@@ -174,10 +181,11 @@ export default function FinanceContent() {
                 if (/relation|does not exist|schema cache/i.test(accRes.error.message)) { setNotReady(true); setLoading(false); return; }
                 throw accRes.error;
             }
-            const [movRes, debtRes, recRes, setRes, linkRes, expRes, depRes] = await Promise.all([
+            const [movRes, debtRes, recRes, dEntRes, setRes, linkRes, expRes, depRes] = await Promise.all([
                 supabase.from('finance_movements').select('*').eq('project_id', currentProject.id).order('date', { ascending: false }).order('created_at', { ascending: false }),
                 supabase.from('finance_debts').select('*').eq('project_id', currentProject.id).order('created_at', { ascending: false }),
                 supabase.from('finance_recurring').select('*').eq('project_id', currentProject.id).order('created_at', { ascending: false }),
+                supabase.from('finance_debt_entries').select('*').eq('project_id', currentProject.id).order('date', { ascending: false }).order('created_at', { ascending: false }),
                 supabase.from('project_settings').select('key, value').eq('project_id', currentProject.id).in('key', ['fx_rates', 'excluded_groups']),
                 supabase.from('project_suppliers').select('supplier_id').eq('project_id', currentProject.id),
                 supabase.from('expenses').select('supplier_id, price, status, group_name').eq('project_id', currentProject.id).is('deleted_at', null),
@@ -187,6 +195,7 @@ export default function FinanceContent() {
             setMovements(((movRes.data || []) as any[]).map((m) => ({ ...m, amount: Number(m.amount) || 0 })));
             setDebts(debtRes.error ? [] : ((debtRes.data || []) as any[]).map((d) => ({ ...d, amount: Number(d.amount) || 0 })));
             setRecurring(recRes.error ? [] : ((recRes.data || []) as any[]).map((r) => ({ ...r, amount: Number(r.amount) || 0, currency: (r.currency || 'TND') as Currency })));
+            setDebtEntries(dEntRes && !dEntRes.error ? ((dEntRes.data || []) as any[]).map((x) => ({ ...x, amount: Number(x.amount) || 0 })) : []);
 
             const settingsMap = new Map<string, string>((setRes.data || []).map((r: any) => [String(r.key), String(r.value ?? '')]));
             const fxRaw = settingsMap.get('fx_rates');
@@ -241,7 +250,14 @@ export default function FinanceContent() {
         for (const m of movements) { if (!m.debt_id) continue; const arr = map.get(m.debt_id) || []; arr.push(m); map.set(m.debt_id, arr); }
         return map;
     }, [movements]);
-    const debtRemaining = useCallback((d: Debt) => Math.max(0, d.amount - (debtPaid.get(d.id)?.paid || 0)), [debtPaid]);
+    // Ajouts datés par dette : total = montant initial + somme des ajouts.
+    const entriesByDebt = useMemo(() => {
+        const map = new Map<string, DebtEntry[]>();
+        for (const e of debtEntries) { const arr = map.get(e.debt_id) || []; arr.push(e); map.set(e.debt_id, arr); }
+        return map;
+    }, [debtEntries]);
+    const debtTotal = useCallback((d: Debt) => d.amount + (entriesByDebt.get(d.id) || []).reduce((s, e) => s + e.amount, 0), [entriesByDebt]);
+    const debtRemaining = useCallback((d: Debt) => Math.max(0, debtTotal(d) - (debtPaid.get(d.id)?.paid || 0)), [debtPaid, debtTotal]);
     // Solde restant côté Dépenses (réplique du « Solde restant » global de la page Dépenses).
     const soldeDepenses = useMemo(() => {
         const bySup = new Map<string, { billed: number; paid: number; dep: number }>();
@@ -402,7 +418,7 @@ export default function FinanceContent() {
             } else if (!error && settlingDebt) {
                 // Versement partiel : la dette passe « réglée » quand le total des versements couvre le montant.
                 const paidTND = (debtPaid.get(settlingDebt.id)?.paid || 0) + toTND(amount, accCurrency_(moveAccount));
-                if (paidTND >= settlingDebt.amount - 0.0005) await supabase.from('finance_debts').update({ settled: true }).eq('id', settlingDebt.id);
+                if (paidTND >= debtTotal(settlingDebt) - 0.0005) await supabase.from('finance_debts').update({ settled: true }).eq('id', settlingDebt.id);
             }
             if (error) throw error;
             setShowMoveModal(false); setSettlingDebt(null); fetchAll();
@@ -429,6 +445,27 @@ export default function FinanceContent() {
     const deleteDebt = async (d: Debt) => {
         if (!canEdit || !confirm('Supprimer cette ligne ?')) return;
         const { error } = await supabase.from('finance_debts').delete().eq('id', d.id);
+        if (error) { alert('Erreur : ' + error.message); return; } fetchAll();
+    };
+    const openAddEntry = (d: Debt) => { setEntryDebt(d); setEntryAmount(''); setEntryDate(new Date().toISOString().split('T')[0]); setEntryNote(''); };
+    const saveDebtEntry = async () => {
+        if (!canEdit || !currentProject || !entryDebt) return;
+        const amount = parseFloat(entryAmount);
+        if (isNaN(amount) || amount <= 0) { alert('Montant invalide.'); return; }
+        setSaving(true);
+        try {
+            const { error } = await supabase.from('finance_debt_entries').insert({
+                project_id: currentProject.id, debt_id: entryDebt.id, amount, date: entryDate, note: entryNote.trim() || null,
+            });
+            if (error) throw error;
+            // La dette grossit : si elle était marquée réglée, on la rouvre.
+            if (entryDebt.settled) await supabase.from('finance_debts').update({ settled: false }).eq('id', entryDebt.id);
+            setEntryDebt(null); fetchAll();
+        } catch (e: any) { alert('Erreur : ' + (e?.message || e)); } finally { setSaving(false); }
+    };
+    const deleteDebtEntry = async (e: DebtEntry) => {
+        if (!canEdit || !confirm('Supprimer cet ajout ?')) return;
+        const { error } = await supabase.from('finance_debt_entries').delete().eq('id', e.id);
         if (error) { alert('Erreur : ' + error.message); return; } fetchAll();
     };
     const settleDebt = (d: Debt) => {
@@ -782,7 +819,9 @@ export default function FinanceContent() {
                                     const rem = debtRemaining(d);
                                     const done = isSettled(d);
                                     const partial = !!pd && pd.paid > 0 && !done;
-                                    const pct = d.amount > 0 ? Math.min(100, ((d.amount - rem) / d.amount) * 100) : 100;
+                                    const dTot = debtTotal(d);
+                                    const dEntries = entriesByDebt.get(d.id) || [];
+                                    const pct = dTot > 0 ? Math.min(100, ((dTot - rem) / dTot) * 100) : 100;
                                     const recv = d.direction === 'receivable';
                                     const list = debtMovs.get(d.id) || [];
                                     const open = expandedDebt === d.id;
@@ -795,14 +834,14 @@ export default function FinanceContent() {
                                                     <p className={`text-[13px] font-medium text-slate-900 truncate ${done ? 'line-through' : ''}`}>{d.person}</p>
                                                     <p className="text-[10px] text-slate-400 truncate">
                                                         {recv ? 'On me doit' : 'Je dois'}{d.note ? ` · ${d.note}` : ''}
-                                                        {pd && pd.paid > 0 ? ` · ${pd.count} versement${pd.count > 1 ? 's' : ''} · ${fmtc(Math.min(pd.paid, d.amount))} / ${fmtc(d.amount)}` : ''}
+                                                        {pd && pd.paid > 0 ? ` · ${pd.count} versement${pd.count > 1 ? 's' : ''} · ${fmtc(Math.min(pd.paid, dTot))} / ${fmtc(dTot)}` : ''}{dEntries.length > 0 ? ` · ${dEntries.length} ajout${dEntries.length > 1 ? 's' : ''}` : ''}
                                                         {done ? ' · réglé' : ''}
                                                     </p>
                                                 </div>
                                                 <button onClick={() => setExpandedDebt(open ? null : d.id)} title="Voir les versements" className={`${iconBtn} w-6 h-6`}><ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} /></button>
                                                 <div className="text-right shrink-0">
-                                                    <p className={`text-[12px] font-semibold tabular-nums ${recv ? 'text-emerald-600' : 'text-rose-600'}`}>{partial ? `reste ${fmtc(rem)}` : fmtc(d.amount)} DT</p>
-                                                    {partial && <p className="text-[10px] text-slate-400 tabular-nums">sur {fmtc(d.amount)}</p>}
+                                                    <p className={`text-[12px] font-semibold tabular-nums ${recv ? 'text-emerald-600' : 'text-rose-600'}`}>{partial ? `reste ${fmtc(rem)}` : fmtc(dTot)} DT</p>
+                                                    {partial && <p className="text-[10px] text-slate-400 tabular-nums">sur {fmtc(dTot)}</p>}
                                                 </div>
                                                 {canEdit && (done
                                                     ? (d.settled
@@ -826,9 +865,23 @@ export default function FinanceContent() {
                                             {open && (
                                                 <div className="mt-2 ml-[38px] rounded-xl border border-slate-200 bg-slate-50/60 overflow-hidden">
                                                     <div className="grid grid-cols-3 divide-x divide-slate-200 border-b border-slate-200">
-                                                        <div className="px-2.5 py-1.5 min-w-0"><p className="text-[9px] uppercase tracking-wide text-slate-400">Total</p><p className="text-[12px] font-semibold text-slate-900 tabular-nums truncate">{fmtc(d.amount)} DT</p></div>
-                                                        <div className="px-2.5 py-1.5 min-w-0"><p className="text-[9px] uppercase tracking-wide text-slate-400">Réglé</p><p className={`text-[12px] font-semibold tabular-nums truncate ${recv ? 'text-emerald-600' : 'text-rose-600'}`}>{fmtc(Math.min(pd?.paid || 0, d.amount))} DT</p></div>
+                                                        <div className="px-2.5 py-1.5 min-w-0"><p className="text-[9px] uppercase tracking-wide text-slate-400">Total</p><p className="text-[12px] font-semibold text-slate-900 tabular-nums truncate">{fmtc(dTot)} DT</p></div>
+                                                        <div className="px-2.5 py-1.5 min-w-0"><p className="text-[9px] uppercase tracking-wide text-slate-400">Réglé</p><p className={`text-[12px] font-semibold tabular-nums truncate ${recv ? 'text-emerald-600' : 'text-rose-600'}`}>{fmtc(Math.min(pd?.paid || 0, dTot))} DT</p></div>
                                                         <div className="px-2.5 py-1.5 min-w-0"><p className="text-[9px] uppercase tracking-wide text-slate-400">Reste</p><p className={`text-[12px] font-semibold tabular-nums truncate ${rem > 0 ? 'text-slate-900' : 'text-emerald-600'}`}>{fmtc(rem)} DT</p></div>
+                                                    </div>
+                                                    <div className="px-2.5 py-1.5 border-b border-slate-200 flex items-center justify-between gap-2 flex-wrap">
+                                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+                                                            <span className="text-[10px] uppercase tracking-wide text-slate-400">Montants</span>
+                                                            <span className="text-[11px] text-slate-600 tabular-nums">initial <span className="font-semibold text-slate-900">{fmtc(d.amount)}</span></span>
+                                                            {dEntries.map((en) => (
+                                                                <span key={en.id} className="text-[11px] text-slate-600 tabular-nums inline-flex items-center gap-1">
+                                                                    +<span className="font-semibold text-slate-900">{fmtc(en.amount)}</span>
+                                                                    <span className="text-slate-400">({new Date(en.date + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}{en.note ? ` · ${en.note}` : ''})</span>
+                                                                    {canEdit && <button onClick={() => deleteDebtEntry(en)} title="Supprimer cet ajout" className="text-slate-300 hover:text-rose-600 transition-colors"><Trash2 className="h-3 w-3" /></button>}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                        {canEdit && <button onClick={() => openAddEntry(d)} className="inline-flex items-center gap-1 h-6 px-2 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-medium hover:bg-slate-100 transition-colors shrink-0"><Plus className="h-3 w-3" /> Ajouter</button>}
                                                     </div>
                                                     {byAcc.length > 0 && (
                                                         <div className="px-2.5 py-1.5 flex flex-wrap gap-x-3 gap-y-1 border-b border-slate-200">
@@ -999,7 +1052,7 @@ export default function FinanceContent() {
                 <div className="space-y-4">
                     {settlingDebt && (
                         <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[12px] text-slate-600">
-                            Reste à régler : <span className="font-semibold text-slate-900 tabular-nums">{fmtc(debtRemaining(settlingDebt))} DT</span> sur {fmtc(settlingDebt.amount)} — vous pouvez régler une partie seulement, le reste se recalcule.
+                            Reste à régler : <span className="font-semibold text-slate-900 tabular-nums">{fmtc(debtRemaining(settlingDebt))} DT</span> sur {fmtc(debtTotal(settlingDebt))} — vous pouvez régler une partie seulement, le reste se recalcule.
                         </div>
                     )}
                     {!settlingDebt && (
@@ -1063,6 +1116,19 @@ export default function FinanceContent() {
                         <div className="h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center min-w-[104px] justify-end shrink-0"><span className="text-sm font-semibold text-slate-900 tabular-nums">{convResult.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs text-slate-400">DT</span></span></div>
                     </div>
                     <button onClick={openRates} className="text-[12px] font-medium text-slate-500 hover:text-slate-900 transition-colors tabular-nums">Taux : 1$={rates.USD} · 1€={rates.EUR} — modifier</button>
+                </div>
+            </Modal>
+
+            {/* Ajout d'un montant sur une dette */}
+            <Modal open={!!entryDebt} onClose={() => setEntryDebt(null)} title={entryDebt ? `Ajouter — ${entryDebt.person}` : 'Ajouter'} description="Un montant daté qui s'ajoute au total de cette créance/dette" size="sm" icon={<div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center"><HandCoins className="h-5 w-5" /></div>}
+                footer={<><button onClick={() => setEntryDebt(null)} className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Annuler</button><button onClick={saveDebtEntry} disabled={saving || !entryAmount} className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"><CheckCircle2 className="h-4 w-4" /> Ajouter</button></>}>
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                        <div><label className={labelClass}>Montant (DT)</label><input type="number" step="0.001" inputMode="decimal" value={entryAmount} onChange={(e) => setEntryAmount(e.target.value)} placeholder="0.000" autoFocus className={`${inputClass} tabular-nums`} /></div>
+                        <div><label className={labelClass}>Date</label><input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} className={inputClass} /></div>
+                    </div>
+                    <div><label className={labelClass}>Note <span className="text-slate-400 font-normal">(optionnel)</span></label><input type="text" value={entryNote} onChange={(e) => setEntryNote(e.target.value)} placeholder="Ex: 2e tranche chantier" className={inputClass} /></div>
+                    {entryDebt && <p className="text-[11px] text-slate-400 tabular-nums">Total actuel : {fmtc(debtTotal(entryDebt))} DT{entryAmount ? <> → nouveau total <span className="font-semibold text-slate-700">{fmtc(debtTotal(entryDebt) + (parseFloat(entryAmount) || 0))} DT</span></> : null}</p>}
                 </div>
             </Modal>
 

@@ -524,6 +524,13 @@ function ExpensesContentMain() {
     const [memos, setMemos] = useState<Array<{ id: string; content: string; createdAt: string; updatedAt?: string }>>([]);
     const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
     const [showMemosModal, setShowMemosModal] = useState(false);
+    // Paiements partiels par facture (table expense_payments) — clé: expense_id.
+    const [expensePayments, setExpensePayments] = useState<Record<string, Array<{ id: string; amount: number; date: string; receipt_image: string | null; note: string | null }>>>({});
+    const [payModalExpense, setPayModalExpense] = useState<{ id: string; item: string; price: number; status: PaymentStatus } | null>(null);
+    const [payAmount, setPayAmount] = useState('');
+    const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
+    const [payFile, setPayFile] = useState<File | null>(null);
+    const [paySaving, setPaySaving] = useState(false);
     // Budget — manual funding sources (e.g. bank accounts), stored per project.
     // Argent réellement disponible en banque (module Finance, fail-soft).
     const [financeAvailable, setFinanceAvailable] = useState<number | null>(null);
@@ -713,13 +720,23 @@ function ExpensesContentMain() {
         // page never "reloads" under the user.
         if (!hasLoadedRef.current) setLoading(true);
         try {
-            const [allSuppliersRes, expensesRes, depositsRes, settingsRes, uploadedDocsRes] = await Promise.all([
+            const [allSuppliersRes, expensesRes, depositsRes, settingsRes, uploadedDocsRes, payRes] = await Promise.all([
                 supabase.from('suppliers').select('*').is('deleted_at', null).order('name'),
                 supabase.from('expenses').select('*, items:invoice_items(*)').eq('project_id', currentProject.id).is('deleted_at', null),
                 supabase.from('deposits').select('*').eq('project_id', currentProject.id).is('deleted_at', null),
                 supabase.from('project_settings').select('*').eq('project_id', currentProject.id),
                 supabase.from('uploaded_documents').select('*').eq('project_id', currentProject.id).order('uploaded_at', { ascending: false }),
+                supabase.from('expense_payments').select('*').eq('project_id', currentProject.id).order('date', { ascending: false }).order('created_at', { ascending: false }),
             ]);
+
+            // Paiements partiels par facture (fail-soft si migration absente)
+            if (payRes && !payRes.error) {
+                const payMap: Record<string, Array<{ id: string; amount: number; date: string; receipt_image: string | null; note: string | null }>> = {};
+                for (const pr of (payRes.data || []) as any[]) {
+                    (payMap[pr.expense_id] = payMap[pr.expense_id] || []).push({ id: pr.id, amount: Number(pr.amount) || 0, date: pr.date, receipt_image: pr.receipt_image || null, note: pr.note || null });
+                }
+                setExpensePayments(payMap);
+            }
 
             // Optional fetch for project_suppliers
             const { data: projectSupsData, error: projectSupsError } = await supabase.from('project_suppliers').select('*').eq('project_id', currentProject.id).is('deleted_at', null);
@@ -1403,6 +1420,10 @@ function ExpensesContentMain() {
             totalExpenseAll += e.price;
             if (e.status === 'paid') {
                 totalExpensePaid += e.price;
+            } else {
+                // Paiements partiels : de l'argent réellement sorti, plafonné au TTC.
+                const partial = (expensePayments[e.id] || []).reduce((sum2, x) => sum2 + x.amount, 0);
+                if (partial > 0) totalExpensePaid += Math.min(partial, e.price);
             }
         });
 
@@ -1443,7 +1464,7 @@ function ExpensesContentMain() {
             remaining: computedRemaining,
             color: s.color
         };
-    }), [suppliers, excludedGroups]);
+    }), [suppliers, excludedGroups, expensePayments]);
 
     const grandTotal = supplierStats.reduce((sum, s) => sum + s.totalCost, 0);
     const totalPaidGlobal = supplierStats.reduce((sum, s) => sum + s.totalPaid, 0);
@@ -1628,6 +1649,78 @@ function ExpensesContentMain() {
             console.error('Error updating status:', error);
             alert('Impossible de mettre à jour le statut');
             await fetchData(); // Rollback to server state
+        }
+    };
+
+    /* ── Paiements partiels par facture ─────────────────────────────────── */
+    const paidOfExpense = useCallback((id: string) => (expensePayments[id] || []).reduce((s, x) => s + x.amount, 0), [expensePayments]);
+
+    const refreshExpensePayments = useCallback(async () => {
+        if (!currentProject) return;
+        const { data, error } = await supabase.from('expense_payments').select('*').eq('project_id', currentProject.id).order('date', { ascending: false }).order('created_at', { ascending: false });
+        if (error) return;
+        const payMap: Record<string, Array<{ id: string; amount: number; date: string; receipt_image: string | null; note: string | null }>> = {};
+        for (const pr of (data || []) as any[]) {
+            (payMap[pr.expense_id] = payMap[pr.expense_id] || []).push({ id: pr.id, amount: Number(pr.amount) || 0, date: pr.date, receipt_image: pr.receipt_image || null, note: pr.note || null });
+        }
+        setExpensePayments(payMap);
+    }, [supabase, currentProject]);
+
+    const openPayModal = (e: { id: string; item: string; price: number; status: PaymentStatus }) => {
+        if (!isAdmin) return;
+        const rest = Math.max(0, e.price - paidOfExpense(e.id));
+        setPayModalExpense({ id: e.id, item: e.item, price: e.price, status: e.status });
+        setPayAmount(e.status !== 'paid' && rest > 0 ? String(rest) : '');
+        setPayDate(new Date().toISOString().split('T')[0]);
+        setPayFile(null);
+    };
+
+    const addExpensePayment = async () => {
+        if (!isAdmin || !currentProject || !payModalExpense) return;
+        const amount = parseFloat(payAmount);
+        if (isNaN(amount) || amount <= 0) { alert('Montant invalide.'); return; }
+        setPaySaving(true);
+        try {
+            let receiptUrl: string | null = null;
+            if (payFile) {
+                const ext = (payFile.name.split('.').pop() || 'jpg').toLowerCase();
+                const path = `payments/${payModalExpense.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+                let bucket = 'invoices';
+                let { error: upErr } = await supabase.storage.from(bucket).upload(path, payFile);
+                if (upErr) { bucket = 'documents'; ({ error: upErr } = await supabase.storage.from(bucket).upload(path, payFile)); }
+                if (upErr) throw upErr;
+                receiptUrl = supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+            }
+            const { error } = await supabase.from('expense_payments').insert({
+                project_id: currentProject.id, expense_id: payModalExpense.id, amount, date: payDate, receipt_image: receiptUrl,
+            });
+            if (error) throw error;
+            const newSum = paidOfExpense(payModalExpense.id) + amount;
+            await refreshExpensePayments();
+            // Passage automatique à « Payé » quand les versements couvrent le TTC.
+            if (payModalExpense.status !== 'paid' && newSum >= payModalExpense.price - 0.0005) {
+                setPayModalExpense((prev) => prev ? { ...prev, status: 'paid' } : prev);
+                await updateStatus(payModalExpense.id, 'paid');
+            }
+            setPayAmount(''); setPayFile(null);
+        } catch (e: any) {
+            console.error('addExpensePayment:', e);
+            alert('Erreur : ' + (e?.message || e) + (/(relation|does not exist|schema cache)/i.test(e?.message || '') ? '\n\nExécutez la migration « expense_payments_debt_entries » dans Supabase.' : ''));
+        } finally { setPaySaving(false); }
+    };
+
+    const deleteExpensePayment = async (paymentId: string) => {
+        if (!isAdmin || !payModalExpense) return;
+        if (!confirm('Supprimer ce versement ?')) return;
+        const removed = (expensePayments[payModalExpense.id] || []).find((x) => x.id === paymentId);
+        const { error } = await supabase.from('expense_payments').delete().eq('id', paymentId);
+        if (error) { alert('Erreur : ' + error.message); return; }
+        const newSum = paidOfExpense(payModalExpense.id) - (removed?.amount || 0);
+        await refreshExpensePayments();
+        // Une facture couverte par versements redevient « En attente » si on retire un versement.
+        if (payModalExpense.status === 'paid' && newSum < payModalExpense.price - 0.0005) {
+            setPayModalExpense((prev) => prev ? { ...prev, status: 'pending' } : prev);
+            await updateStatus(payModalExpense.id, 'pending');
         }
     };
 
@@ -4797,14 +4890,17 @@ function ExpensesContentMain() {
                                                                         <div className="flex justify-center">
                                                                             {isAdmin ? (
                                                                                 <button
-                                                                                    onClick={() => updateStatus(e.id, e.status === 'paid' ? 'pending' : 'paid')}
+                                                                                    onClick={() => openPayModal(e)}
+                                                                                    title="Gérer le paiement (partiel ou total)"
                                                                                     className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${e.status === 'paid'
                                                                                         ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                                                                        : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                                                                        : paidOfExpense(e.id) > 0
+                                                                                            ? 'bg-sky-50 text-sky-700 hover:bg-sky-100'
+                                                                                            : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
                                                                                         }`}
                                                                                 >
-                                                                                    <div className={`w-1.5 h-1.5 rounded-full ${e.status === 'paid' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                                                                    {e.status === 'paid' ? 'Payé' : 'En attente'}
+                                                                                    <div className={`w-1.5 h-1.5 rounded-full ${e.status === 'paid' ? 'bg-emerald-500' : paidOfExpense(e.id) > 0 ? 'bg-sky-500' : 'bg-amber-500'}`} />
+                                                                                    {e.status === 'paid' ? 'Payé' : paidOfExpense(e.id) > 0 ? `Reste ${formatValue(Math.max(0, e.price - paidOfExpense(e.id)))}` : 'En attente'}
                                                                                 </button>
                                                                             ) : (
                                                                                 <span
@@ -5077,14 +5173,17 @@ function ExpensesContentMain() {
                                                         <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
                                                             {isAdmin ? (
                                                                 <button
-                                                                    onClick={() => updateStatus(e.id, e.status === 'paid' ? 'pending' : 'paid')}
+                                                                    onClick={() => openPayModal(e)}
+                                                                    title="Gérer le paiement (partiel ou total)"
                                                                     className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${e.status === 'paid'
                                                                         ? 'bg-emerald-50 text-emerald-700'
-                                                                        : 'bg-amber-50 text-amber-700'
+                                                                        : paidOfExpense(e.id) > 0
+                                                                            ? 'bg-sky-50 text-sky-700'
+                                                                            : 'bg-amber-50 text-amber-700'
                                                                         }`}
                                                                 >
-                                                                    <div className={`w-1.5 h-1.5 rounded-full ${e.status === 'paid' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                                                    {e.status === 'paid' ? 'Payé' : 'En attente'}
+                                                                    <div className={`w-1.5 h-1.5 rounded-full ${e.status === 'paid' ? 'bg-emerald-500' : paidOfExpense(e.id) > 0 ? 'bg-sky-500' : 'bg-amber-500'}`} />
+                                                                    {e.status === 'paid' ? 'Payé' : paidOfExpense(e.id) > 0 ? `Reste ${formatValue(Math.max(0, e.price - paidOfExpense(e.id)))}` : 'En attente'}
                                                                 </button>
                                                             ) : (
                                                                 <span
@@ -5710,6 +5809,79 @@ function ExpensesContentMain() {
                         })}
                     </div>
                 )}
+            </Modal>
+
+            {/* Paiement de facture (partiel ou total) */}
+            <Modal
+                open={!!payModalExpense}
+                onClose={() => setPayModalExpense(null)}
+                title="Paiement de la facture"
+                description={payModalExpense ? `${payModalExpense.item} — ${formatValue(payModalExpense.price)} DT TTC` : ''}
+                size="md"
+                icon={<div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center"><Wallet className="h-5 w-5" /></div>}
+            >
+                {payModalExpense && (() => {
+                    const pays = expensePayments[payModalExpense.id] || [];
+                    const paid = pays.reduce((sum, x) => sum + x.amount, 0);
+                    const isPaid = payModalExpense.status === 'paid';
+                    const rest = Math.max(0, payModalExpense.price - paid);
+                    const pct = isPaid ? 100 : Math.min(100, payModalExpense.price > 0 ? (paid / payModalExpense.price) * 100 : 0);
+                    return (
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-3 gap-2">
+                                <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 min-w-0"><p className="text-[10px] text-slate-500">Montant TTC</p><p className="text-sm font-semibold text-slate-900 tabular-nums truncate">{formatValue(payModalExpense.price)} DT</p></div>
+                                <div className="rounded-xl bg-emerald-50 px-3 py-2 min-w-0"><p className="text-[10px] text-emerald-700/70">Payé</p><p className="text-sm font-semibold text-emerald-700 tabular-nums truncate">{formatValue(isPaid && paid === 0 ? payModalExpense.price : Math.min(paid, payModalExpense.price))} DT</p></div>
+                                <div className="rounded-xl bg-amber-50 px-3 py-2 min-w-0"><p className="text-[10px] text-amber-700/70">Reste</p><p className={`text-sm font-semibold tabular-nums truncate ${isPaid || rest <= 0 ? 'text-emerald-600' : 'text-amber-700'}`}>{formatValue(isPaid ? 0 : rest)} DT</p></div>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                <div className={`h-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-sky-500'}`} style={{ width: `${pct}%` }} />
+                            </div>
+
+                            {pays.length > 0 && (
+                                <div className="rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100 max-h-56 overflow-y-auto">
+                                    {pays.map((pp) => (
+                                        <div key={pp.id} className="flex items-center gap-2.5 px-3 py-2">
+                                            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0"><CheckCircle2 className="h-3.5 w-3.5" /></div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-[13px] font-semibold text-slate-900 tabular-nums">{formatValue(pp.amount)} DT</p>
+                                                <p className="text-[10px] text-slate-400">{new Date(pp.date + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                                            </div>
+                                            {pp.receipt_image && (
+                                                <a href={pp.receipt_image} target="_blank" rel="noreferrer" title="Voir le reçu" className="shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-600 text-[11px] font-medium hover:bg-slate-100 transition-colors"><ImageIcon className="h-3 w-3" /> Reçu</a>
+                                            )}
+                                            <button onClick={() => deleteExpensePayment(pp.id)} title="Supprimer ce versement" className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {!isPaid && (
+                                <div className="rounded-xl border border-slate-200 p-3 space-y-2.5">
+                                    <p className="text-[12px] font-semibold text-slate-900">Ajouter un versement</p>
+                                    <div className="grid grid-cols-2 gap-2.5">
+                                        <input type="number" step="0.001" inputMode="decimal" value={payAmount} onChange={(ev) => setPayAmount(ev.target.value)} placeholder="Montant (DT)" className="w-full min-w-0 h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 tabular-nums placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition" />
+                                        <input type="date" value={payDate} onChange={(ev) => setPayDate(ev.target.value)} className="w-full min-w-0 h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition" />
+                                    </div>
+                                    <label className="flex items-center gap-2 cursor-pointer rounded-xl border border-dashed border-slate-300 px-3 py-2 hover:bg-slate-50 transition-colors">
+                                        <ImagePlus className="h-4 w-4 text-slate-400 shrink-0" />
+                                        <span className="text-[12px] text-slate-500 truncate">{payFile ? payFile.name : 'Joindre un reçu (photo ou PDF, optionnel)'}</span>
+                                        <input type="file" accept="image/*,.pdf" className="hidden" onChange={(ev) => setPayFile(ev.target.files?.[0] || null)} />
+                                    </label>
+                                    <button onClick={addExpensePayment} disabled={paySaving || !payAmount} className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"><Plus className="h-4 w-4" /> {paySaving ? 'Enregistrement…' : 'Ajouter le versement'}</button>
+                                </div>
+                            )}
+
+                            <div className="flex items-center justify-between pt-1">
+                                <p className="text-[11px] text-slate-400">{isPaid ? 'Cette facture est marquée payée.' : pays.length > 0 ? 'Passera « Payé » quand les versements couvriront le TTC.' : 'Aucun versement pour l’instant.'}</p>
+                                {isPaid ? (
+                                    <button onClick={() => { setPayModalExpense((prev) => prev ? { ...prev, status: 'pending' } : prev); updateStatus(payModalExpense.id, 'pending'); }} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-[13px] font-medium hover:bg-slate-50 transition-colors"><Clock className="h-4 w-4 text-amber-500" /> Remettre en attente</button>
+                                ) : (
+                                    <button onClick={() => { setPayModalExpense((prev) => prev ? { ...prev, status: 'paid' } : prev); updateStatus(payModalExpense.id, 'paid'); }} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-emerald-600 text-white text-[13px] font-medium hover:bg-emerald-700 transition-colors"><CheckCircle2 className="h-4 w-4" /> Marquer payé (tout)</button>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })()}
             </Modal>
 
             {/* Memos Modal */}

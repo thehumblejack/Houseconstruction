@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
 import { Modal, AnchoredDropdown } from '@/components/ui';
+import { computeSupplierSolde, DEFAULT_FX } from '@/lib/solde';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -831,14 +832,20 @@ function ExpensesContentMain() {
             // Finance: money actually available in bank (fail-soft if tables absent)
             try {
                 const [accRes, movRes] = await Promise.all([
-                    supabase.from('finance_accounts').select('initial_balance').eq('project_id', currentProject.id),
-                    supabase.from('finance_movements').select('direction, amount').eq('project_id', currentProject.id),
+                    supabase.from('finance_accounts').select('id, initial_balance, currency').eq('project_id', currentProject.id),
+                    supabase.from('finance_movements').select('account_id, direction, amount').eq('project_id', currentProject.id),
                 ]);
                 if (accRes.error || !accRes.data) {
                     setFinanceAvailable(null);
                 } else {
-                    let avail = accRes.data.reduce((s: number, a: any) => s + (Number(a.initial_balance) || 0), 0);
-                    (movRes.data || []).forEach((m: any) => { avail += (m.direction === 'in' ? 1 : -1) * (Number(m.amount) || 0); });
+                    // Même règle que le héro Finance : solde par compte converti en DT au taux du projet.
+                    let fx = { ...DEFAULT_FX };
+                    try { const o = JSON.parse(settingsData.find((x: any) => x.key === 'fx_rates')?.value || '{}'); fx = { TND: 1, USD: Number(o.USD) || DEFAULT_FX.USD, EUR: Number(o.EUR) || DEFAULT_FX.EUR }; } catch { /* défauts */ }
+                    const balances = new Map<string, { bal: number; cur: string }>();
+                    accRes.data.forEach((a: any) => balances.set(a.id, { bal: Number(a.initial_balance) || 0, cur: a.currency || 'TND' }));
+                    (movRes.data || []).forEach((m: any) => { const b = balances.get(m.account_id); if (b) b.bal += (m.direction === 'in' ? 1 : -1) * (Number(m.amount) || 0); });
+                    let avail = 0;
+                    for (const [, b] of balances) avail += b.bal * ((fx as any)[b.cur] || 1);
                     setFinanceAvailable(avail);
                 }
             } catch {
@@ -1403,68 +1410,20 @@ function ExpensesContentMain() {
 
     // Calculations
 
-    const supplierStats = useMemo(() => Object.values(suppliers).map(s => {
-        // Sum of all acomptes (deposits/règlements)
-        const d_Total = s.deposits?.reduce((sum, d) => sum + d.amount, 0) || 0;
-
-        // Factures in an excluded group don't count towards any total.
-        const countable = s.expenses.filter(e => {
-            const g = (e.groupName || '').trim();
-            return !g || !excludedGroups.has(`${s.id}::${g}`);
+    // Solde par fournisseur — calcul partagé (src/lib/solde.ts), identique à Finance et Fournisseurs.
+    const supplierStats = useMemo(() => {
+        const sups = Object.values(suppliers);
+        const solde = computeSupplierSolde({
+            expenses: sups.flatMap(sp => sp.expenses.map(e => ({ id: e.id, supplier_id: sp.id, price: e.price, status: e.status, group_name: e.groupName || null }))),
+            deposits: sups.flatMap(sp => (sp.deposits || []).map(d => ({ supplier_id: sp.id, amount: d.amount }))),
+            payments: Object.entries(expensePayments).flatMap(([eid, arr]) => arr.map(x => ({ expense_id: eid, amount: x.amount }))),
+            excludedGroups,
         });
-
-        let totalExpenseAll = 0;   // sum of elements in factures et bons
-        let totalExpensePaid = 0;  // sum of only 'payé'
-
-        countable.forEach(e => {
-            totalExpenseAll += e.price;
-            if (e.status === 'paid') {
-                totalExpensePaid += e.price;
-            } else {
-                // Paiements partiels : de l'argent réellement sorti, plafonné au TTC.
-                const partial = (expensePayments[e.id] || []).reduce((sum2, x) => sum2 + x.amount, 0);
-                if (partial > 0) totalExpensePaid += Math.min(partial, e.price);
-            }
+        return sups.map(sp => {
+            const r = solde.bySupplier.get(sp.id) || { billed: 0, paid: 0, pending: 0, remaining: 0 };
+            return { id: sp.id as SupplierType, name: sp.name, totalCost: r.billed, totalPaid: r.paid, remaining: r.remaining, color: sp.color };
         });
-
-        // sum of elements that has Attente status (Outstanding Bill)
-        let totalExpensePending = 0;
-        countable.forEach(e => {
-            if (e.status === 'pending') {
-                totalExpensePending += e.price;
-            }
-        });
-
-        // 1. Total Montant = The sum of ALL internal elements (factures et bons)
-        const computedTotalMontant = totalExpenseAll;
-
-        // 2. Payé = The cash you have outlaid
-        // This is the maximum between your advances and your settled invoices.
-        const computedTotalPaye = Math.max(d_Total, totalExpensePaid);
-
-        // 3. Solde Calculation (Dual-Mode to ensure instant responsiveness):
-        let computedRemaining = 0;
-        if (d_Total > computedTotalMontant) {
-            // CREDIT MODE: You have given more than they have billed.
-            // Solde = "Money I have left" in my cash envelope.
-            // This updates instantly whenever you mark a bill as 'payé' (consuming credit).
-            computedRemaining = d_Total - totalExpensePaid;
-        } else {
-            // DEBT MODE: (Mostakbel case) They have billed more than your advance.
-            // Solde = Your current debt position.
-            // This updates instantly whenever you settle more bills than your initial advance.
-            computedRemaining = computedTotalPaye - computedTotalMontant;
-        }
-
-        return {
-            id: s.id as SupplierType,
-            name: s.name,
-            totalCost: computedTotalMontant,
-            totalPaid: computedTotalPaye,
-            remaining: computedRemaining,
-            color: s.color
-        };
-    }), [suppliers, excludedGroups, expensePayments]);
+    }, [suppliers, excludedGroups, expensePayments]);
 
     const grandTotal = supplierStats.reduce((sum, s) => sum + s.totalCost, 0);
     const totalPaidGlobal = supplierStats.reduce((sum, s) => sum + s.totalPaid, 0);

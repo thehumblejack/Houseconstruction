@@ -19,6 +19,7 @@ import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useProject } from '@/context/ProjectContext';
 import { Modal } from '@/components/ui';
+import { computeSupplierSolde } from '@/lib/solde';
 import { Responsive, WidthProvider, type Layouts } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -101,7 +102,8 @@ export default function FinanceContent() {
     const [includeDebts, setIncludeDebts] = useState(false);
     // Inclure le solde restant côté Dépenses (ce que je dois encore aux fournisseurs).
     const [includeExpenses, setIncludeExpenses] = useState(false);
-    const [expRows, setExpRows] = useState<Array<{ supplier_id: string; price: number; status: string; group_name: string | null }>>([]);
+    const [expRows, setExpRows] = useState<Array<{ id: string; supplier_id: string; price: number; status: string; group_name: string | null }>>([]);
+    const [payRowsF, setPayRowsF] = useState<Array<{ expense_id: string; amount: number }>>([]);
     const [depRows, setDepRows] = useState<Array<{ supplier_id: string; amount: number }>>([]);
     const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
     // Mode édition de la disposition (glisser-déposer + redimensionner).
@@ -181,15 +183,16 @@ export default function FinanceContent() {
                 if (/relation|does not exist|schema cache/i.test(accRes.error.message)) { setNotReady(true); setLoading(false); return; }
                 throw accRes.error;
             }
-            const [movRes, debtRes, recRes, dEntRes, setRes, linkRes, expRes, depRes] = await Promise.all([
+            const [movRes, debtRes, recRes, dEntRes, setRes, linkRes, expRes, depRes, payResF] = await Promise.all([
                 supabase.from('finance_movements').select('*').eq('project_id', currentProject.id).order('date', { ascending: false }).order('created_at', { ascending: false }),
                 supabase.from('finance_debts').select('*').eq('project_id', currentProject.id).order('created_at', { ascending: false }),
                 supabase.from('finance_recurring').select('*').eq('project_id', currentProject.id).order('created_at', { ascending: false }),
                 supabase.from('finance_debt_entries').select('*').eq('project_id', currentProject.id).order('date', { ascending: false }).order('created_at', { ascending: false }),
                 supabase.from('project_settings').select('key, value').eq('project_id', currentProject.id).in('key', ['fx_rates', 'excluded_groups']),
                 supabase.from('project_suppliers').select('supplier_id').eq('project_id', currentProject.id),
-                supabase.from('expenses').select('supplier_id, price, status, group_name').eq('project_id', currentProject.id).is('deleted_at', null),
+                supabase.from('expenses').select('id, supplier_id, price, status, group_name').eq('project_id', currentProject.id).is('deleted_at', null),
                 supabase.from('deposits').select('supplier_id, amount').eq('project_id', currentProject.id).is('deleted_at', null),
+                supabase.from('expense_payments').select('expense_id, amount').eq('project_id', currentProject.id),
             ]);
             setAccounts(((accRes.data || []) as any[]).map((a) => ({ ...a, currency: (a.currency || 'TND') as Currency })));
             setMovements(((movRes.data || []) as any[]).map((m) => ({ ...m, amount: Number(m.amount) || 0 })));
@@ -202,7 +205,8 @@ export default function FinanceContent() {
             if (fxRaw) { try { const o = JSON.parse(fxRaw); setRates({ TND: 1, USD: Number(o.USD) || DEFAULT_RATES.USD, EUR: Number(o.EUR) || DEFAULT_RATES.EUR }); } catch { /* */ } }
             const exRaw = settingsMap.get('excluded_groups');
             try { const arr = exRaw ? JSON.parse(exRaw) : []; setExcludedGroups(new Set(Array.isArray(arr) ? arr : [])); } catch { setExcludedGroups(new Set()); }
-            setExpRows(expRes && !expRes.error ? ((expRes.data || []) as any[]).map((e) => ({ supplier_id: e.supplier_id, price: Number(e.price) || 0, status: e.status || '', group_name: e.group_name || null })) : []);
+            setExpRows(expRes && !expRes.error ? ((expRes.data || []) as any[]).map((e) => ({ id: e.id, supplier_id: e.supplier_id, price: Number(e.price) || 0, status: e.status || '', group_name: e.group_name || null })) : []);
+            setPayRowsF(payResF && !payResF.error ? ((payResF.data || []) as any[]).map((x) => ({ expense_id: x.expense_id, amount: Number(x.amount) || 0 })) : []);
             setDepRows(depRes && !depRes.error ? ((depRes.data || []) as any[]).map((d) => ({ supplier_id: d.supplier_id, amount: Number(d.amount) || 0 })) : []);
 
             const ids = (linkRes.data || []).map((l: any) => l.supplier_id);
@@ -259,19 +263,11 @@ export default function FinanceContent() {
     const debtTotal = useCallback((d: Debt) => d.amount + (entriesByDebt.get(d.id) || []).reduce((s, e) => s + e.amount, 0), [entriesByDebt]);
     const debtRemaining = useCallback((d: Debt) => Math.max(0, debtTotal(d) - (debtPaid.get(d.id)?.paid || 0)), [debtPaid, debtTotal]);
     // Solde restant côté Dépenses (réplique du « Solde restant » global de la page Dépenses).
-    const soldeDepenses = useMemo(() => {
-        const bySup = new Map<string, { billed: number; paid: number; dep: number }>();
-        for (const e of expRows) {
-            if (e.group_name && excludedGroups.has(`${e.supplier_id}::${e.group_name}`)) continue;
-            const g = bySup.get(e.supplier_id) || { billed: 0, paid: 0, dep: 0 };
-            g.billed += e.price; if (e.status === 'paid') g.paid += e.price;
-            bySup.set(e.supplier_id, g);
-        }
-        for (const d of depRows) { const g = bySup.get(d.supplier_id) || { billed: 0, paid: 0, dep: 0 }; g.dep += d.amount; bySup.set(d.supplier_id, g); }
-        let total = 0;
-        for (const [, g] of bySup) { const paye = Math.max(g.dep, g.paid); total += g.dep > g.billed ? (g.dep - g.paid) : (paye - g.billed); }
-        return total;
-    }, [expRows, depRows, excludedGroups]);
+    // « Solde restant » de la page Dépenses — même calcul partagé (src/lib/solde.ts), donc toujours identique.
+    const soldeDepenses = useMemo(
+        () => computeSupplierSolde({ expenses: expRows, deposits: depRows, payments: payRowsF, excludedGroups }).totalRemaining,
+        [expRows, depRows, payRowsF, excludedGroups]
+    );
     const isSettled = useCallback((d: Debt) => d.settled || debtRemaining(d) <= 0.0005, [debtRemaining]);
 
     const totals = useMemo(() => {
@@ -757,19 +753,19 @@ export default function FinanceContent() {
                                 })}
                             </div>
                         )}
+                        {accounts.length > 0 && (
+                            <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-200 bg-slate-50/70 shrink-0">
+                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Total en banque</p><p className={`text-[13px] font-semibold tabular-nums truncate ${totals.available < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmtc(totals.available)} DT</p></div>
+                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Entrées · {periodLabel.toLowerCase()}</p><p className="text-[13px] font-semibold text-emerald-600 tabular-nums truncate">+{fmtc(periodTotals.inSum)}</p></div>
+                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Sorties · {periodLabel.toLowerCase()}</p><p className="text-[13px] font-semibold text-rose-600 tabular-nums truncate">−{fmtc(periodTotals.out)}</p></div>
+                            </div>
+                        )}
                     </div>
                     <div key="prevision" className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col h-full">
                         <div className={panelHead}>
                             <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Repeat className="h-4 w-4 text-slate-400" /> Prévision mensuelle</p>
                             {canEdit && <button onClick={openNewRecur} className="inline-flex items-center gap-1 h-7 px-2 rounded-lg text-slate-600 hover:bg-slate-100 text-[12px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
                         </div>
-                        {recurring.length > 0 && (
-                            <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
-                                <div className="px-2 py-2 text-center min-w-0"><p className="text-[10px] text-slate-500">Encaissé</p><p className="text-[13px] font-semibold text-emerald-600 tabular-nums truncate">+{fmtc(totals.monthlyIn)}</p></div>
-                                <div className="px-2 py-2 text-center min-w-0"><p className="text-[10px] text-slate-500">Dépensé</p><p className="text-[13px] font-semibold text-rose-600 tabular-nums truncate">−{fmtc(totals.monthlyOut)}</p></div>
-                                <div className="px-2 py-2 text-center min-w-0"><p className="text-[10px] text-slate-500">Net / mois</p><p className={`text-[13px] font-semibold tabular-nums truncate ${(totals.monthlyIn - totals.monthlyOut) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(totals.monthlyIn - totals.monthlyOut) >= 0 ? '+' : ''}{fmtc(totals.monthlyIn - totals.monthlyOut)}</p></div>
-                            </div>
-                        )}
                         {recurring.length === 0 ? (
                             <p className="px-4 py-8 text-center text-sm text-slate-400">Ajoutez vos revenus (salaire…) et charges mensuelles récurrents</p>
                         ) : (
@@ -797,6 +793,13 @@ export default function FinanceContent() {
                                         </div>
                                     );
                                 })}
+                            </div>
+                        )}
+                        {recurring.length > 0 && (
+                            <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-200 bg-slate-50/70 shrink-0">
+                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Total encaissé / mois</p><p className="text-[13px] font-semibold text-emerald-600 tabular-nums truncate">+{fmtc(totals.monthlyIn)}</p></div>
+                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Total dépensé / mois</p><p className="text-[13px] font-semibold text-rose-600 tabular-nums truncate">−{fmtc(totals.monthlyOut)}</p></div>
+                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Net / mois</p><p className={`text-[13px] font-semibold tabular-nums truncate ${(totals.monthlyIn - totals.monthlyOut) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(totals.monthlyIn - totals.monthlyOut) >= 0 ? '+' : ''}{fmtc(totals.monthlyIn - totals.monthlyOut)} DT</p></div>
                             </div>
                         )}
                     </div>
@@ -917,6 +920,13 @@ export default function FinanceContent() {
                                 })}
                             </div>
                         )}
+                        {debts.length > 0 && (
+                            <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-200 bg-slate-50/70 shrink-0">
+                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Total à recevoir</p><p className="text-[13px] font-semibold text-emerald-600 tabular-nums truncate">+{fmtc(totals.receivable)} DT</p></div>
+                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Total à payer</p><p className="text-[13px] font-semibold text-rose-600 tabular-nums truncate">−{fmtc(totals.payable)} DT</p></div>
+                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Net</p><p className={`text-[13px] font-semibold tabular-nums truncate ${(totals.receivable - totals.payable) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(totals.receivable - totals.payable) >= 0 ? '+' : ''}{fmtc(totals.receivable - totals.payable)} DT</p></div>
+                            </div>
+                        )}
                     </div>
                     <div key="mouvements" className="rounded-2xl border border-slate-200 bg-white overflow-hidden h-full flex flex-col">
                         <div className={panelHead}>
@@ -965,6 +975,17 @@ export default function FinanceContent() {
                                 })}
                             </div>
                         )}
+                        {shownMovs.length > 0 && (() => {
+                            let tin = 0, tout = 0;
+                            for (const m of shownMovs) { const t = toTND(m.amount, accCurrency_(m.account_id)); if (m.direction === 'in') tin += t; else tout += t; }
+                            return (
+                                <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-200 bg-slate-50/70 shrink-0">
+                                    <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Total entrées</p><p className="text-[13px] font-semibold text-emerald-600 tabular-nums truncate">+{fmtc(tin)} DT</p></div>
+                                    <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Total sorties</p><p className="text-[13px] font-semibold text-rose-600 tabular-nums truncate">−{fmtc(tout)} DT</p></div>
+                                    <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Net</p><p className={`text-[13px] font-semibold tabular-nums truncate ${(tin - tout) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(tin - tout) >= 0 ? '+' : ''}{fmtc(tin - tout)} DT</p></div>
+                                </div>
+                            );
+                        })()}
                     </div>
                         </ResponsiveGridLayout>
                     ) : (

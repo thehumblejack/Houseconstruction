@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { createClient } from '@/lib/supabase';
+import { computeSupplierSolde } from '@/lib/solde';
 import { Search, User, Trash2, Plus, FileText, ChevronRight, Hash, CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react';
 import { useProject } from '@/context/ProjectContext';
 import Link from 'next/link';
@@ -30,6 +31,8 @@ export default function SuppliersContent() {
     const [suppliers, setSuppliers] = useState<any[]>([]);
     const [expenses, setExpenses] = useState<any[]>([]);
     const [deposits, setDeposits] = useState<any[]>([]);
+    const [payments, setPayments] = useState<any[]>([]);
+    const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
     const [items, setItems] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
@@ -52,12 +55,14 @@ export default function SuppliersContent() {
         }
         setLoading(true);
         try {
-            const [sups, exps, deps, its, projectSups] = await Promise.all([
+            const [sups, exps, deps, its, projectSups, pays, sets] = await Promise.all([
                 supabase.from('suppliers').select('*').order('name'),
                 supabase.from('expenses').select('*').eq('project_id', currentProject.id).is('deleted_at', null),
                 supabase.from('deposits').select('*').eq('project_id', currentProject.id).is('deleted_at', null),
                 supabase.from('invoice_items').select('*'),
-                supabase.from('project_suppliers').select('supplier_id').eq('project_id', currentProject.id)
+                supabase.from('project_suppliers').select('supplier_id').eq('project_id', currentProject.id),
+                supabase.from('expense_payments').select('expense_id, amount').eq('project_id', currentProject.id),
+                supabase.from('project_settings').select('key, value').eq('project_id', currentProject.id).eq('key', 'excluded_groups'),
             ]);
 
             const linkedSupplierIds = new Set<string>(projectSups.data?.map((ps: any) => ps.supplier_id) || []);
@@ -66,6 +71,8 @@ export default function SuppliersContent() {
             setExpenses(exps.data || []);
             setDeposits(deps.data || []);
             setItems(its.data || []);
+            setPayments(pays && !pays.error ? (pays.data || []) : []);
+            try { const raw = (sets && !sets.error ? (sets.data?.[0] as any)?.value : '') || ''; const arr = raw ? JSON.parse(raw) : []; setExcludedGroups(new Set(Array.isArray(arr) ? arr : [])); } catch { setExcludedGroups(new Set()); }
 
             // Pass linked IDs to stats calculation if needed by storing in state,
             // OR just rely on re-calc. Since stats is a useMemo on [suppliers, expenses...],
@@ -138,23 +145,18 @@ export default function SuppliersContent() {
             }
         });
 
+        // Solde partagé (src/lib/solde.ts) — identique à Dépenses et Finance.
+        const solde = computeSupplierSolde({ expenses, deposits, payments, excludedGroups });
         const statsData = suppliers.map((s: any) => {
             const supplierExpenses = expenses.filter(e => e.supplier_id === s.id);
-            const supplierDeposits = deposits.filter(d => d.supplier_id === s.id);
             const supplierItems = items.filter(i => {
                 const parent = expenses.find(e => e.id === i.expense_id);
                 return parent && parent.supplier_id === s.id;
             });
 
-            const totalInvoiceAmount = supplierExpenses.reduce((sum, e) => sum + e.price, 0);
-
-            const hasDeposits = supplierDeposits.length > 0;
-            let computedPaid = 0;
-            if (hasDeposits) {
-                computedPaid = supplierDeposits.reduce((sum, d) => sum + d.amount, 0);
-            } else {
-                computedPaid = supplierExpenses.filter(e => e.status === 'paid').reduce((sum, e) => sum + e.price, 0);
-            }
+            const sr = solde.bySupplier.get(s.id) || { billed: 0, paid: 0, pending: 0, remaining: 0 };
+            const totalInvoiceAmount = sr.billed;
+            const computedPaid = sr.paid;
 
             // Calculate best price count
             let bestPriceCount = 0;
@@ -173,7 +175,7 @@ export default function SuppliersContent() {
                 tel: s.tel || '-',
                 totalCost: totalInvoiceAmount,
                 totalPaid: computedPaid,
-                remaining: computedPaid - totalInvoiceAmount,
+                remaining: sr.remaining,
                 articleCount: supplierItems.length,
                 bestPriceCount,
                 notes: s.notes,
@@ -185,7 +187,7 @@ export default function SuppliersContent() {
         return showDeleted
             ? statsData.filter((s: any) => s.deletedAt !== null)
             : statsData.filter((s: any) => s.deletedAt === null);
-    }, [suppliers, expenses, deposits, items, showDeleted, linkedIds]);
+    }, [suppliers, expenses, deposits, payments, excludedGroups, items, showDeleted, linkedIds]);
 
     const filteredSuppliers = stats.filter(s =>
         s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

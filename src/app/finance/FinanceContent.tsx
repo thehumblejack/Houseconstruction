@@ -34,7 +34,7 @@ interface Account { id: string; name: string; initial_balance: number; sort_orde
 interface Movement { id: string; account_id: string; direction: 'in' | 'out'; amount: number; label: string | null; supplier_id: string | null; date: string; debt_id?: string | null; }
 interface Debt { id: string; person: string; amount: number; direction: 'receivable' | 'payable'; note: string | null; settled: boolean; }
 interface DebtEntry { id: string; debt_id: string; amount: number; date: string; note: string | null; }
-interface Recurring { id: string; label: string; account_id: string | null; amount: number; currency: Currency; direction: 'in' | 'out'; day_of_month: number | null; last_applied: string | null; active: boolean; frequency: Frequency; anchor_date: string | null; }
+interface Recurring { id: string; label: string; account_id: string | null; amount: number; currency: Currency; direction: 'in' | 'out'; day_of_month: number | null; last_applied: string | null; active: boolean; frequency: Frequency; anchor_date: string | null; applied_periods: string[]; }
 
 const ACCOUNT_TONES = ['bg-blue-600', 'bg-emerald-600', 'bg-violet-600', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-600', 'bg-slate-700'];
 const CUR_SYMBOL: Record<Currency, string> = { TND: 'DT', USD: '$', EUR: '€' };
@@ -216,7 +216,7 @@ export default function FinanceContent() {
     const [recurFreq, setRecurFreq] = useState<Frequency>('monthly');
     const [recurAnchor, setRecurAnchor] = useState('');
     const [previsionTab, setPrevisionTab] = useState<Frequency>('monthly');
-    const [expandedRecur, setExpandedRecur] = useState<string | null>(null);
+    const [recurApplied, setRecurApplied] = useState<string[]>([]);
     const [movSortAsc, setMovSortAsc] = useState(false);   // Mouvements : récents d'abord par défaut
     const [prevSortAsc, setPrevSortAsc] = useState(true);  // Prévisions : prochaine échéance la plus proche d'abord
 
@@ -278,7 +278,7 @@ export default function FinanceContent() {
             setAccounts(((accRes.data || []) as any[]).map((a) => ({ ...a, currency: (a.currency || 'TND') as Currency })));
             setMovements(((movRes.data || []) as any[]).map((m) => ({ ...m, amount: Number(m.amount) || 0 })));
             setDebts(debtRes.error ? [] : ((debtRes.data || []) as any[]).map((d) => ({ ...d, amount: Number(d.amount) || 0 })));
-            setRecurring(recRes.error ? [] : ((recRes.data || []) as any[]).map((r) => ({ ...r, amount: Number(r.amount) || 0, currency: (r.currency || 'TND') as Currency, frequency: (r.frequency || 'monthly') as Frequency, anchor_date: r.anchor_date || null })));
+            setRecurring(recRes.error ? [] : ((recRes.data || []) as any[]).map((r) => ({ ...r, amount: Number(r.amount) || 0, currency: (r.currency || 'TND') as Currency, frequency: (r.frequency || 'monthly') as Frequency, anchor_date: r.anchor_date || null, applied_periods: (() => { try { const a = JSON.parse(r.applied_periods || '[]'); return Array.isArray(a) ? a.map(String) : []; } catch { return []; } })() })));
             setDebtEntries(dEntRes && !dEntRes.error ? ((dEntRes.data || []) as any[]).map((x) => ({ ...x, amount: Number(x.amount) || 0 })) : []);
 
             const settingsMap = new Map<string, string>((setRes.data || []).map((r: any) => [String(r.key), String(r.value ?? '')]));
@@ -559,19 +559,19 @@ export default function FinanceContent() {
         if (!error) fetchAll();
     };
 
-    const openNewRecur = () => { setEditingRecur(null); setRecurLabel(''); setRecurAccount(accounts[0]?.id || ''); setRecurAmount(''); setRecurCurrency('TND'); setRecurDir(previsionTab === 'monthly' ? 'in' : 'out'); setRecurDay('1'); setRecurFreq(previsionTab); setRecurAnchor(''); setShowRecurModal(true); };
-    const openEditRecur = (r: Recurring) => { setEditingRecur(r); setRecurLabel(r.label); setRecurAccount(r.account_id || ''); setRecurAmount(String(r.amount)); setRecurCurrency(r.currency); setRecurDir(r.direction); setRecurDay(String(r.day_of_month || 1)); setRecurFreq(r.frequency || 'monthly'); setRecurAnchor((r.frequency !== 'monthly' && r.anchor_date) ? (localISO(nextOccurrence(r.frequency, r.day_of_month, r.anchor_date) || new Date(r.anchor_date + 'T00:00:00'))) : (r.anchor_date || '')); setShowRecurModal(true); };
+    const openNewRecur = () => { setEditingRecur(null); setRecurLabel(''); setRecurAccount(accounts[0]?.id || ''); setRecurAmount(''); setRecurCurrency('TND'); setRecurDir(previsionTab === 'monthly' ? 'in' : 'out'); setRecurDay('1'); setRecurFreq(previsionTab); setRecurAnchor(''); setRecurApplied([]); setShowRecurModal(true); };
+    const openEditRecur = (r: Recurring) => { setEditingRecur(r); setRecurLabel(r.label); setRecurAccount(r.account_id || ''); setRecurAmount(String(r.amount)); setRecurCurrency(r.currency); setRecurDir(r.direction); setRecurDay(String(r.day_of_month || 1)); setRecurFreq(r.frequency || 'monthly'); setRecurAnchor((r.frequency !== 'monthly' && r.anchor_date) ? (localISO(nextOccurrence(r.frequency, r.day_of_month, r.anchor_date) || new Date(r.anchor_date + 'T00:00:00'))) : (r.anchor_date || '')); setRecurApplied(r.applied_periods || []); setShowRecurModal(true); };
     const saveRecur = async () => {
         if (!canEdit || !currentProject || !recurLabel.trim() || !recurAccount) return;
         setSaving(true);
         try {
             const base = { label: recurLabel.trim(), account_id: recurAccount, amount: parseFloat(recurAmount) || 0, currency: recurCurrency, direction: recurDir, day_of_month: parseInt(recurDay) || 1 };
-            const payload: any = { ...base, frequency: recurFreq, anchor_date: recurFreq === 'monthly' ? null : (recurAnchor || null) };
+            const payload: any = { ...base, frequency: recurFreq, anchor_date: recurFreq === 'monthly' ? null : (recurAnchor || null), applied_periods: JSON.stringify(recurApplied) };
             const doWrite = async (pl: any) => editingRecur
                 ? supabase.from('finance_recurring').update(pl).eq('id', editingRecur.id)
                 : supabase.from('finance_recurring').insert({ ...pl, project_id: currentProject.id, active: true });
             let { error } = await doWrite(payload);
-            if (error && /(frequency|anchor_date|column)/i.test(error.message)) {
+            if (error && /(frequency|anchor_date|applied_periods|column)/i.test(error.message)) {
                 // Colonnes absentes (migrations non appliquées) : on enregistre sans elles.
                 ({ error } = await doWrite(base));
                 if (!error) alert('Migrations récurrence non appliquées : élément enregistré en mensuel, sans échéance. Exécutez recurring_frequency + recurring_anchor_date dans Supabase.');
@@ -588,7 +588,8 @@ export default function FinanceContent() {
     const applyRecur = async (r: Recurring) => {
         if (!canEdit || !currentProject || !r.account_id) return;
         const freq = r.frequency || 'monthly';
-        if (r.last_applied && freqPeriodKey(freq, r.last_applied) === currentFreqKey(freq)) { alert('Déjà encaissé pour cette période.'); return; }
+        const key = currentFreqKey(freq);
+        if ((r.applied_periods || []).includes(key) || (r.last_applied && freqPeriodKey(freq, r.last_applied) === key)) { alert('Déjà procédé pour cette période.'); return; }
         setSaving(true);
         try {
             const { error: e1 } = await supabase.from('finance_movements').insert({
@@ -596,22 +597,26 @@ export default function FinanceContent() {
                 amount: r.amount, label: r.label, date: new Date().toISOString().split('T')[0],
             });
             if (e1) throw e1;
-            await supabase.from('finance_recurring').update({ last_applied: new Date().toISOString().split('T')[0] }).eq('id', r.id);
+            const nextApplied = Array.from(new Set([...(r.applied_periods || []), key]));
+            let { error: e2 } = await supabase.from('finance_recurring').update({ last_applied: new Date().toISOString().split('T')[0], applied_periods: JSON.stringify(nextApplied) }).eq('id', r.id);
+            if (e2 && /applied_periods|column/i.test(e2.message)) await supabase.from('finance_recurring').update({ last_applied: new Date().toISOString().split('T')[0] }).eq('id', r.id);
             fetchAll();
         } catch (e: any) { alert('Erreur : ' + (e?.message || e)); } finally { setSaving(false); }
     };
     const undoRecur = async (r: Recurring) => {
         if (!canEdit || !currentProject || !r.account_id) return;
         const freq = r.frequency || 'monthly';
-        if (!confirm("Annuler l'encaissement de cette période ?")) return;
+        if (!confirm('Annuler « procédé » pour cette période ?')) return;
         setSaving(true);
         try {
-            // Supprime le(s) mouvement(s) générés ce mois-ci par ce récurrent.
             await supabase.from('finance_movements').delete()
                 .eq('project_id', currentProject.id).eq('account_id', r.account_id)
                 .eq('direction', r.direction).eq('label', r.label).eq('amount', r.amount)
                 .gte('date', freqRangeStart(freq));
-            await supabase.from('finance_recurring').update({ last_applied: null }).eq('id', r.id);
+            const key = currentFreqKey(freq);
+            const nextApplied = (r.applied_periods || []).filter((k) => k !== key);
+            let { error: e2 } = await supabase.from('finance_recurring').update({ last_applied: null, applied_periods: JSON.stringify(nextApplied) }).eq('id', r.id);
+            if (e2 && /applied_periods|column/i.test(e2.message)) await supabase.from('finance_recurring').update({ last_applied: null }).eq('id', r.id);
             fetchAll();
         } catch (e: any) { alert('Erreur : ' + (e?.message || e)); } finally { setSaving(false); }
     };
@@ -889,22 +894,20 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                             return (
                             <div className="divide-y divide-slate-100 overflow-y-auto flex-1 min-h-0">
                                 {items.map((r) => {
-                                    const doneThisMonth = !!r.last_applied && freqPeriodKey(freq, r.last_applied) === currentFreqKey(freq);
-                                    const expandable = freq !== 'monthly' && !!r.anchor_date;
-                                    const openSched = expandedRecur === r.id;
+                                    const appliedArr = r.applied_periods || [];
+                                    const doneThisPeriod = appliedArr.includes(currentFreqKey(freq)) || (!!r.last_applied && freqPeriodKey(freq, r.last_applied) === currentFreqKey(freq));
                                     const nd = nextOccurrence(freq, r.day_of_month, r.anchor_date);
                                     return (
-                                        <div key={r.id}>
-                                        <div className="flex items-center gap-2.5 px-3.5 py-2">
+                                        <div key={r.id} className="flex items-center gap-2.5 px-3.5 py-2">
                                             <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${r.direction === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Repeat className="h-3.5 w-3.5" /></div>
-                                            <div className={`min-w-0 flex-1 ${expandable ? 'cursor-pointer select-none' : ''}`} onClick={expandable ? () => setExpandedRecur(openSched ? null : r.id) : undefined} title={expandable ? "Voir l'échéancier (passées + prochaine)" : undefined}>
+                                            <div className="min-w-0 flex-1">
                                                 <p className="text-[13px] font-medium text-slate-900 truncate">{r.label}</p>
-                                                <p className="text-[10px] text-slate-400 truncate flex items-center gap-1">{accountName(r.account_id || '')}{nd ? ` · prochaine ${fmtDate(nd)}` : ' · échéance à définir'}{expandable && <ChevronDown className={`h-3 w-3 shrink-0 transition-transform ${openSched ? 'rotate-180' : ''}`} />}</p>
+                                                <p className="text-[10px] text-slate-400 truncate">{accountName(r.account_id || '')}{nd ? ` · prochaine ${fmtDate(nd)}` : ' · échéance à définir'}</p>
                                             </div>
                                             <p className={`text-[12px] font-semibold tabular-nums shrink-0 ${r.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.direction === 'in' ? '+' : '−'}{fmtc(r.amount)} {CUR_SYMBOL[r.currency]}</p>
-                                            {canEdit && (doneThisMonth
-                                                ? <button onClick={() => undoRecur(r)} title={`Annuler l'encaissement (${meta.noun})`} className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"><CheckCircle2 className="h-3.5 w-3.5" /></button>
-                                                : <button onClick={() => applyRecur(r)} title={`Encaisser (${meta.noun})`} className="shrink-0 inline-flex items-center justify-center h-7 px-2 rounded-lg bg-slate-900 text-white text-[11px] font-medium hover:bg-slate-800 transition-colors">Encaisser</button>
+                                            {canEdit && (doneThisPeriod
+                                                ? <button onClick={() => undoRecur(r)} title={`Annuler « procédé » (${meta.noun})`} className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"><CheckCircle2 className="h-3.5 w-3.5" /></button>
+                                                : <button onClick={() => applyRecur(r)} title={`Procéder (${meta.noun})`} className="shrink-0 inline-flex items-center justify-center h-7 px-2 rounded-lg bg-slate-900 text-white text-[11px] font-medium hover:bg-slate-800 transition-colors">Procéder</button>
                                             )}
                                             {canEdit && (
                                                 <div className="flex items-center shrink-0">
@@ -912,28 +915,6 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                                                     <button onClick={() => deleteRecur(r)} className={`${iconBtn} hover:bg-rose-50 hover:text-rose-600`}><Trash2 className="h-3.5 w-3.5" /></button>
                                                 </div>
                                             )}
-                                        </div>
-                                        {expandable && openSched && (() => {
-                                            const occ = occurrenceList(freq, r.day_of_month, r.anchor_date, 3);
-                                            const today = new Date(); today.setHours(0, 0, 0, 0);
-                                            const appliedKey = r.last_applied ? freqPeriodKey(freq, r.last_applied) : null;
-                                            return (
-                                                <div className="mx-3.5 mb-2 rounded-xl border border-slate-200 bg-slate-50/60 divide-y divide-slate-100">
-                                                    {occ.map((d) => {
-                                                        const isNext = !!nd && d.getTime() === nd.getTime();
-                                                        const isPast = d < today && !isNext;
-                                                        const isDone = appliedKey && freqPeriodKey(freq, localISO(d)) === appliedKey;
-                                                        return (
-                                                            <div key={d.getTime()} className="flex items-center gap-2 px-3 py-1.5">
-                                                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isNext ? 'bg-slate-900' : isDone ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                                                                <span className={`text-[11px] tabular-nums flex-1 ${isNext ? 'font-semibold text-slate-900' : 'text-slate-500'}`}>{fmtDate(d)}</span>
-                                                                <span className={`text-[10px] font-medium ${isNext ? 'text-slate-900' : isDone ? 'text-emerald-600' : isPast ? 'text-slate-400' : 'text-slate-400'}`}>{isNext ? 'prochaine' : isDone ? 'encaissée' : isPast ? 'passée' : 'à venir'}</span>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            );
-                                        })()}
                                         </div>
                                     );
                                 })}
@@ -1287,6 +1268,32 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                             ? <div><label className={labelClass}>Jour</label><input type="number" min="1" max="31" value={recurDay} onChange={(e) => setRecurDay(e.target.value)} className={`${inputClass} tabular-nums`} /></div>
                             : <div><label className={labelClass}>Prochaine échéance</label><input type="date" value={recurAnchor} onChange={(e) => setRecurAnchor(e.target.value)} className={inputClass} /></div>}
                     </div>
+                    {(recurFreq === 'monthly' || recurAnchor) && (() => {
+                        const occ = occurrenceList(recurFreq, parseInt(recurDay) || 1, recurFreq === 'monthly' ? null : (recurAnchor || null), 5);
+                        const today = new Date(); today.setHours(0, 0, 0, 0);
+                        if (occ.length === 0) return null;
+                        return (
+                            <div>
+                                <label className={labelClass}>Déjà procédé ? <span className="text-slate-400 font-normal">cochez les échéances déjà réglées</span></label>
+                                <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 max-h-44 overflow-y-auto">
+                                    {occ.slice().reverse().map((d) => {
+                                        const key = freqPeriodKey(recurFreq, localISO(d));
+                                        const checked = recurApplied.includes(key);
+                                        const isNext = d >= today;
+                                        return (
+                                            <label key={d.getTime()} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors">
+                                                <input type="checkbox" checked={checked} onChange={() => setRecurApplied((prev) => checked ? prev.filter((k) => k !== key) : [...prev, key])} className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20 shrink-0" />
+                                                <span className={`text-[13px] flex-1 ${checked ? 'text-slate-900 font-medium' : 'text-slate-600'}`}>{fmtDate(d)}</span>
+                                                {isNext && <span className="text-[10px] font-medium text-slate-400">prochaine</span>}
+                                                {checked && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                                <p className="text-[11px] text-slate-400 mt-1.5">Cocher marque l'échéance comme réglée (sans créer de mouvement). Le bouton « Procéder » de la liste, lui, enregistre le mouvement.</p>
+                            </div>
+                    );
+                    })()}
                 </div>
             </Modal>
 

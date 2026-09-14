@@ -216,7 +216,7 @@ export default function FinanceContent() {
     const [recurFreq, setRecurFreq] = useState<Frequency>('monthly');
     const [recurAnchor, setRecurAnchor] = useState('');
     const [previsionTab, setPrevisionTab] = useState<Frequency>('monthly');
-    const [recurApplied, setRecurApplied] = useState<string[]>([]);
+    const [expandedRecur, setExpandedRecur] = useState<string | null>(null);
     const [movSortAsc, setMovSortAsc] = useState(false);   // Mouvements : récents d'abord par défaut
     const [prevSortAsc, setPrevSortAsc] = useState(true);  // Prévisions : prochaine échéance la plus proche d'abord
 
@@ -559,14 +559,14 @@ export default function FinanceContent() {
         if (!error) fetchAll();
     };
 
-    const openNewRecur = () => { setEditingRecur(null); setRecurLabel(''); setRecurAccount(accounts[0]?.id || ''); setRecurAmount(''); setRecurCurrency('TND'); setRecurDir(previsionTab === 'monthly' ? 'in' : 'out'); setRecurDay('1'); setRecurFreq(previsionTab); setRecurAnchor(''); setRecurApplied([]); setShowRecurModal(true); };
-    const openEditRecur = (r: Recurring) => { setEditingRecur(r); setRecurLabel(r.label); setRecurAccount(r.account_id || ''); setRecurAmount(String(r.amount)); setRecurCurrency(r.currency); setRecurDir(r.direction); setRecurDay(String(r.day_of_month || 1)); setRecurFreq(r.frequency || 'monthly'); setRecurAnchor((r.frequency !== 'monthly' && r.anchor_date) ? (localISO(nextOccurrence(r.frequency, r.day_of_month, r.anchor_date) || new Date(r.anchor_date + 'T00:00:00'))) : (r.anchor_date || '')); setRecurApplied(r.applied_periods || []); setShowRecurModal(true); };
+    const openNewRecur = () => { setEditingRecur(null); setRecurLabel(''); setRecurAccount(accounts[0]?.id || ''); setRecurAmount(''); setRecurCurrency('TND'); setRecurDir(previsionTab === 'monthly' ? 'in' : 'out'); setRecurDay('1'); setRecurFreq(previsionTab); setRecurAnchor(''); setShowRecurModal(true); };
+    const openEditRecur = (r: Recurring) => { setEditingRecur(r); setRecurLabel(r.label); setRecurAccount(r.account_id || ''); setRecurAmount(String(r.amount)); setRecurCurrency(r.currency); setRecurDir(r.direction); setRecurDay(String(r.day_of_month || 1)); setRecurFreq(r.frequency || 'monthly'); setRecurAnchor((r.frequency !== 'monthly' && r.anchor_date) ? (localISO(nextOccurrence(r.frequency, r.day_of_month, r.anchor_date) || new Date(r.anchor_date + 'T00:00:00'))) : (r.anchor_date || '')); setShowRecurModal(true); };
     const saveRecur = async () => {
         if (!canEdit || !currentProject || !recurLabel.trim() || !recurAccount) return;
         setSaving(true);
         try {
             const base = { label: recurLabel.trim(), account_id: recurAccount, amount: parseFloat(recurAmount) || 0, currency: recurCurrency, direction: recurDir, day_of_month: parseInt(recurDay) || 1 };
-            const payload: any = { ...base, frequency: recurFreq, anchor_date: recurFreq === 'monthly' ? null : (recurAnchor || null), applied_periods: JSON.stringify(recurApplied) };
+            const payload: any = { ...base, frequency: recurFreq, anchor_date: recurFreq === 'monthly' ? null : (recurAnchor || null) };
             const doWrite = async (pl: any) => editingRecur
                 ? supabase.from('finance_recurring').update(pl).eq('id', editingRecur.id)
                 : supabase.from('finance_recurring').insert({ ...pl, project_id: currentProject.id, active: true });
@@ -584,6 +584,15 @@ export default function FinanceContent() {
         if (!canEdit || !confirm('Supprimer ce revenu récurrent ?')) return;
         const { error } = await supabase.from('finance_recurring').delete().eq('id', r.id);
         if (error) { alert('Erreur : ' + error.message); return; } fetchAll();
+    };
+    // Coche/décoche une échéance passée comme réglée (persistance immédiate).
+    const toggleAppliedPeriod = async (r: Recurring, key: string) => {
+        if (!canEdit) return;
+        const cur = r.applied_periods || [];
+        const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key];
+        setRecurring((prev) => prev.map((x) => x.id === r.id ? { ...x, applied_periods: next } : x));
+        const { error } = await supabase.from('finance_recurring').update({ applied_periods: JSON.stringify(next) }).eq('id', r.id);
+        if (error) { if (/applied_periods|column/i.test(error.message)) alert('Migration « recurring_applied_periods » non appliquée dans Supabase.'); fetchAll(); }
     };
     const applyRecur = async (r: Recurring) => {
         if (!canEdit || !currentProject || !r.account_id) return;
@@ -891,35 +900,25 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                             const freq = previsionTab;
                             const meta = FREQS.find((f) => f.key === freq)!;
                             if (items.length === 0) return <p className="px-4 py-8 text-center text-sm text-slate-400 flex-1">Aucun élément {meta.label.toLowerCase()} — ajoutez-en un.</p>;
-                            const per = freq === 'yearly' ? 12 : freq === 'quarterly' ? 3 : 1;
+                            const today0 = new Date(); today0.setHours(0, 0, 0, 0);
                             return (
-                            <div className="flex-1 min-h-0 flex flex-col">
-                            <div className="hidden lg:flex items-center gap-2.5 px-3.5 py-1.5 border-b border-slate-100 text-[9px] uppercase tracking-wide text-slate-400 shrink-0">
-                                <div className="w-7 shrink-0" />
-                                <div className="flex-1">Élément</div>
-                                <div className="w-36 text-center shrink-0">Échéance</div>
-                                <div className="w-20 text-right shrink-0">Montant</div>
-                                <div className="w-[104px] shrink-0" />
-                            </div>
                             <div className="divide-y divide-slate-100 overflow-y-auto flex-1 min-h-0">
                                 {items.map((r) => {
                                     const appliedArr = r.applied_periods || [];
                                     const doneThisPeriod = appliedArr.includes(currentFreqKey(freq)) || (!!r.last_applied && freqPeriodKey(freq, r.last_applied) === currentFreqKey(freq));
                                     const nd = nextOccurrence(freq, r.day_of_month, r.anchor_date);
+                                    const open = expandedRecur === r.id;
+                                    const occ = occurrenceList(freq, r.day_of_month, freq === 'monthly' ? null : r.anchor_date, 5);
+                                    const hasSched = occ.length > 0;
                                     return (
-                                        <div key={r.id} className="flex items-center gap-2.5 px-3.5 py-2">
+                                        <div key={r.id}>
+                                        <div className="flex items-center gap-2.5 px-3.5 py-2">
                                             <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${r.direction === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Repeat className="h-3.5 w-3.5" /></div>
-                                            <div className="min-w-0 flex-1">
+                                            <div className={`min-w-0 flex-1 ${hasSched ? 'cursor-pointer select-none' : ''}`} onClick={hasSched ? () => setExpandedRecur(open ? null : r.id) : undefined} title={hasSched ? 'Voir les échéances (cocher celles déjà payées)' : undefined}>
                                                 <p className="text-[13px] font-medium text-slate-900 truncate">{r.label}</p>
-                                                <p className="text-[10px] text-slate-400 truncate">{accountName(r.account_id || '')}<span className="lg:hidden">{nd ? ` · ${fmtDate(nd)}` : ' · échéance à définir'}</span></p>
+                                                <p className="text-[10px] text-slate-400 truncate flex items-center gap-1">{accountName(r.account_id || '')}{nd ? ` · prochaine ${fmtDate(nd)}` : ' · échéance à définir'}{hasSched && <ChevronDown className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />}</p>
                                             </div>
-                                            <div className="hidden lg:block w-36 shrink-0 text-center">
-                                                {nd ? <>
-                                                    <p className="text-[11px] text-slate-700 tabular-nums leading-tight">{fmtDate(nd)}</p>
-                                                    <p className="text-[9px] text-slate-400 tabular-nums leading-tight">préc. {fmtDate(new Date(nd.getFullYear(), nd.getMonth() - per, nd.getDate()))}</p>
-                                                </> : <p className="text-[11px] text-slate-400">à définir</p>}
-                                            </div>
-                                            <p className={`w-20 text-right text-[12px] font-semibold tabular-nums shrink-0 ${r.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.direction === 'in' ? '+' : '−'}{fmtc(r.amount)} {CUR_SYMBOL[r.currency]}</p>
+                                            <p className={`text-[12px] font-semibold tabular-nums shrink-0 ${r.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.direction === 'in' ? '+' : '−'}{fmtc(r.amount)} {CUR_SYMBOL[r.currency]}</p>
                                             {canEdit && (doneThisPeriod
                                                 ? <button onClick={() => undoRecur(r)} title={`Annuler « procédé » (${meta.noun})`} className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"><CheckCircle2 className="h-3.5 w-3.5" /></button>
                                                 : <button onClick={() => applyRecur(r)} title={`Procéder (${meta.noun})`} className="shrink-0 inline-flex items-center justify-center h-7 px-2 rounded-lg bg-slate-900 text-white text-[11px] font-medium hover:bg-slate-800 transition-colors">Procéder</button>
@@ -931,9 +930,30 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                                                 </div>
                                             )}
                                         </div>
+                                        {open && hasSched && (
+                                            <div className="mx-3.5 mb-2 rounded-xl border border-slate-200 bg-slate-50/60 overflow-hidden">
+                                                <div className="px-3 py-1.5 border-b border-slate-200 text-[9px] uppercase tracking-wide text-slate-400">Échéances — cochez celles déjà payées</div>
+                                                <div className="divide-y divide-slate-100 max-h-44 overflow-y-auto">
+                                                    {occ.slice().reverse().map((d) => {
+                                                        const key = freqPeriodKey(freq, localISO(d));
+                                                        const checked = appliedArr.includes(key);
+                                                        const isNext = !!nd && d.getTime() === nd.getTime();
+                                                        const isPast = d < today0 && !isNext;
+                                                        return (
+                                                            <label key={d.getTime()} className={`flex items-center gap-2.5 px-3 py-1.5 ${canEdit ? 'cursor-pointer hover:bg-white' : ''} transition-colors`}>
+                                                                <input type="checkbox" checked={checked} disabled={!canEdit} onChange={() => toggleAppliedPeriod(r, key)} className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20 shrink-0" />
+                                                                <span className={`text-[12px] tabular-nums flex-1 ${checked ? 'text-slate-900 font-medium' : 'text-slate-600'}`}>{fmtDate(d)}</span>
+                                                                {isNext ? <span className="text-[9px] font-medium text-slate-400">prochaine</span> : isPast ? <span className="text-[9px] text-slate-400">passée</span> : <span className="text-[9px] text-slate-400">à venir</span>}
+                                                                {checked && <span className="text-[9px] font-medium text-emerald-600">payé</span>}
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+                                        </div>
                                     );
                                 })}
-                            </div>
                             </div>
                             );
                         })()}
@@ -1284,32 +1304,6 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                             ? <div><label className={labelClass}>Jour</label><input type="number" min="1" max="31" value={recurDay} onChange={(e) => setRecurDay(e.target.value)} className={`${inputClass} tabular-nums`} /></div>
                             : <div><label className={labelClass}>Prochaine échéance</label><input type="date" value={recurAnchor} onChange={(e) => setRecurAnchor(e.target.value)} className={inputClass} /></div>}
                     </div>
-                    {(recurFreq === 'monthly' || recurAnchor) && (() => {
-                        const occ = occurrenceList(recurFreq, parseInt(recurDay) || 1, recurFreq === 'monthly' ? null : (recurAnchor || null), 5);
-                        const today = new Date(); today.setHours(0, 0, 0, 0);
-                        if (occ.length === 0) return null;
-                        return (
-                            <div>
-                                <label className={labelClass}>Déjà procédé ? <span className="text-slate-400 font-normal">cochez les échéances déjà réglées</span></label>
-                                <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 max-h-44 overflow-y-auto">
-                                    {occ.slice().reverse().map((d) => {
-                                        const key = freqPeriodKey(recurFreq, localISO(d));
-                                        const checked = recurApplied.includes(key);
-                                        const isNext = d >= today;
-                                        return (
-                                            <label key={d.getTime()} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors">
-                                                <input type="checkbox" checked={checked} onChange={() => setRecurApplied((prev) => checked ? prev.filter((k) => k !== key) : [...prev, key])} className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20 shrink-0" />
-                                                <span className={`text-[13px] flex-1 ${checked ? 'text-slate-900 font-medium' : 'text-slate-600'}`}>{fmtDate(d)}</span>
-                                                {isNext && <span className="text-[10px] font-medium text-slate-400">prochaine</span>}
-                                                {checked && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />}
-                                            </label>
-                                        );
-                                    })}
-                                </div>
-                                <p className="text-[11px] text-slate-400 mt-1.5">Cocher marque l'échéance comme réglée (sans créer de mouvement). Le bouton « Procéder » de la liste, lui, enregistre le mouvement.</p>
-                            </div>
-                    );
-                    })()}
                 </div>
             </Modal>
 

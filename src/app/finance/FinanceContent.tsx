@@ -34,12 +34,31 @@ interface Account { id: string; name: string; initial_balance: number; sort_orde
 interface Movement { id: string; account_id: string; direction: 'in' | 'out'; amount: number; label: string | null; supplier_id: string | null; date: string; debt_id?: string | null; }
 interface Debt { id: string; person: string; amount: number; direction: 'receivable' | 'payable'; note: string | null; settled: boolean; }
 interface DebtEntry { id: string; debt_id: string; amount: number; date: string; note: string | null; }
-interface Recurring { id: string; label: string; account_id: string | null; amount: number; currency: Currency; direction: 'in' | 'out'; day_of_month: number | null; last_applied: string | null; active: boolean; }
+interface Recurring { id: string; label: string; account_id: string | null; amount: number; currency: Currency; direction: 'in' | 'out'; day_of_month: number | null; last_applied: string | null; active: boolean; frequency: Frequency; }
 
 const ACCOUNT_TONES = ['bg-blue-600', 'bg-emerald-600', 'bg-violet-600', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-600', 'bg-slate-700'];
 const CUR_SYMBOL: Record<Currency, string> = { TND: 'DT', USD: '$', EUR: '€' };
 const DEFAULT_RATES: Record<Currency, number> = { TND: 1, USD: 3.15, EUR: 3.40 };
 const thisMonthKey = () => new Date().toISOString().slice(0, 7);
+type Frequency = 'monthly' | 'quarterly' | 'yearly';
+const FREQS: Array<{ key: Frequency; label: string; per: string; noun: string }> = [
+    { key: 'monthly', label: 'Mensuel', per: '/ mois', noun: 'ce mois' },
+    { key: 'quarterly', label: 'Trimestriel', per: '/ trim.', noun: 'ce trimestre' },
+    { key: 'yearly', label: 'Annuel', per: '/ an', noun: 'cette année' },
+];
+const freqPeriodKey = (freq: Frequency, iso: string) => {
+    const y = iso.slice(0, 4); const m = parseInt(iso.slice(5, 7), 10) || 1;
+    if (freq === 'yearly') return y;
+    if (freq === 'quarterly') return `${y}-Q${Math.floor((m - 1) / 3) + 1}`;
+    return iso.slice(0, 7);
+};
+const currentFreqKey = (freq: Frequency) => freqPeriodKey(freq, new Date().toISOString().slice(0, 10));
+const freqRangeStart = (freq: Frequency) => {
+    const now = new Date(); const y = now.getFullYear(); const m = now.getMonth();
+    if (freq === 'yearly') return `${y}-01-01`;
+    if (freq === 'quarterly') return `${y}-${String(Math.floor(m / 3) * 3 + 1).padStart(2, '0')}-01`;
+    return `${y}-${String(m + 1).padStart(2, '0')}-01`;
+};
 const MONTHS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 const monthLabel = (k: string) => { const [y, m] = k.split('-'); return `${MONTHS_FR[parseInt(m, 10) - 1] || m} ${y}`; };
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -159,6 +178,8 @@ export default function FinanceContent() {
     const [recurCurrency, setRecurCurrency] = useState<Currency>('TND');
     const [recurDir, setRecurDir] = useState<'in' | 'out'>('in');
     const [recurDay, setRecurDay] = useState('1');
+    const [recurFreq, setRecurFreq] = useState<Frequency>('monthly');
+    const [previsionTab, setPrevisionTab] = useState<Frequency>('monthly');
 
     const [showRatesModal, setShowRatesModal] = useState(false);
     const [showConvModal, setShowConvModal] = useState(false);
@@ -197,7 +218,7 @@ export default function FinanceContent() {
             setAccounts(((accRes.data || []) as any[]).map((a) => ({ ...a, currency: (a.currency || 'TND') as Currency })));
             setMovements(((movRes.data || []) as any[]).map((m) => ({ ...m, amount: Number(m.amount) || 0 })));
             setDebts(debtRes.error ? [] : ((debtRes.data || []) as any[]).map((d) => ({ ...d, amount: Number(d.amount) || 0 })));
-            setRecurring(recRes.error ? [] : ((recRes.data || []) as any[]).map((r) => ({ ...r, amount: Number(r.amount) || 0, currency: (r.currency || 'TND') as Currency })));
+            setRecurring(recRes.error ? [] : ((recRes.data || []) as any[]).map((r) => ({ ...r, amount: Number(r.amount) || 0, currency: (r.currency || 'TND') as Currency, frequency: (r.frequency || 'monthly') as Frequency })));
             setDebtEntries(dEntRes && !dEntRes.error ? ((dEntRes.data || []) as any[]).map((x) => ({ ...x, amount: Number(x.amount) || 0 })) : []);
 
             const settingsMap = new Map<string, string>((setRes.data || []).map((r: any) => [String(r.key), String(r.value ?? '')]));
@@ -279,8 +300,8 @@ export default function FinanceContent() {
         }
         const receivable = debts.filter((d) => d.direction === 'receivable' && !isSettled(d)).reduce((s, d) => s + debtRemaining(d), 0);
         const payable = debts.filter((d) => d.direction === 'payable' && !isSettled(d)).reduce((s, d) => s + debtRemaining(d), 0);
-        const monthlyIn = recurring.filter((r) => r.active && r.direction === 'in').reduce((s, r) => s + toTND(r.amount, r.currency), 0);
-        const monthlyOut = recurring.filter((r) => r.active && r.direction === 'out').reduce((s, r) => s + toTND(r.amount, r.currency), 0);
+        const monthlyIn = recurring.filter((r) => r.active && r.direction === 'in' && (r.frequency || 'monthly') === 'monthly').reduce((s, r) => s + toTND(r.amount, r.currency), 0);
+        const monthlyOut = recurring.filter((r) => r.active && r.direction === 'out' && (r.frequency || 'monthly') === 'monthly').reduce((s, r) => s + toTND(r.amount, r.currency), 0);
         return { available, out, inSum, receivable, payable, monthlyIn, monthlyOut };
     }, [accounts, perAccount, movements, debts, recurring, toTND, accCurrency_, isSettled, debtRemaining]);
 
@@ -474,15 +495,24 @@ export default function FinanceContent() {
         if (!error) fetchAll();
     };
 
-    const openNewRecur = () => { setEditingRecur(null); setRecurLabel(''); setRecurAccount(accounts[0]?.id || ''); setRecurAmount(''); setRecurCurrency('TND'); setRecurDir('in'); setRecurDay('1'); setShowRecurModal(true); };
-    const openEditRecur = (r: Recurring) => { setEditingRecur(r); setRecurLabel(r.label); setRecurAccount(r.account_id || ''); setRecurAmount(String(r.amount)); setRecurCurrency(r.currency); setRecurDir(r.direction); setRecurDay(String(r.day_of_month || 1)); setShowRecurModal(true); };
+    const openNewRecur = () => { setEditingRecur(null); setRecurLabel(''); setRecurAccount(accounts[0]?.id || ''); setRecurAmount(''); setRecurCurrency('TND'); setRecurDir(previsionTab === 'monthly' ? 'in' : 'out'); setRecurDay('1'); setRecurFreq(previsionTab); setShowRecurModal(true); };
+    const openEditRecur = (r: Recurring) => { setEditingRecur(r); setRecurLabel(r.label); setRecurAccount(r.account_id || ''); setRecurAmount(String(r.amount)); setRecurCurrency(r.currency); setRecurDir(r.direction); setRecurDay(String(r.day_of_month || 1)); setRecurFreq(r.frequency || 'monthly'); setShowRecurModal(true); };
     const saveRecur = async () => {
         if (!canEdit || !currentProject || !recurLabel.trim() || !recurAccount) return;
         setSaving(true);
         try {
-            const payload = { label: recurLabel.trim(), account_id: recurAccount, amount: parseFloat(recurAmount) || 0, currency: recurCurrency, direction: recurDir, day_of_month: parseInt(recurDay) || 1 };
-            if (editingRecur) { const { error } = await supabase.from('finance_recurring').update(payload).eq('id', editingRecur.id); if (error) throw error; }
-            else { const { error } = await supabase.from('finance_recurring').insert({ ...payload, project_id: currentProject.id, active: true }); if (error) throw error; }
+            const payload = { label: recurLabel.trim(), account_id: recurAccount, amount: parseFloat(recurAmount) || 0, currency: recurCurrency, direction: recurDir, day_of_month: parseInt(recurDay) || 1, frequency: recurFreq };
+            const doWrite = async (pl: any) => editingRecur
+                ? supabase.from('finance_recurring').update(pl).eq('id', editingRecur.id)
+                : supabase.from('finance_recurring').insert({ ...pl, project_id: currentProject.id, active: true });
+            let { error } = await doWrite(payload);
+            if (error && /frequency/i.test(error.message)) {
+                // Colonne absente (migration non appliquée) : on enregistre sans la fréquence.
+                const { frequency, ...rest } = payload;
+                ({ error } = await doWrite(rest));
+                if (!error) alert('Migration « recurring_frequency » non appliquée : l’élément est enregistré en mensuel. Exécutez-la dans Supabase pour activer trimestriel/annuel.');
+            }
+            if (error) throw error;
             setShowRecurModal(false); fetchAll();
         } catch (e: any) { alert('Erreur : ' + (e?.message || e)); } finally { setSaving(false); }
     };
@@ -493,7 +523,8 @@ export default function FinanceContent() {
     };
     const applyRecur = async (r: Recurring) => {
         if (!canEdit || !currentProject || !r.account_id) return;
-        if ((r.last_applied || '').slice(0, 7) === thisMonthKey()) { alert('Déjà encaissé ce mois-ci.'); return; }
+        const freq = r.frequency || 'monthly';
+        if (r.last_applied && freqPeriodKey(freq, r.last_applied) === currentFreqKey(freq)) { alert('Déjà encaissé pour cette période.'); return; }
         setSaving(true);
         try {
             const { error: e1 } = await supabase.from('finance_movements').insert({
@@ -507,14 +538,15 @@ export default function FinanceContent() {
     };
     const undoRecur = async (r: Recurring) => {
         if (!canEdit || !currentProject || !r.account_id) return;
-        if (!confirm("Annuler l'encaissement de ce mois ?")) return;
+        const freq = r.frequency || 'monthly';
+        if (!confirm("Annuler l'encaissement de cette période ?")) return;
         setSaving(true);
         try {
             // Supprime le(s) mouvement(s) générés ce mois-ci par ce récurrent.
             await supabase.from('finance_movements').delete()
                 .eq('project_id', currentProject.id).eq('account_id', r.account_id)
                 .eq('direction', r.direction).eq('label', r.label).eq('amount', r.amount)
-                .gte('date', thisMonthKey() + '-01');
+                .gte('date', freqRangeStart(freq));
             await supabase.from('finance_recurring').update({ last_applied: null }).eq('id', r.id);
             fetchAll();
         } catch (e: any) { alert('Erreur : ' + (e?.message || e)); } finally { setSaving(false); }
@@ -763,15 +795,26 @@ export default function FinanceContent() {
                     </div>
                     <div key="prevision" className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col h-full">
                         <div className={panelHead}>
-                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Repeat className="h-4 w-4 text-slate-400" /> Prévision mensuelle</p>
+                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Repeat className="h-4 w-4 text-slate-400" /> Prévisions</p>
                             {canEdit && <button onClick={openNewRecur} className="inline-flex items-center gap-1 h-7 px-2 rounded-lg text-slate-600 hover:bg-slate-100 text-[12px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
                         </div>
-                        {recurring.length === 0 ? (
-                            <p className="px-4 py-8 text-center text-sm text-slate-400">Ajoutez vos revenus (salaire…) et charges mensuelles récurrents</p>
-                        ) : (
+                        <div className="px-3 pt-2.5 pb-1 shrink-0">
+                            <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                                {FREQS.map((f) => {
+                                    const n = recurring.filter((r) => (r.frequency || 'monthly') === f.key).length;
+                                    return <button key={f.key} onClick={() => setPrevisionTab(f.key)} className={`flex-1 h-7 rounded-md text-[12px] font-medium transition-colors ${previsionTab === f.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{f.label}{n > 0 ? ` · ${n}` : ''}</button>;
+                                })}
+                            </div>
+                        </div>
+                        {(() => {
+                            const items = recurring.filter((r) => (r.frequency || 'monthly') === previsionTab);
+                            const freq = previsionTab;
+                            const meta = FREQS.find((f) => f.key === freq)!;
+                            if (items.length === 0) return <p className="px-4 py-8 text-center text-sm text-slate-400 flex-1">Aucun élément {meta.label.toLowerCase()} — ajoutez-en un.</p>;
+                            return (
                             <div className="divide-y divide-slate-100 overflow-y-auto flex-1 min-h-0">
-                                {recurring.map((r) => {
-                                    const doneThisMonth = (r.last_applied || '').slice(0, 7) === thisMonthKey();
+                                {items.map((r) => {
+                                    const doneThisMonth = !!r.last_applied && freqPeriodKey(freq, r.last_applied) === currentFreqKey(freq);
                                     return (
                                         <div key={r.id} className="flex items-center gap-2.5 px-3.5 py-2">
                                             <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${r.direction === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Repeat className="h-3.5 w-3.5" /></div>
@@ -781,8 +824,8 @@ export default function FinanceContent() {
                                             </div>
                                             <p className={`text-[12px] font-semibold tabular-nums shrink-0 ${r.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.direction === 'in' ? '+' : '−'}{fmtc(r.amount)} {CUR_SYMBOL[r.currency]}</p>
                                             {canEdit && (doneThisMonth
-                                                ? <button onClick={() => undoRecur(r)} title="Annuler l'encaissement de ce mois" className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"><CheckCircle2 className="h-3.5 w-3.5" /></button>
-                                                : <button onClick={() => applyRecur(r)} title="Encaisser ce mois" className="shrink-0 inline-flex items-center justify-center h-7 px-2 rounded-lg bg-slate-900 text-white text-[11px] font-medium hover:bg-slate-800 transition-colors">Encaisser</button>
+                                                ? <button onClick={() => undoRecur(r)} title={`Annuler l'encaissement (${meta.noun})`} className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"><CheckCircle2 className="h-3.5 w-3.5" /></button>
+                                                : <button onClick={() => applyRecur(r)} title={`Encaisser (${meta.noun})`} className="shrink-0 inline-flex items-center justify-center h-7 px-2 rounded-lg bg-slate-900 text-white text-[11px] font-medium hover:bg-slate-800 transition-colors">Encaisser</button>
                                             )}
                                             {canEdit && (
                                                 <div className="flex items-center shrink-0">
@@ -794,14 +837,22 @@ export default function FinanceContent() {
                                     );
                                 })}
                             </div>
-                        )}
-                        {recurring.length > 0 && (
+                            );
+                        })()}
+                        {(() => {
+                            const items = recurring.filter((r) => r.active && (r.frequency || 'monthly') === previsionTab);
+                            if (items.length === 0) return null;
+                            const meta = FREQS.find((f) => f.key === previsionTab)!;
+                            const tin = items.filter((r) => r.direction === 'in').reduce((sum, r) => sum + toTND(r.amount, r.currency), 0);
+                            const tout = items.filter((r) => r.direction === 'out').reduce((sum, r) => sum + toTND(r.amount, r.currency), 0);
+                            return (
                             <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-200 bg-slate-50/70 shrink-0">
-                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Total encaissé / mois</p><p className="text-[13px] font-semibold text-emerald-600 tabular-nums truncate">+{fmtc(totals.monthlyIn)}</p></div>
-                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Total dépensé / mois</p><p className="text-[13px] font-semibold text-rose-600 tabular-nums truncate">−{fmtc(totals.monthlyOut)}</p></div>
-                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Net / mois</p><p className={`text-[13px] font-semibold tabular-nums truncate ${(totals.monthlyIn - totals.monthlyOut) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(totals.monthlyIn - totals.monthlyOut) >= 0 ? '+' : ''}{fmtc(totals.monthlyIn - totals.monthlyOut)} DT</p></div>
+                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Encaissé {meta.per}</p><p className="text-[13px] font-semibold text-emerald-600 tabular-nums truncate">+{fmtc(tin)}</p></div>
+                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Dépensé {meta.per}</p><p className="text-[13px] font-semibold text-rose-600 tabular-nums truncate">−{fmtc(tout)}</p></div>
+                                <div className="px-2.5 py-2 text-center min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">Net {meta.per}</p><p className={`text-[13px] font-semibold tabular-nums truncate ${(tin - tout) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(tin - tout) >= 0 ? '+' : ''}{fmtc(tin - tout)} DT</p></div>
                             </div>
-                        )}
+                            );
+                        })()}
                     </div>
                     <div key="creances" className="rounded-2xl border border-slate-200 bg-white overflow-hidden h-full flex flex-col">
                         <div className={panelHead}>
@@ -1109,7 +1160,7 @@ export default function FinanceContent() {
                 </div>
             </Modal>
 
-            <Modal open={showRecurModal} onClose={() => setShowRecurModal(false)} title={editingRecur ? 'Modifier' : 'Revenu récurrent'} description="Un salaire ou revenu qui revient chaque mois" size="sm" icon={<div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center"><Repeat className="h-5 w-5" /></div>}
+            <Modal open={showRecurModal} onClose={() => setShowRecurModal(false)} title={editingRecur ? 'Modifier' : 'Élément récurrent'} description="Un revenu ou une charge qui revient périodiquement" size="sm" icon={<div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center"><Repeat className="h-5 w-5" /></div>}
                 footer={<><button onClick={() => setShowRecurModal(false)} className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Annuler</button><button onClick={saveRecur} disabled={saving || !recurLabel.trim() || !recurAccount} className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors"><CheckCircle2 className="h-4 w-4" /> Enregistrer</button></>}>
                 <div className="space-y-4">
                     <div className="flex bg-slate-100 p-1 rounded-xl">
@@ -1121,9 +1172,14 @@ export default function FinanceContent() {
                         <div><label className={labelClass}>Montant</label><input type="number" step="0.001" inputMode="decimal" value={recurAmount} onChange={(e) => setRecurAmount(e.target.value)} placeholder="0.000" className={`${inputClass} tabular-nums`} /></div>
                         <div><label className={labelClass}>Devise</label><select value={recurCurrency} onChange={(e) => setRecurCurrency(e.target.value as Currency)} className={inputClass}><option value="TND">TND</option><option value="USD">USD</option><option value="EUR">EUR</option></select></div>
                     </div>
+                    <div><label className={labelClass}>Fréquence</label>
+                        <div className="flex bg-slate-100 p-1 rounded-xl">
+                            {FREQS.map((f) => <button key={f.key} type="button" onClick={() => setRecurFreq(f.key)} className={`flex-1 h-9 rounded-lg text-[13px] font-medium transition-colors ${recurFreq === f.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{f.label}</button>)}
+                        </div>
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
-                        <div><label className={labelClass}>Compte crédité</label><select value={recurAccount} onChange={(e) => setRecurAccount(e.target.value)} className={inputClass}>{accounts.length === 0 && <option value="">— aucun compte —</option>}{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-                        <div><label className={labelClass}>Jour du mois</label><input type="number" min="1" max="31" value={recurDay} onChange={(e) => setRecurDay(e.target.value)} className={`${inputClass} tabular-nums`} /></div>
+                        <div><label className={labelClass}>{recurDir === 'in' ? 'Compte crédité' : 'Compte débité'}</label><select value={recurAccount} onChange={(e) => setRecurAccount(e.target.value)} className={inputClass}>{accounts.length === 0 && <option value="">— aucun compte —</option>}{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+                        <div><label className={labelClass}>Jour</label><input type="number" min="1" max="31" value={recurDay} onChange={(e) => setRecurDay(e.target.value)} className={`${inputClass} tabular-nums`} /></div>
                     </div>
                 </div>
             </Modal>

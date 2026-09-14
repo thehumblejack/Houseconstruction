@@ -26,7 +26,7 @@ import 'react-resizable/css/styles.css';
 import {
     Wallet, Plus, Loader2, Lock, Landmark, ArrowDownRight, ArrowUpRight,
     Pencil, Trash2, TrendingDown, TrendingUp, EyeOff, Eye, CheckCircle2,
-    ArrowRightLeft, HandCoins, Repeat, Check, BarChart3, ChevronDown, Receipt, LayoutGrid, RotateCcw, ScrollText, RefreshCw,
+    ArrowRightLeft, HandCoins, Repeat, Check, BarChart3, ChevronDown, Receipt, LayoutGrid, RotateCcw, ScrollText, RefreshCw, ArrowUpDown,
 } from 'lucide-react';
 
 type Currency = 'TND' | 'USD' | 'EUR';
@@ -217,6 +217,8 @@ export default function FinanceContent() {
     const [recurAnchor, setRecurAnchor] = useState('');
     const [previsionTab, setPrevisionTab] = useState<Frequency>('monthly');
     const [expandedRecur, setExpandedRecur] = useState<string | null>(null);
+    const [movSortAsc, setMovSortAsc] = useState(false);   // Mouvements : récents d'abord par défaut
+    const [prevSortAsc, setPrevSortAsc] = useState(true);  // Prévisions : prochaine échéance la plus proche d'abord
 
     const [showRatesModal, setShowRatesModal] = useState(false);
     const [showConvModal, setShowConvModal] = useState(false);
@@ -432,10 +434,11 @@ export default function FinanceContent() {
 
     // Mouvements groupés par jour (liste déjà triée date desc)
     const movsByDay = useMemo(() => {
+        const sorted = [...shownMovs].sort((a, b) => a.date === b.date ? 0 : (a.date < b.date ? (movSortAsc ? -1 : 1) : (movSortAsc ? 1 : -1)));
         const groups: Array<{ date: string; items: Movement[] }> = [];
-        for (const m of shownMovs) { const g = groups[groups.length - 1]; if (g && g.date === m.date) g.items.push(m); else groups.push({ date: m.date, items: [m] }); }
+        for (const m of sorted) { const g = groups[groups.length - 1]; if (g && g.date === m.date) g.items.push(m); else groups.push({ date: m.date, items: [m] }); }
         return groups;
-    }, [shownMovs]);
+    }, [shownMovs, movSortAsc]);
 
     // Relevé du compte sélectionné : chaque mouvement avec le solde courant après lui.
     const statementData = useMemo(() => {
@@ -859,7 +862,10 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                     <div key="prevision" className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col h-full">
                         <div className={panelHead}>
                             <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Repeat className="h-4 w-4 text-slate-400" /> Prévisions</p>
-                            {canEdit && <button onClick={openNewRecur} className="inline-flex items-center gap-1 h-7 px-2 rounded-lg text-slate-600 hover:bg-slate-100 text-[12px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
+                            <div className="flex items-center gap-1">
+                                <button onClick={() => setPrevSortAsc((v) => !v)} title="Trier par prochaine échéance" className="inline-flex items-center gap-1 h-7 px-2 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-medium hover:bg-slate-50 transition-colors"><ArrowUpDown className="h-3 w-3" /> Date</button>
+                                {canEdit && <button onClick={openNewRecur} className="inline-flex items-center gap-1 h-7 px-2 rounded-lg text-slate-600 hover:bg-slate-100 text-[12px] font-medium transition-colors"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
+                            </div>
                         </div>
                         <div className="px-3 pt-2.5 pb-1 shrink-0">
                             <div className="flex bg-slate-100 p-0.5 rounded-lg">
@@ -870,7 +876,13 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                             </div>
                         </div>
                         {(() => {
-                            const items = recurring.filter((r) => (r.frequency || 'monthly') === previsionTab);
+                            const items = recurring.filter((r) => (r.frequency || 'monthly') === previsionTab).slice().sort((a, b) => {
+                                const da = nextOccurrence(a.frequency, a.day_of_month, a.anchor_date);
+                                const db = nextOccurrence(b.frequency, b.day_of_month, b.anchor_date);
+                                const ta = da ? da.getTime() : Number.POSITIVE_INFINITY;
+                                const tb = db ? db.getTime() : Number.POSITIVE_INFINITY;
+                                return prevSortAsc ? ta - tb : tb - ta;
+                            });
                             const freq = previsionTab;
                             const meta = FREQS.find((f) => f.key === freq)!;
                             if (items.length === 0) return <p className="px-4 py-8 text-center text-sm text-slate-400 flex-1">Aucun élément {meta.label.toLowerCase()} — ajoutez-en un.</p>;
@@ -1071,6 +1083,8 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                     <div key="mouvements" className="rounded-2xl border border-slate-200 bg-white overflow-hidden h-full flex flex-col">
                         <div className={panelHead}>
                             <p className="text-sm font-semibold text-slate-900">Mouvements <span className="text-[11px] font-normal text-slate-400">· {periodLabel.toLowerCase()} · {shownMovs.length}</span></p>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                                <button onClick={() => setMovSortAsc((v) => !v)} title="Trier par date" className="shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-medium hover:bg-slate-50 transition-colors"><ArrowUpDown className="h-3 w-3" /> {movSortAsc ? 'Anciens' : 'Récents'}</button>
                             {accounts.length > 1 && (
                                 <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
                                     <button onClick={() => setAccFilter('')} className={`h-7 px-2.5 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors ${accFilter === '' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>Tous</button>
@@ -1079,6 +1093,7 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                                     ))}
                                 </div>
                             )}
+                            </div>
                         </div>
                         {movsByDay.length === 0 ? (
                             <p className="px-4 py-10 text-center text-sm text-slate-400">Aucun mouvement sur cette période{accFilter ? ' pour ce compte' : ''}.</p>

@@ -26,7 +26,7 @@ import 'react-resizable/css/styles.css';
 import {
     Wallet, Plus, Loader2, Lock, Landmark, ArrowDownRight, ArrowUpRight,
     Pencil, Trash2, TrendingDown, TrendingUp, EyeOff, Eye, CheckCircle2,
-    ArrowRightLeft, HandCoins, Repeat, Check, BarChart3, ChevronDown, Receipt, LayoutGrid, RotateCcw, ScrollText,
+    ArrowRightLeft, HandCoins, Repeat, Check, BarChart3, ChevronDown, Receipt, LayoutGrid, RotateCcw, ScrollText, RefreshCw,
 } from 'lucide-react';
 
 type Currency = 'TND' | 'USD' | 'EUR';
@@ -210,6 +210,10 @@ export default function FinanceContent() {
     const [showConvModal, setShowConvModal] = useState(false);
     const [tmpUsd, setTmpUsd] = useState('');
     const [tmpEur, setTmpEur] = useState('');
+    const [fxAuto, setFxAuto] = useState(true);
+    const [tmpAuto, setTmpAuto] = useState(true);
+    const [fxUpdatedAt, setFxUpdatedAt] = useState('');
+    const [fxLoading, setFxLoading] = useState(false);
     const [convFrom, setConvFrom] = useState<Currency>('USD');
     const [convAmount, setConvAmount] = useState('');
 
@@ -220,7 +224,24 @@ export default function FinanceContent() {
     const fmtc = useCallback((v: number) => privacy ? '•••' : Math.round(v).toLocaleString(), [privacy]);
     const toTND = useCallback((amount: number, cur: Currency) => amount * (rates[cur] || 1), [rates]);
 
-    const fetchAll = useCallback(async () => {
+    const fetchLiveRates = useCallback(async (persist: boolean) => {
+        setFxLoading(true);
+        try {
+            const res = await fetch('/api/fx-rates', { cache: 'no-store' });
+            const j = await res.json();
+            if (j && !j.error && j.USD && j.EUR) {
+                const next = { TND: 1, USD: Number(j.USD), EUR: Number(j.EUR) };
+                setRates(next); setFxUpdatedAt(j.updatedAt || new Date().toISOString());
+                if (persist && canEdit && currentProject) {
+                    await supabase.from('project_settings').upsert({ project_id: currentProject.id, key: 'fx_rates', value: JSON.stringify({ USD: next.USD, EUR: next.EUR, auto: true, updatedAt: j.updatedAt }) }, { onConflict: 'project_id,key' });
+                }
+                return true;
+            }
+        } catch { /* garde le dernier taux connu */ } finally { setFxLoading(false); }
+        return false;
+    }, [supabase, canEdit, currentProject]);
+
+        const fetchAll = useCallback(async () => {
         if (!currentProject) { if (!projectLoading) setLoading(false); return; }
         setLoading(true);
         try {
@@ -248,7 +269,10 @@ export default function FinanceContent() {
 
             const settingsMap = new Map<string, string>((setRes.data || []).map((r: any) => [String(r.key), String(r.value ?? '')]));
             const fxRaw = settingsMap.get('fx_rates');
-            if (fxRaw) { try { const o = JSON.parse(fxRaw); setRates({ TND: 1, USD: Number(o.USD) || DEFAULT_RATES.USD, EUR: Number(o.EUR) || DEFAULT_RATES.EUR }); } catch { /* */ } }
+            let autoMode = true;
+            if (fxRaw) { try { const o = JSON.parse(fxRaw); setRates({ TND: 1, USD: Number(o.USD) || DEFAULT_RATES.USD, EUR: Number(o.EUR) || DEFAULT_RATES.EUR }); if (o.updatedAt) setFxUpdatedAt(String(o.updatedAt)); if (o.auto === false) autoMode = false; } catch { /* */ } }
+            setFxAuto(autoMode);
+            if (autoMode) fetchLiveRates(true);
             const exRaw = settingsMap.get('excluded_groups');
             try { const arr = exRaw ? JSON.parse(exRaw) : []; setExcludedGroups(new Set(Array.isArray(arr) ? arr : [])); } catch { setExcludedGroups(new Set()); }
             setExpRows(expRes && !expRes.error ? ((expRes.data || []) as any[]).map((e) => ({ id: e.id, supplier_id: e.supplier_id, price: Number(e.price) || 0, status: e.status || '', group_name: e.group_name || null })) : []);
@@ -266,7 +290,7 @@ export default function FinanceContent() {
         } finally {
             setLoading(false);
         }
-    }, [supabase, currentProject, projectLoading]);
+    }, [supabase, currentProject, projectLoading, fetchLiveRates]);
 
     useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -577,12 +601,14 @@ export default function FinanceContent() {
         } catch (e: any) { alert('Erreur : ' + (e?.message || e)); } finally { setSaving(false); }
     };
 
-    const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.EUR)); setShowRatesModal(true); };
+const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.EUR)); setTmpAuto(fxAuto); setShowRatesModal(true); };
     const saveRates = async () => {
         if (!currentProject) return;
+        setFxAuto(tmpAuto);
+        if (tmpAuto) { setShowRatesModal(false); await fetchLiveRates(true); return; }
         const next = { TND: 1, USD: parseFloat(tmpUsd) || DEFAULT_RATES.USD, EUR: parseFloat(tmpEur) || DEFAULT_RATES.EUR };
-        setRates(next); setShowRatesModal(false);
-        if (canEdit) await supabase.from('project_settings').upsert({ project_id: currentProject.id, key: 'fx_rates', value: JSON.stringify({ USD: next.USD, EUR: next.EUR }) }, { onConflict: 'project_id,key' });
+        setRates(next); setFxUpdatedAt(''); setShowRatesModal(false);
+        if (canEdit) await supabase.from('project_settings').upsert({ project_id: currentProject.id, key: 'fx_rates', value: JSON.stringify({ USD: next.USD, EUR: next.EUR, auto: false }) }, { onConflict: 'project_id,key' });
     };
 
     if (authLoading || projectLoading || loading) return <div className="min-h-screen flex items-center justify-center font-jakarta"><Loader2 className="h-7 w-7 text-slate-400 animate-spin" /></div>;
@@ -1219,7 +1245,7 @@ export default function FinanceContent() {
                         <span className="text-slate-400 shrink-0">=</span>
                         <div className="h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center min-w-[104px] justify-end shrink-0"><span className="text-sm font-semibold text-slate-900 tabular-nums">{convResult.toLocaleString(undefined, { minimumFractionDigits: 3 })} <span className="text-xs text-slate-400">DT</span></span></div>
                     </div>
-                    <button onClick={openRates} className="text-[12px] font-medium text-slate-500 hover:text-slate-900 transition-colors tabular-nums">Taux : 1$={rates.USD} · 1€={rates.EUR} — modifier</button>
+                    <button onClick={openRates} className="text-[12px] font-medium text-slate-500 hover:text-slate-900 transition-colors tabular-nums inline-flex items-center gap-1">{fxAuto && <RefreshCw className={`h-3 w-3 ${fxLoading ? 'animate-spin' : ''}`} />}Taux : 1$={rates.USD} · 1€={rates.EUR} — {fxAuto ? 'auto' : 'modifier'}</button>
                 </div>
             </Modal>
 
@@ -1239,9 +1265,29 @@ export default function FinanceContent() {
             <Modal open={showRatesModal} onClose={() => setShowRatesModal(false)} title="Taux de change" description="Combien de dinars pour 1 unité de devise" size="sm" icon={<div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center"><ArrowRightLeft className="h-5 w-5" /></div>}
                 footer={<><button onClick={() => setShowRatesModal(false)} className="inline-flex items-center justify-center h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Annuler</button><button onClick={saveRates} className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors"><CheckCircle2 className="h-4 w-4" /> Enregistrer</button></>}>
                 <div className="space-y-4">
-                    <div><label className={labelClass}>1 USD = … DT</label><input type="number" step="0.001" inputMode="decimal" value={tmpUsd} onChange={(e) => setTmpUsd(e.target.value)} placeholder="3.150" className={`${inputClass} tabular-nums`} /></div>
-                    <div><label className={labelClass}>1 EUR = … DT</label><input type="number" step="0.001" inputMode="decimal" value={tmpEur} onChange={(e) => setTmpEur(e.target.value)} placeholder="3.400" className={`${inputClass} tabular-nums`} /></div>
-                    <p className="text-[11px] text-slate-400">Les taux s'appliquent à tous les comptes en devise et au convertisseur. Modifiez-les quand le cours change.</p>
+                    <button type="button" onClick={() => setTmpAuto((v) => !v)} className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors ${tmpAuto ? 'border-slate-900 bg-slate-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                        <span className="min-w-0">
+                            <span className="text-[13px] font-medium text-slate-900 flex items-center gap-1.5"><RefreshCw className="h-3.5 w-3.5 text-slate-400" /> Taux automatiques</span>
+                            <span className="text-[11px] text-slate-400 block mt-0.5">Cours du jour récupérés en ligne (USD & EUR → DT)</span>
+                        </span>
+                        <span className={`shrink-0 w-10 h-6 rounded-full p-0.5 transition-colors ${tmpAuto ? 'bg-slate-900' : 'bg-slate-200'}`}><span className={`block w-5 h-5 rounded-full bg-white transition-transform ${tmpAuto ? 'translate-x-4' : ''}`} /></span>
+                    </button>
+                    {tmpAuto ? (
+                        <div className="rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3 space-y-1.5">
+                            <div className="flex items-center justify-between text-sm"><span className="text-slate-500">1 USD</span><span className="font-semibold text-slate-900 tabular-nums">{rates.USD} DT</span></div>
+                            <div className="flex items-center justify-between text-sm"><span className="text-slate-500">1 EUR</span><span className="font-semibold text-slate-900 tabular-nums">{rates.EUR} DT</span></div>
+                            <div className="flex items-center justify-between pt-1.5 border-t border-slate-200">
+                                <span className="text-[11px] text-slate-400">{fxUpdatedAt ? `Mis à jour ${new Date(fxUpdatedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })} · open.er-api.com` : 'Source open.er-api.com'}</span>
+                                <button type="button" onClick={() => fetchLiveRates(true)} disabled={fxLoading} className="inline-flex items-center gap-1 h-7 px-2 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-medium hover:bg-slate-100 transition-colors"><RefreshCw className={`h-3 w-3 ${fxLoading ? 'animate-spin' : ''}`} /> Actualiser</button>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            <div><label className={labelClass}>1 USD = … DT</label><input type="number" step="0.001" inputMode="decimal" value={tmpUsd} onChange={(e) => setTmpUsd(e.target.value)} placeholder="3.150" className={`${inputClass} tabular-nums`} /></div>
+                            <div><label className={labelClass}>1 EUR = … DT</label><input type="number" step="0.001" inputMode="decimal" value={tmpEur} onChange={(e) => setTmpEur(e.target.value)} placeholder="3.400" className={`${inputClass} tabular-nums`} /></div>
+                            <p className="text-[11px] text-slate-400">Taux manuels — utilisés partout (comptes en devise, convertisseur, prévisions).</p>
+                        </>
+                    )}
                 </div>
             </Modal>
         </div>

@@ -34,7 +34,7 @@ interface Account { id: string; name: string; initial_balance: number; sort_orde
 interface Movement { id: string; account_id: string; direction: 'in' | 'out'; amount: number; label: string | null; supplier_id: string | null; date: string; debt_id?: string | null; }
 interface Debt { id: string; person: string; amount: number; direction: 'receivable' | 'payable'; note: string | null; settled: boolean; }
 interface DebtEntry { id: string; debt_id: string; amount: number; date: string; note: string | null; }
-interface Recurring { id: string; label: string; account_id: string | null; amount: number; currency: Currency; direction: 'in' | 'out'; day_of_month: number | null; last_applied: string | null; active: boolean; frequency: Frequency; }
+interface Recurring { id: string; label: string; account_id: string | null; amount: number; currency: Currency; direction: 'in' | 'out'; day_of_month: number | null; last_applied: string | null; active: boolean; frequency: Frequency; anchor_date: string | null; }
 
 const ACCOUNT_TONES = ['bg-blue-600', 'bg-emerald-600', 'bg-violet-600', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-600', 'bg-slate-700'];
 const CUR_SYMBOL: Record<Currency, string> = { TND: 'DT', USD: '$', EUR: '€' };
@@ -53,6 +53,30 @@ const freqPeriodKey = (freq: Frequency, iso: string) => {
     return iso.slice(0, 7);
 };
 const currentFreqKey = (freq: Frequency) => freqPeriodKey(freq, new Date().toISOString().slice(0, 10));
+// Prochaine échéance d'un élément récurrent (à partir d'aujourd'hui).
+const nextOccurrence = (freq: Frequency, dayOfMonth: number | null, anchorISO: string | null): Date | null => {
+    const t = new Date(); t.setHours(0, 0, 0, 0);
+    if (freq === 'monthly') {
+        const day = Math.min(Math.max(dayOfMonth || 1, 1), 31);
+        let d = new Date(t.getFullYear(), t.getMonth(), day);
+        if (d < t) d = new Date(t.getFullYear(), t.getMonth() + 1, day);
+        return d;
+    }
+    if (!anchorISO) return null;
+    const a = new Date(anchorISO + 'T00:00:00'); if (isNaN(a.getTime())) return null;
+    if (freq === 'yearly') {
+        let d = new Date(t.getFullYear(), a.getMonth(), a.getDate());
+        if (d < t) d = new Date(t.getFullYear() + 1, a.getMonth(), a.getDate());
+        return d;
+    }
+    // trimestriel : pas de 3 mois à partir de l'ancre
+    const step = (base: Date, n: number) => new Date(base.getFullYear(), base.getMonth() + n, a.getDate());
+    let d = new Date(a);
+    if (d >= t) { while (step(d, -3) >= t) d = step(d, -3); }
+    else { while (d < t) d = step(d, 3); }
+    return d;
+};
+const fmtDate = (d: Date) => d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const freqRangeStart = (freq: Frequency) => {
     const now = new Date(); const y = now.getFullYear(); const m = now.getMonth();
     if (freq === 'yearly') return `${y}-01-01`;
@@ -179,6 +203,7 @@ export default function FinanceContent() {
     const [recurDir, setRecurDir] = useState<'in' | 'out'>('in');
     const [recurDay, setRecurDay] = useState('1');
     const [recurFreq, setRecurFreq] = useState<Frequency>('monthly');
+    const [recurAnchor, setRecurAnchor] = useState('');
     const [previsionTab, setPrevisionTab] = useState<Frequency>('monthly');
 
     const [showRatesModal, setShowRatesModal] = useState(false);
@@ -218,7 +243,7 @@ export default function FinanceContent() {
             setAccounts(((accRes.data || []) as any[]).map((a) => ({ ...a, currency: (a.currency || 'TND') as Currency })));
             setMovements(((movRes.data || []) as any[]).map((m) => ({ ...m, amount: Number(m.amount) || 0 })));
             setDebts(debtRes.error ? [] : ((debtRes.data || []) as any[]).map((d) => ({ ...d, amount: Number(d.amount) || 0 })));
-            setRecurring(recRes.error ? [] : ((recRes.data || []) as any[]).map((r) => ({ ...r, amount: Number(r.amount) || 0, currency: (r.currency || 'TND') as Currency, frequency: (r.frequency || 'monthly') as Frequency })));
+            setRecurring(recRes.error ? [] : ((recRes.data || []) as any[]).map((r) => ({ ...r, amount: Number(r.amount) || 0, currency: (r.currency || 'TND') as Currency, frequency: (r.frequency || 'monthly') as Frequency, anchor_date: r.anchor_date || null })));
             setDebtEntries(dEntRes && !dEntRes.error ? ((dEntRes.data || []) as any[]).map((x) => ({ ...x, amount: Number(x.amount) || 0 })) : []);
 
             const settingsMap = new Map<string, string>((setRes.data || []).map((r: any) => [String(r.key), String(r.value ?? '')]));
@@ -495,22 +520,22 @@ export default function FinanceContent() {
         if (!error) fetchAll();
     };
 
-    const openNewRecur = () => { setEditingRecur(null); setRecurLabel(''); setRecurAccount(accounts[0]?.id || ''); setRecurAmount(''); setRecurCurrency('TND'); setRecurDir(previsionTab === 'monthly' ? 'in' : 'out'); setRecurDay('1'); setRecurFreq(previsionTab); setShowRecurModal(true); };
-    const openEditRecur = (r: Recurring) => { setEditingRecur(r); setRecurLabel(r.label); setRecurAccount(r.account_id || ''); setRecurAmount(String(r.amount)); setRecurCurrency(r.currency); setRecurDir(r.direction); setRecurDay(String(r.day_of_month || 1)); setRecurFreq(r.frequency || 'monthly'); setShowRecurModal(true); };
+    const openNewRecur = () => { setEditingRecur(null); setRecurLabel(''); setRecurAccount(accounts[0]?.id || ''); setRecurAmount(''); setRecurCurrency('TND'); setRecurDir(previsionTab === 'monthly' ? 'in' : 'out'); setRecurDay('1'); setRecurFreq(previsionTab); setRecurAnchor(''); setShowRecurModal(true); };
+    const openEditRecur = (r: Recurring) => { setEditingRecur(r); setRecurLabel(r.label); setRecurAccount(r.account_id || ''); setRecurAmount(String(r.amount)); setRecurCurrency(r.currency); setRecurDir(r.direction); setRecurDay(String(r.day_of_month || 1)); setRecurFreq(r.frequency || 'monthly'); setRecurAnchor(r.anchor_date || ''); setShowRecurModal(true); };
     const saveRecur = async () => {
         if (!canEdit || !currentProject || !recurLabel.trim() || !recurAccount) return;
         setSaving(true);
         try {
-            const payload = { label: recurLabel.trim(), account_id: recurAccount, amount: parseFloat(recurAmount) || 0, currency: recurCurrency, direction: recurDir, day_of_month: parseInt(recurDay) || 1, frequency: recurFreq };
+            const base = { label: recurLabel.trim(), account_id: recurAccount, amount: parseFloat(recurAmount) || 0, currency: recurCurrency, direction: recurDir, day_of_month: parseInt(recurDay) || 1 };
+            const payload: any = { ...base, frequency: recurFreq, anchor_date: recurFreq === 'monthly' ? null : (recurAnchor || null) };
             const doWrite = async (pl: any) => editingRecur
                 ? supabase.from('finance_recurring').update(pl).eq('id', editingRecur.id)
                 : supabase.from('finance_recurring').insert({ ...pl, project_id: currentProject.id, active: true });
             let { error } = await doWrite(payload);
-            if (error && /frequency/i.test(error.message)) {
-                // Colonne absente (migration non appliquée) : on enregistre sans la fréquence.
-                const { frequency, ...rest } = payload;
-                ({ error } = await doWrite(rest));
-                if (!error) alert('Migration « recurring_frequency » non appliquée : l’élément est enregistré en mensuel. Exécutez-la dans Supabase pour activer trimestriel/annuel.');
+            if (error && /(frequency|anchor_date|column)/i.test(error.message)) {
+                // Colonnes absentes (migrations non appliquées) : on enregistre sans elles.
+                ({ error } = await doWrite(base));
+                if (!error) alert('Migrations récurrence non appliquées : élément enregistré en mensuel, sans échéance. Exécutez recurring_frequency + recurring_anchor_date dans Supabase.');
             }
             if (error) throw error;
             setShowRecurModal(false); fetchAll();
@@ -820,7 +845,7 @@ export default function FinanceContent() {
                                             <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${r.direction === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Repeat className="h-3.5 w-3.5" /></div>
                                             <div className="min-w-0 flex-1">
                                                 <p className="text-[13px] font-medium text-slate-900 truncate">{r.label}</p>
-                                                <p className="text-[10px] text-slate-400 truncate">{accountName(r.account_id || '')} · le {r.day_of_month || 1}</p>
+                                                <p className="text-[10px] text-slate-400 truncate">{accountName(r.account_id || '')}{(() => { const nd = nextOccurrence(freq, r.day_of_month, r.anchor_date); return freq === 'monthly' ? ` · le ${r.day_of_month || 1}` : (nd ? ` · prochaine ${fmtDate(nd)}` : ' · échéance à définir'); })()}</p>
                                             </div>
                                             <p className={`text-[12px] font-semibold tabular-nums shrink-0 ${r.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.direction === 'in' ? '+' : '−'}{fmtc(r.amount)} {CUR_SYMBOL[r.currency]}</p>
                                             {canEdit && (doneThisMonth
@@ -1179,7 +1204,9 @@ export default function FinanceContent() {
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div><label className={labelClass}>{recurDir === 'in' ? 'Compte crédité' : 'Compte débité'}</label><select value={recurAccount} onChange={(e) => setRecurAccount(e.target.value)} className={inputClass}>{accounts.length === 0 && <option value="">— aucun compte —</option>}{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-                        <div><label className={labelClass}>Jour</label><input type="number" min="1" max="31" value={recurDay} onChange={(e) => setRecurDay(e.target.value)} className={`${inputClass} tabular-nums`} /></div>
+                        {recurFreq === 'monthly'
+                            ? <div><label className={labelClass}>Jour</label><input type="number" min="1" max="31" value={recurDay} onChange={(e) => setRecurDay(e.target.value)} className={`${inputClass} tabular-nums`} /></div>
+                            : <div><label className={labelClass}>Prochaine échéance</label><input type="date" value={recurAnchor} onChange={(e) => setRecurAnchor(e.target.value)} className={inputClass} /></div>}
                     </div>
                 </div>
             </Modal>

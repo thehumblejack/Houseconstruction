@@ -891,7 +891,16 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                             const freq = previsionTab;
                             const meta = FREQS.find((f) => f.key === freq)!;
                             if (items.length === 0) return <p className="px-4 py-8 text-center text-sm text-slate-400 flex-1">Aucun élément {meta.label.toLowerCase()} — ajoutez-en un.</p>;
+                            const per = freq === 'yearly' ? 12 : freq === 'quarterly' ? 3 : 1;
                             return (
+                            <div className="flex-1 min-h-0 flex flex-col">
+                            <div className="hidden lg:flex items-center gap-2.5 px-3.5 py-1.5 border-b border-slate-100 text-[9px] uppercase tracking-wide text-slate-400 shrink-0">
+                                <div className="w-7 shrink-0" />
+                                <div className="flex-1">Élément</div>
+                                <div className="w-36 text-center shrink-0">Échéance</div>
+                                <div className="w-20 text-right shrink-0">Montant</div>
+                                <div className="w-[104px] shrink-0" />
+                            </div>
                             <div className="divide-y divide-slate-100 overflow-y-auto flex-1 min-h-0">
                                 {items.map((r) => {
                                     const appliedArr = r.applied_periods || [];
@@ -902,9 +911,15 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                                             <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${r.direction === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Repeat className="h-3.5 w-3.5" /></div>
                                             <div className="min-w-0 flex-1">
                                                 <p className="text-[13px] font-medium text-slate-900 truncate">{r.label}</p>
-                                                <p className="text-[10px] text-slate-400 truncate">{accountName(r.account_id || '')}{nd ? ` · prochaine ${fmtDate(nd)}` : ' · échéance à définir'}</p>
+                                                <p className="text-[10px] text-slate-400 truncate">{accountName(r.account_id || '')}<span className="lg:hidden">{nd ? ` · ${fmtDate(nd)}` : ' · échéance à définir'}</span></p>
                                             </div>
-                                            <p className={`text-[12px] font-semibold tabular-nums shrink-0 ${r.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.direction === 'in' ? '+' : '−'}{fmtc(r.amount)} {CUR_SYMBOL[r.currency]}</p>
+                                            <div className="hidden lg:block w-36 shrink-0 text-center">
+                                                {nd ? <>
+                                                    <p className="text-[11px] text-slate-700 tabular-nums leading-tight">{fmtDate(nd)}</p>
+                                                    <p className="text-[9px] text-slate-400 tabular-nums leading-tight">préc. {fmtDate(new Date(nd.getFullYear(), nd.getMonth() - per, nd.getDate()))}</p>
+                                                </> : <p className="text-[11px] text-slate-400">à définir</p>}
+                                            </div>
+                                            <p className={`w-20 text-right text-[12px] font-semibold tabular-nums shrink-0 ${r.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.direction === 'in' ? '+' : '−'}{fmtc(r.amount)} {CUR_SYMBOL[r.currency]}</p>
                                             {canEdit && (doneThisPeriod
                                                 ? <button onClick={() => undoRecur(r)} title={`Annuler « procédé » (${meta.noun})`} className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"><CheckCircle2 className="h-3.5 w-3.5" /></button>
                                                 : <button onClick={() => applyRecur(r)} title={`Procéder (${meta.noun})`} className="shrink-0 inline-flex items-center justify-center h-7 px-2 rounded-lg bg-slate-900 text-white text-[11px] font-medium hover:bg-slate-800 transition-colors">Procéder</button>
@@ -918,6 +933,7 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                                         </div>
                                     );
                                 })}
+                            </div>
                             </div>
                             );
                         })()}

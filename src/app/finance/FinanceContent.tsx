@@ -77,6 +77,17 @@ const nextOccurrence = (freq: Frequency, dayOfMonth: number | null, anchorISO: s
     return d;
 };
 const fmtDate = (d: Date) => d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+// Échéancier : la prochaine occurrence + les précédentes (passées), du plus ancien au plus récent.
+const occurrenceList = (freq: Frequency, dayOfMonth: number | null, anchorISO: string | null, pastCount = 3): Date[] => {
+    const next = nextOccurrence(freq, dayOfMonth, anchorISO);
+    if (!next) return [];
+    const per = freq === 'yearly' ? 12 : freq === 'quarterly' ? 3 : 1;
+    const day = anchorISO ? new Date(anchorISO + 'T00:00:00').getDate() : (dayOfMonth || 1);
+    const out: Date[] = [];
+    let d = new Date(next);
+    for (let i = 0; i <= pastCount; i++) { out.push(new Date(d)); d = new Date(d.getFullYear(), d.getMonth() - per, day); }
+    return out.reverse();
+};
 const freqRangeStart = (freq: Frequency) => {
     const now = new Date(); const y = now.getFullYear(); const m = now.getMonth();
     if (freq === 'yearly') return `${y}-01-01`;
@@ -87,7 +98,7 @@ const MONTHS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juill
 const monthLabel = (k: string) => { const [y, m] = k.split('-'); return `${MONTHS_FR[parseInt(m, 10) - 1] || m} ${y}`; };
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const localISO = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-const dayLabel = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'long' });
+const dayLabel = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 type Period = 'month' | '3m' | 'year' | 'all' | 'custom';
 const PERIODS: Array<{ key: Period; label: string }> = [
     { key: 'month', label: 'Ce mois' }, { key: '3m', label: '3 mois' }, { key: 'year', label: 'Année' }, { key: 'all', label: 'Tout' }, { key: 'custom', label: 'Dates' },
@@ -205,6 +216,7 @@ export default function FinanceContent() {
     const [recurFreq, setRecurFreq] = useState<Frequency>('monthly');
     const [recurAnchor, setRecurAnchor] = useState('');
     const [previsionTab, setPrevisionTab] = useState<Frequency>('monthly');
+    const [expandedRecur, setExpandedRecur] = useState<string | null>(null);
 
     const [showRatesModal, setShowRatesModal] = useState(false);
     const [showConvModal, setShowConvModal] = useState(false);
@@ -545,7 +557,7 @@ export default function FinanceContent() {
     };
 
     const openNewRecur = () => { setEditingRecur(null); setRecurLabel(''); setRecurAccount(accounts[0]?.id || ''); setRecurAmount(''); setRecurCurrency('TND'); setRecurDir(previsionTab === 'monthly' ? 'in' : 'out'); setRecurDay('1'); setRecurFreq(previsionTab); setRecurAnchor(''); setShowRecurModal(true); };
-    const openEditRecur = (r: Recurring) => { setEditingRecur(r); setRecurLabel(r.label); setRecurAccount(r.account_id || ''); setRecurAmount(String(r.amount)); setRecurCurrency(r.currency); setRecurDir(r.direction); setRecurDay(String(r.day_of_month || 1)); setRecurFreq(r.frequency || 'monthly'); setRecurAnchor(r.anchor_date || ''); setShowRecurModal(true); };
+    const openEditRecur = (r: Recurring) => { setEditingRecur(r); setRecurLabel(r.label); setRecurAccount(r.account_id || ''); setRecurAmount(String(r.amount)); setRecurCurrency(r.currency); setRecurDir(r.direction); setRecurDay(String(r.day_of_month || 1)); setRecurFreq(r.frequency || 'monthly'); setRecurAnchor((r.frequency !== 'monthly' && r.anchor_date) ? (localISO(nextOccurrence(r.frequency, r.day_of_month, r.anchor_date) || new Date(r.anchor_date + 'T00:00:00'))) : (r.anchor_date || '')); setShowRecurModal(true); };
     const saveRecur = async () => {
         if (!canEdit || !currentProject || !recurLabel.trim() || !recurAccount) return;
         setSaving(true);
@@ -866,12 +878,16 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                             <div className="divide-y divide-slate-100 overflow-y-auto flex-1 min-h-0">
                                 {items.map((r) => {
                                     const doneThisMonth = !!r.last_applied && freqPeriodKey(freq, r.last_applied) === currentFreqKey(freq);
+                                    const expandable = freq !== 'monthly' && !!r.anchor_date;
+                                    const openSched = expandedRecur === r.id;
+                                    const nd = nextOccurrence(freq, r.day_of_month, r.anchor_date);
                                     return (
-                                        <div key={r.id} className="flex items-center gap-2.5 px-3.5 py-2">
+                                        <div key={r.id}>
+                                        <div className="flex items-center gap-2.5 px-3.5 py-2">
                                             <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${r.direction === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Repeat className="h-3.5 w-3.5" /></div>
-                                            <div className="min-w-0 flex-1">
+                                            <div className={`min-w-0 flex-1 ${expandable ? 'cursor-pointer select-none' : ''}`} onClick={expandable ? () => setExpandedRecur(openSched ? null : r.id) : undefined} title={expandable ? "Voir l'échéancier (passées + prochaine)" : undefined}>
                                                 <p className="text-[13px] font-medium text-slate-900 truncate">{r.label}</p>
-                                                <p className="text-[10px] text-slate-400 truncate">{accountName(r.account_id || '')}{(() => { const nd = nextOccurrence(freq, r.day_of_month, r.anchor_date); return freq === 'monthly' ? ` · le ${r.day_of_month || 1}` : (nd ? ` · prochaine ${fmtDate(nd)}` : ' · échéance à définir'); })()}</p>
+                                                <p className="text-[10px] text-slate-400 truncate flex items-center gap-1">{accountName(r.account_id || '')}{nd ? ` · prochaine ${fmtDate(nd)}` : ' · échéance à définir'}{expandable && <ChevronDown className={`h-3 w-3 shrink-0 transition-transform ${openSched ? 'rotate-180' : ''}`} />}</p>
                                             </div>
                                             <p className={`text-[12px] font-semibold tabular-nums shrink-0 ${r.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.direction === 'in' ? '+' : '−'}{fmtc(r.amount)} {CUR_SYMBOL[r.currency]}</p>
                                             {canEdit && (doneThisMonth
@@ -884,6 +900,28 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                                                     <button onClick={() => deleteRecur(r)} className={`${iconBtn} hover:bg-rose-50 hover:text-rose-600`}><Trash2 className="h-3.5 w-3.5" /></button>
                                                 </div>
                                             )}
+                                        </div>
+                                        {expandable && openSched && (() => {
+                                            const occ = occurrenceList(freq, r.day_of_month, r.anchor_date, 3);
+                                            const today = new Date(); today.setHours(0, 0, 0, 0);
+                                            const appliedKey = r.last_applied ? freqPeriodKey(freq, r.last_applied) : null;
+                                            return (
+                                                <div className="mx-3.5 mb-2 rounded-xl border border-slate-200 bg-slate-50/60 divide-y divide-slate-100">
+                                                    {occ.map((d) => {
+                                                        const isNext = !!nd && d.getTime() === nd.getTime();
+                                                        const isPast = d < today && !isNext;
+                                                        const isDone = appliedKey && freqPeriodKey(freq, localISO(d)) === appliedKey;
+                                                        return (
+                                                            <div key={d.getTime()} className="flex items-center gap-2 px-3 py-1.5">
+                                                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isNext ? 'bg-slate-900' : isDone ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                                                <span className={`text-[11px] tabular-nums flex-1 ${isNext ? 'font-semibold text-slate-900' : 'text-slate-500'}`}>{fmtDate(d)}</span>
+                                                                <span className={`text-[10px] font-medium ${isNext ? 'text-slate-900' : isDone ? 'text-emerald-600' : isPast ? 'text-slate-400' : 'text-slate-400'}`}>{isNext ? 'prochaine' : isDone ? 'encaissée' : isPast ? 'passée' : 'à venir'}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        })()}
                                         </div>
                                     );
                                 })}
@@ -981,7 +1019,7 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                                                             {dEntries.map((en) => (
                                                                 <span key={en.id} className="text-[11px] text-slate-600 tabular-nums inline-flex items-center gap-1">
                                                                     +<span className="font-semibold text-slate-900">{fmtc(en.amount)}</span>
-                                                                    <span className="text-slate-400">({new Date(en.date + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}{en.note ? ` · ${en.note}` : ''})</span>
+                                                                    <span className="text-slate-400">({fmtDate(new Date(en.date + 'T00:00:00'))}{en.note ? ` · ${en.note}` : ''})</span>
                                                                     {canEdit && <button onClick={() => deleteDebtEntry(en)} title="Supprimer cet ajout" className="text-slate-300 hover:text-rose-600 transition-colors"><Trash2 className="h-3 w-3" /></button>}
                                                                 </span>
                                                             ))}
@@ -1003,7 +1041,7 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                                                                 const cur = accCurrency_(m.account_id);
                                                                 return (
                                                                     <div key={m.id} className="flex items-center gap-2 px-2.5 py-1.5">
-                                                                        <p className="text-[11px] text-slate-500 tabular-nums w-[84px] shrink-0 capitalize">{new Date(m.date + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })}</p>
+                                                                        <p className="text-[11px] text-slate-500 tabular-nums w-[104px] shrink-0">{fmtDate(new Date(m.date + 'T00:00:00'))}</p>
                                                                         <p className="text-[11px] text-slate-700 flex items-center gap-1 flex-1 min-w-0 truncate"><span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tone(m.account_id)}`} />{accountName(m.account_id)}</p>
                                                                         <div className="text-right shrink-0">
                                                                             <p className="text-[12px] font-semibold tabular-nums text-slate-900">{fmt(m.amount)} {CUR_SYMBOL[cur]}</p>
@@ -1143,7 +1181,7 @@ const openRates = () => { setTmpUsd(String(rates.USD)); setTmpEur(String(rates.E
                                                     <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${m.direction === 'out' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>{m.direction === 'out' ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}</div>
                                                     <div className="min-w-0 flex-1">
                                                         <p className="text-[13px] font-medium text-slate-900 truncate">{m.label || (m.direction === 'out' ? 'Paiement' : 'Entrée')}{sn && <span className="text-slate-400 font-normal"> · {sn}</span>}{m.debt_id && <span className="ml-1.5 inline-flex items-center rounded px-1 py-px text-[9px] font-medium bg-slate-100 text-slate-500 align-middle">versement</span>}</p>
-                                                        <p className="text-[10px] text-slate-400">{new Date(m.date + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                                                        <p className="text-[10px] text-slate-400">{fmtDate(new Date(m.date + 'T00:00:00'))}</p>
                                                     </div>
                                                     <p className={`w-24 text-right text-[13px] font-semibold tabular-nums shrink-0 ${m.direction === 'out' ? 'text-rose-600' : 'text-emerald-600'}`}>{m.direction === 'out' ? '−' : '+'}{fmt(m.amount)}</p>
                                                     <p className={`w-28 text-right text-[13px] font-semibold tabular-nums shrink-0 ${balance < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(balance)} <span className="text-[9px] font-normal text-slate-400">{CUR_SYMBOL[cur]}</span></p>
